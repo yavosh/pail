@@ -7,7 +7,32 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 )
+
+const (
+	testKey    = "AKIAPAILTEST00000000"
+	testSecret = "pail-test-secret"
+)
+
+func testOptions(domain string) Options {
+	return Options{Domain: domain, AccessKeyID: testKey, SecretAccessKey: testSecret}
+}
+
+// signRequest signs req the way the S3 SDKs do, with an empty payload.
+func signRequest(t *testing.T, req *http.Request, at time.Time) {
+	t.Helper()
+	const emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	req.Header.Set("X-Amz-Content-Sha256", emptySHA256)
+	signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+	creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
+	if err := signer.SignHTTP(req.Context(), creds, req, emptySHA256, "s3", "us-east-1", at); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // do sends one request to srv and returns the status, the headers, and the body.
 func do(t *testing.T, srv *httptest.Server, method, path, host string) (int, http.Header, []byte) {
@@ -19,6 +44,7 @@ func do(t *testing.T, srv *httptest.Server, method, path, host string) (int, htt
 	if host != "" {
 		req.Host = host
 	}
+	signRequest(t, req, time.Now())
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -33,7 +59,7 @@ func do(t *testing.T, srv *httptest.Server, method, path, host string) (int, htt
 }
 
 func TestNotImplementedError(t *testing.T) {
-	srv := httptest.NewServer(New(Options{}))
+	srv := httptest.NewServer(New(testOptions("")))
 	t.Cleanup(srv.Close)
 
 	status, header, body := do(t, srv, http.MethodGet, "/bkt?tagging", "")
@@ -56,7 +82,7 @@ func TestNotImplementedError(t *testing.T) {
 }
 
 func TestHeadErrorHasNoBody(t *testing.T) {
-	srv := httptest.NewServer(New(Options{}))
+	srv := httptest.NewServer(New(testOptions("")))
 	t.Cleanup(srv.Close)
 
 	status, _, body := do(t, srv, http.MethodHead, "/bkt/key", "")
@@ -66,7 +92,7 @@ func TestHeadErrorHasNoBody(t *testing.T) {
 }
 
 func TestRouting(t *testing.T) {
-	srv := httptest.NewServer(New(Options{Domain: "localhost:9000"}))
+	srv := httptest.NewServer(New(testOptions("localhost:9000")))
 	t.Cleanup(srv.Close)
 
 	tests := []struct {
@@ -98,7 +124,7 @@ func TestRouting(t *testing.T) {
 }
 
 func TestRequestIDs(t *testing.T) {
-	srv := httptest.NewServer(New(Options{}))
+	srv := httptest.NewServer(New(testOptions("")))
 	t.Cleanup(srv.Close)
 
 	var ids []string
@@ -120,5 +146,63 @@ func TestRecorderKeepsFirstStatus(t *testing.T) {
 	rec.WriteHeader(http.StatusInternalServerError)
 	if rec.status != http.StatusNotFound {
 		t.Errorf("WriteHeader(404) then WriteHeader(500): status = %d, want %d", rec.status, http.StatusNotFound)
+	}
+}
+
+func TestAuthErrors(t *testing.T) {
+	srv := httptest.NewServer(New(testOptions("")))
+	t.Cleanup(srv.Close)
+
+	tests := []struct {
+		name     string
+		prepare  func(*http.Request)
+		wantCode string
+		wantHTTP int
+	}{
+		{"unsigned", func(*http.Request) {}, "AccessDenied", http.StatusForbidden},
+		{"sigv2", func(r *http.Request) { r.Header.Set("Authorization", "AWS "+testKey+":c2ln") }, "InvalidRequest", http.StatusBadRequest},
+		{"bad signature", func(r *http.Request) {
+			signRequest(t, r, time.Now())
+			r.Host = "changed.example"
+		}, "SignatureDoesNotMatch", http.StatusForbidden},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/bkt", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.prepare(req)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			var e errorBody
+			body, _ := io.ReadAll(resp.Body)
+			if err := xml.Unmarshal(body, &e); err != nil {
+				t.Fatalf("unmarshal %q: %v", body, err)
+			}
+			if resp.StatusCode != tt.wantHTTP || e.Code != tt.wantCode {
+				t.Errorf("GET /bkt (%s) = %d %s, want %d %s", tt.name, resp.StatusCode, e.Code, tt.wantHTTP, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestHealthNeedsNoCredentials(t *testing.T) {
+	srv := httptest.NewServer(New(testOptions("")))
+	t.Cleanup(srv.Close)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/_pail/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("unsigned GET /_pail/health = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }

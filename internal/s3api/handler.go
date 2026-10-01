@@ -8,16 +8,22 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/yavosh/pail/internal/sigv4"
 )
 
 // Options configures the S3 handler.
 type Options struct {
 	// Domain turns on virtual-hosted-style requests for <bucket>.<Domain>.
 	Domain string
+	// AccessKeyID and SecretAccessKey are the only credentials pail accepts.
+	AccessKeyID     string
+	SecretAccessKey string
 }
 
 type handler struct {
 	opts     Options
+	verifier *sigv4.Verifier
 	ops      map[operation]http.HandlerFunc
 	internal *http.ServeMux
 }
@@ -25,7 +31,7 @@ type handler struct {
 // New returns the HTTP handler for the S3 API and pail's /_pail/ endpoints.
 func New(opts Options) http.Handler {
 	opts.Domain = normalizeDomain(opts.Domain)
-	h := &handler{opts: opts, internal: http.NewServeMux()}
+	h := &handler{opts: opts, verifier: sigv4.New(opts.AccessKeyID, opts.SecretAccessKey), internal: http.NewServeMux()}
 	h.routes()
 	return h
 }
@@ -51,7 +57,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.internal.ServeHTTP(rec, r)
 	} else {
 		op = resolve(r.Method, t, r.URL.Query(), r.Header)
-		if fn, ok := h.ops[op]; ok {
+		if err := h.verifier.Verify(r); err != nil {
+			writeError(rec, r, toAPIError(err))
+		} else if fn, ok := h.ops[op]; ok {
 			fn(rec, r)
 		} else {
 			writeError(rec, r, errNotImplemented)
