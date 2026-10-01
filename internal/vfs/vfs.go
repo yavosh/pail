@@ -27,9 +27,9 @@ type File interface {
 	Stat() (fs.FileInfo, error)
 }
 
-// TempFile is a file being written. Commit atomically replaces name with it
-// and creates missing parent directories. Abort discards it; after Commit it
-// does nothing, so `defer tf.Abort()` is always safe.
+// TempFile is a file being written. Commit atomically replaces name with it;
+// the parent directory must exist. Abort discards it and does nothing after
+// Commit, so a deferred Abort is always safe.
 type TempFile interface {
 	io.Writer
 	Commit(name string) error

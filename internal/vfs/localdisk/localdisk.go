@@ -9,12 +9,13 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/yavosh/pail/internal/vfs"
 )
 
 // tmpDir holds files until Commit. It sits inside the root, so Commit is a
-// rename within one filesystem and therefore atomic.
+// rename within one filesystem and therefore atomic. Open empties it.
 const tmpDir = "tmp"
 
 // FS is a vfs.FS rooted at a directory. os.Root keeps every name, including
@@ -25,7 +26,8 @@ type FS struct {
 
 var _ vfs.FS = (*FS)(nil)
 
-// Open creates dir if needed and returns an FS rooted there.
+// Open creates dir if needed and returns an FS rooted there. It discards temp
+// files a previous process left behind; one process owns a data directory.
 func Open(dir string) (*FS, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
@@ -33,6 +35,10 @@ func Open(dir string) (*FS, error) {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, fmt.Errorf("open data directory: %w", err)
+	}
+	if err := root.RemoveAll(tmpDir); err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("clear temp directory: %w", err)
 	}
 	if err := root.MkdirAll(tmpDir, 0o755); err != nil {
 		_ = root.Close()
@@ -140,16 +146,13 @@ func (t *tempFile) Commit(name string) error {
 	if err := checkName("commit", name); err != nil {
 		return err
 	}
+	if name == tmpDir || strings.HasPrefix(name, tmpDir+"/") {
+		return &fs.PathError{Op: "commit", Path: name, Err: fs.ErrInvalid}
+	}
 	t.done = true
 	if err := t.file.Close(); err != nil {
 		_ = t.fs.root.Remove(t.name)
 		return fmt.Errorf("close temp file: %w", err)
-	}
-	if dir := path.Dir(name); dir != "." {
-		if err := t.fs.root.MkdirAll(dir, 0o755); err != nil {
-			_ = t.fs.root.Remove(t.name)
-			return fmt.Errorf("create parent directory: %w", err)
-		}
 	}
 	if err := t.fs.root.Rename(t.name, name); err != nil {
 		_ = t.fs.root.Remove(t.name)

@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -23,9 +24,14 @@ func openFS(t *testing.T) (*FS, string) {
 	return f, dir
 }
 
-// commit writes data to name through a temp file.
+// commit writes data to name through a temp file, creating its parent first.
 func commit(t *testing.T, f *FS, name, data string) {
 	t.Helper()
+	if dir := path.Dir(name); dir != "." {
+		if err := f.MkdirAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
 	tf, err := f.CreateTemp()
 	if err != nil {
 		t.Fatal(err)
@@ -228,5 +234,61 @@ func TestOpenCreatesDataDirectory(t *testing.T) {
 	t.Cleanup(func() { _ = f.Close() })
 	if info, err := os.Stat(filepath.Join(dir, tmpDir)); err != nil || !info.IsDir() {
 		t.Errorf("tmp directory missing after Open: %v", err)
+	}
+}
+
+func TestCommitFailureCleansUp(t *testing.T) {
+	f, _ := openFS(t)
+	if err := f.MkdirAll("dir"); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		target  string
+		wantErr error
+	}{
+		{"missing parent", "gone/obj", fs.ErrNotExist},
+		{"under tmp", "tmp/obj", fs.ErrInvalid},
+		{"tmp itself", "tmp", fs.ErrInvalid},
+		{"onto a directory", "dir", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tf, err := f.CreateTemp()
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = tf.Commit(tt.target)
+			if err == nil || (tt.wantErr != nil && !errors.Is(err, tt.wantErr)) {
+				t.Errorf("Commit(%q) error = %v, want %v", tt.target, err, tt.wantErr)
+			}
+			if err := tf.Abort(); err != nil {
+				t.Errorf("Abort after failed Commit(%q) error = %v, want nil", tt.target, err)
+			}
+			if entries, _ := f.ReadDir("tmp"); len(entries) != 0 {
+				t.Errorf("tmp entries after failed Commit(%q) = %d, want 0", tt.target, len(entries))
+			}
+		})
+	}
+}
+
+func TestOpenClearsLeftoverTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, tmpDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, tmpDir, "stale"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	if entries, err := f.ReadDir(tmpDir); err != nil || len(entries) != 0 {
+		t.Errorf("tmp after Open = %v (err %v), want empty", entries, err)
+	}
+	if _, err := f.CreateTemp(); err != nil {
+		t.Errorf("CreateTemp after Open error = %v", err)
 	}
 }

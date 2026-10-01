@@ -35,7 +35,7 @@ make lint            # golangci-lint
 - Time-dependent tests use `testing/synctest`, not sleeps. HTTP endpoints inside a bubble use `httptest.NewTestServer`; its in-memory network is the only one `synctest` can see.
 - Comments are 2 to 3 lines at most. State the one non-obvious thing and stop.
 - Every long-lived goroutine takes a `context.Context` or a stop channel, and the starter stops it. Prefer synchronous functions.
-- Accept interfaces, return structs. Define an interface in the package that consumes it.
+- Accept interfaces, return structs. Define an interface in the package that consumes it. Shared backend contracts, such as `vfs.FS`, are the exception: every backend must return the same types, so they live in a neutral package, like `io/fs`.
 - Indent error flow. No `else` after `return`. No naked returns. Don't panic outside `main` or `init`.
 - Use one short receiver name per type. Never mix value and pointer receivers.
 - Initialisms keep their case: `bucketID`, `URL`, `ETag`.
