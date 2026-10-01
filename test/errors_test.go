@@ -64,10 +64,10 @@ func TestVirtualHostedRouting(t *testing.T) {
 // an operation that does not exist yet surfaces its S3 code.
 func TestSDKParsesErrors(t *testing.T) {
 	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
-		_, err := c.GetBucketLocation(context.Background(), &s3.GetBucketLocationInput{Bucket: aws.String("bkt")})
+		_, err := c.GetBucketVersioning(context.Background(), &s3.GetBucketVersioningInput{Bucket: aws.String("bkt")})
 		apiErr, ok := errors.AsType[smithy.APIError](err)
 		if !ok || apiErr.ErrorCode() != "NotImplemented" {
-			t.Errorf("GetBucketLocation error = %v, want an API error with code NotImplemented", err)
+			t.Errorf("GetBucketVersioning error = %v, want an API error with code NotImplemented", err)
 		}
 	})
 }
