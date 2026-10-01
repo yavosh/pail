@@ -2,10 +2,13 @@ package s3api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,11 +28,18 @@ func testOptions(domain string) Options {
 // signRequest signs req the way the S3 SDKs do, with an empty payload.
 func signRequest(t *testing.T, req *http.Request, at time.Time) {
 	t.Helper()
-	const emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-	req.Header.Set("X-Amz-Content-Sha256", emptySHA256)
+	signPayload(t, req, at, "")
+}
+
+// signPayload signs req with the SHA-256 of body as its payload hash.
+func signPayload(t *testing.T, req *http.Request, at time.Time, body string) {
+	t.Helper()
+	sum := sha256.Sum256([]byte(body))
+	hash := hex.EncodeToString(sum[:])
+	req.Header.Set("X-Amz-Content-Sha256", hash)
 	signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
 	creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
-	if err := signer.SignHTTP(req.Context(), creds, req, emptySHA256, "s3", "us-east-1", at); err != nil {
+	if err := signer.SignHTTP(req.Context(), creds, req, hash, "s3", "us-east-1", at); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -82,18 +92,16 @@ func TestNotImplementedError(t *testing.T) {
 }
 
 func TestHeadErrorHasNoBody(t *testing.T) {
-	srv := httptest.NewServer(New(testOptions("")))
-	t.Cleanup(srv.Close)
+	srv, _ := storeServer(t, "")
 
 	status, _, body := do(t, srv, http.MethodHead, "/bkt/key", "")
-	if status != http.StatusNotImplemented || len(body) != 0 {
-		t.Errorf("HEAD /bkt/key = %d with %d body bytes, want %d with none", status, len(body), http.StatusNotImplemented)
+	if status != http.StatusNotFound || len(body) != 0 {
+		t.Errorf("HEAD /bkt/key = %d with %d body bytes, want %d with none", status, len(body), http.StatusNotFound)
 	}
 }
 
 func TestRouting(t *testing.T) {
-	srv := httptest.NewServer(New(testOptions("localhost:9000")))
-	t.Cleanup(srv.Close)
+	srv, _ := storeServer(t, "localhost:9000")
 
 	tests := []struct {
 		name       string
@@ -103,18 +111,21 @@ func TestRouting(t *testing.T) {
 		wantStatus int
 		wantBody   *string // nil skips the body check
 	}{
-		{"unclean path is not redirected", http.MethodGet, "/bkt/a//b", "", http.StatusNotImplemented, nil},
-		{"dot segment is not redirected", http.MethodGet, "/bkt/../x", "", http.StatusNotImplemented, nil},
+		{"unclean path is not redirected", http.MethodGet, "/bkt/a//b", "", http.StatusNotFound, nil},
+		{"dot segment is not redirected", http.MethodGet, "/bkt/../x", "", http.StatusNotFound, nil},
 		{"health", http.MethodGet, "/_pail/health", "", http.StatusOK, new("ok\n")},
 		{"health head", http.MethodHead, "/_pail/health", "", http.StatusOK, new("")},
-		{"virtual-hosted _pail is a key", http.MethodGet, "/_pail/health", "bkt.localhost", http.StatusNotImplemented, nil},
-		{"domain with port still matches", http.MethodGet, "/_pail/health", "bkt.localhost:9000", http.StatusNotImplemented, nil},
+		{"virtual-hosted _pail is a key", http.MethodGet, "/_pail/health", "bkt.localhost", http.StatusNotFound, nil},
+		{"domain with port still matches", http.MethodGet, "/_pail/health", "bkt.localhost:9000", http.StatusNotFound, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			status, _, body := do(t, srv, tt.method, tt.path, tt.host)
 			if status != tt.wantStatus {
 				t.Errorf("%s %s (host %q) status = %d, want %d", tt.method, tt.path, tt.host, status, tt.wantStatus)
+			}
+			if tt.wantStatus == http.StatusNotFound && !strings.Contains(string(body), "<Code>NoSuchBucket</Code>") {
+				t.Errorf("%s %s body = %q, want an S3 NoSuchBucket error, not a mux 404", tt.method, tt.path, body)
 			}
 			if tt.wantBody != nil && string(body) != *tt.wantBody {
 				t.Errorf("%s %s body = %q, want %q", tt.method, tt.path, body, *tt.wantBody)
@@ -124,8 +135,7 @@ func TestRouting(t *testing.T) {
 }
 
 func TestRequestIDs(t *testing.T) {
-	srv := httptest.NewServer(New(testOptions("")))
-	t.Cleanup(srv.Close)
+	srv, _ := storeServer(t, "")
 
 	var ids []string
 	for _, path := range []string{"/_pail/health", "/bkt"} {

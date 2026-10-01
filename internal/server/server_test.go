@@ -12,11 +12,11 @@ import (
 
 func listen(t *testing.T, addr string) *Server {
 	t.Helper()
-	s := New(config.Config{Addr: addr})
+	s := New(config.Config{Addr: addr, DataDir: t.TempDir()})
 	if err := s.Listen(t.Context()); err != nil {
 		t.Fatalf("Listen(%q) error = %v", addr, err)
 	}
-	t.Cleanup(func() { s.ln.Close() })
+	t.Cleanup(func() { s.ln.Close(); _ = s.fs.Close() })
 	return s
 }
 
@@ -24,7 +24,7 @@ func TestListenPortConflict(t *testing.T) {
 	first := listen(t, "127.0.0.1:0")
 	addr := first.Addr().String()
 
-	err := New(config.Config{Addr: addr}).Listen(t.Context())
+	err := New(config.Config{Addr: addr, DataDir: t.TempDir()}).Listen(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "listen on "+addr) {
 		t.Errorf("Listen(%q) error = %v, want it to contain %q", addr, err, "listen on "+addr)
 	}

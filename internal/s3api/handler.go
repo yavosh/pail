@@ -19,12 +19,18 @@ type Options struct {
 	// AccessKeyID and SecretAccessKey are the only credentials pail accepts.
 	AccessKeyID     string
 	SecretAccessKey string
+	// Region is reported by GetBucketLocation and x-amz-bucket-region.
+	Region string
+	Store  Store
 }
+
+// opHandler serves one S3 operation for the bucket and key in t.
+type opHandler func(w http.ResponseWriter, r *http.Request, t target)
 
 type handler struct {
 	opts     Options
 	verifier *sigv4.Verifier
-	ops      map[operation]http.HandlerFunc
+	ops      map[operation]opHandler
 	internal *http.ServeMux
 }
 
@@ -38,8 +44,20 @@ func New(opts Options) http.Handler {
 
 // routes registers every handler in one place.
 func (h *handler) routes() {
-	// Later issues register S3 operations here; an unregistered one answers NotImplemented.
-	h.ops = map[operation]http.HandlerFunc{}
+	// An operation without a handler here answers NotImplemented.
+	h.ops = map[operation]opHandler{
+		opListBuckets:       h.handleListBuckets,
+		opCreateBucket:      h.handleCreateBucket,
+		opHeadBucket:        h.handleHeadBucket,
+		opDeleteBucket:      h.handleDeleteBucket,
+		opGetBucketLocation: h.handleGetBucketLocation,
+		opPutObject:         h.handlePutObject,
+		opGetObject:         h.handleGetObject,
+		opHeadObject:        h.handleHeadObject,
+		opDeleteObject:      h.handleDeleteObject,
+		opListObjects:       h.handleListObjects,
+		opListObjectsV2:     h.handleListObjectsV2,
+	}
 	h.internal.HandleFunc("GET /_pail/health", handleHealth)
 }
 
@@ -60,7 +78,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err := h.verifier.Verify(r); err != nil {
 			writeError(rec, r, toAPIError(err))
 		} else if fn, ok := h.ops[op]; ok {
-			fn(rec, r)
+			fn(rec, r, t)
 		} else {
 			writeError(rec, r, errNotImplemented)
 		}

@@ -13,6 +13,8 @@ import (
 
 	"github.com/yavosh/pail/internal/config"
 	"github.com/yavosh/pail/internal/s3api"
+	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/vfs/localdisk"
 )
 
 const (
@@ -22,8 +24,10 @@ const (
 
 // Server owns the listener and the HTTP server.
 type Server struct {
-	cfg config.Config
-	ln  net.Listener
+	cfg   config.Config
+	ln    net.Listener
+	fs    *localdisk.FS
+	store *store.Store
 }
 
 // New returns a Server for cfg. Call Listen, then Serve.
@@ -31,14 +35,28 @@ func New(cfg config.Config) *Server {
 	return &Server{cfg: cfg}
 }
 
-// Listen binds the configured address. A port conflict fails here, before serving.
+// Listen opens the data directory and binds the configured address, so a bad
+// data directory or a port conflict fails here, before serving.
 func (s *Server) Listen(ctx context.Context) error {
+	if s.ln != nil {
+		return errors.New("listen: already listening")
+	}
+	fsys, err := localdisk.Open(s.cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	st, err := store.Open(ctx, fsys)
+	if err != nil {
+		_ = fsys.Close()
+		return fmt.Errorf("open store in %s: %w", s.cfg.DataDir, err)
+	}
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", s.cfg.Addr)
 	if err != nil {
+		_ = fsys.Close()
 		return fmt.Errorf("listen on %s: %w", s.cfg.Addr, err)
 	}
-	s.ln = ln
+	s.fs, s.store, s.ln = fsys, st, ln
 	return nil
 }
 
@@ -60,7 +78,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		Domain:          s.cfg.Domain,
 		AccessKeyID:     s.cfg.AccessKeyID,
 		SecretAccessKey: s.cfg.SecretAccessKey,
+		Region:          s.cfg.Region,
+		Store:           s.store,
 	}), ReadHeaderTimeout: readHeaderTimeout}
+	// After a shutdown timeout, handlers still running see a closed data
+	// directory and fail; their temp files are cleared at the next start.
+	defer func() { _ = s.fs.Close() }()
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(s.ln) }()

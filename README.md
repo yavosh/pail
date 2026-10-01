@@ -18,6 +18,14 @@ pail stops cleanly on SIGINT or SIGTERM.
 - An operation that pail does not support returns `501 NotImplemented` with an S3 XML error.
 - `GET /_pail/health` returns 200 and needs no credentials.
 
+Supported operations:
+
+- Buckets: `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, and `GetBucketLocation`. Bucket names follow the AWS general-purpose naming rules.
+- Listing: `ListObjectsV2` and `ListObjects`, with `prefix`, `delimiter`, pagination, `fetch-owner`, and `encoding-type=url`. aws-sdk-go-v2 leaves `encoding-type=url` keys encoded; decode them with `url.QueryUnescape`. Use `encoding-type=url` for keys with control characters: XML cannot carry them, so a plain listing replaces them with U+FFFD.
+- Objects: `PutObject`, `GetObject`, `HeadObject`, and `DeleteObject`. They support system and `x-amz-meta-*` metadata, `Content-MD5`, a single `Range`, the `If-*` read conditions, `If-None-Match: *` and `If-Match` on writes, and the `response-*` overrides. Objects are limited to 5 GiB, keys to 1024 bytes, and user metadata to 2 KB, as on AWS.
+
+pail serves one region, `--region`. A `CreateBucket` with another region's `LocationConstraint` fails, and creating a bucket you already own answers `409 BucketAlreadyOwnedByYou`.
+
 ## Authentication
 
 Every S3 request must carry an AWS Signature Version 4 `Authorization` header, signed with the configured access key pair. pail accepts any region in the signature. A body with a signed SHA-256 payload hash is checked as it is read. Every `x-amz-*` header must be signed.
@@ -33,7 +41,7 @@ Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides it
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
 | `--addr` | `PAIL_ADDR` | `127.0.0.1:9000` | Listen address. |
-| `--data` | `PAIL_DATA` | `./data` | Data directory. |
+| `--data` | `PAIL_DATA` | `./data` | Data directory. pail creates it at startup. One pail process owns it. |
 | `--access-key` | `PAIL_ACCESS_KEY_ID` | none, required | Access key ID. |
 | `--secret-key` | `PAIL_SECRET_ACCESS_KEY` | none, required | Secret access key. |
 | `--region` | `PAIL_REGION` | `us-east-1` | Region. |
