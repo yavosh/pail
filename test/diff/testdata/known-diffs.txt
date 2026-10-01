@@ -1,0 +1,6 @@
+# Accepted differences between pail and the recorded AWS S3 behavior.
+#
+# One per line: <scenario>/<step> <field> <reason, with an issue link>
+# <field> is status, body, or header:<Name>, as the failure message prints it.
+# An unlisted difference fails the test. A listed one that no longer occurs
+# also fails, so remove the line when the difference is fixed.
