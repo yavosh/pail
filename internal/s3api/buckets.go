@@ -61,14 +61,14 @@ func (h *handler) handleListBuckets(w http.ResponseWriter, r *http.Request, _ ta
 	}
 	q := r.URL.Query()
 	prefix := q.Get("prefix")
-	maxBuckets := maxBucketsDefault
+	limit := maxBuckets
 	if s := q.Get("max-buckets"); s != "" {
 		n, err := strconv.Atoi(s)
-		if err != nil || n < 1 || n > maxBucketsDefault {
+		if err != nil || n < 1 || n > maxBuckets {
 			writeError(w, r, errInvalidArgument)
 			return
 		}
-		maxBuckets = n
+		limit = n
 	}
 	// The token is the last name of the previous page; names sort, so resume after it.
 	after := ""
@@ -93,7 +93,7 @@ func (h *handler) handleListBuckets(w http.ResponseWriter, r *http.Request, _ ta
 		if b.Name <= after || !strings.HasPrefix(b.Name, prefix) {
 			continue
 		}
-		if len(resp.Buckets) == maxBuckets {
+		if len(resp.Buckets) == limit {
 			resp.ContinuationToken = base64.RawURLEncoding.EncodeToString([]byte(resp.Buckets[len(resp.Buckets)-1].Name))
 			break
 		}
@@ -102,8 +102,8 @@ func (h *handler) handleListBuckets(w http.ResponseWriter, r *http.Request, _ ta
 	writeXML(w, r, http.StatusOK, resp)
 }
 
-// maxBucketsDefault is the largest page ListBuckets returns, as on AWS.
-const maxBucketsDefault = 10000
+// maxBuckets is the default and largest page ListBuckets returns, as on AWS.
+const maxBuckets = 10000
 
 func (h *handler) handleCreateBucket(w http.ResponseWriter, r *http.Request, t target) {
 	type configuration struct {
@@ -234,12 +234,24 @@ func isDottedQuad(name string) bool {
 	return true
 }
 
-// decodeXMLDocument decodes body into v and rejects anything after the root
-// element except whitespace, so a truncated or appended body is malformed.
+// decodeXMLDocument decodes body into v and rejects anything around the root
+// element except whitespace, comments, and the XML declaration before it.
 func decodeXMLDocument(body []byte, v any) error {
 	dec := xml.NewDecoder(bytes.NewReader(body))
-	if err := dec.Decode(v); err != nil {
-		return err
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if start, ok := tok.(xml.StartElement); ok {
+			if err := dec.DecodeElement(v, &start); err != nil {
+				return err
+			}
+			break
+		}
+		if cd, ok := tok.(xml.CharData); ok && len(bytes.TrimSpace(cd)) > 0 {
+			return errors.New("content before the root element")
+		}
 	}
 	for {
 		tok, err := dec.Token()

@@ -114,6 +114,8 @@ func TestBucketErrors(t *testing.T) {
 		{"create in another region", http.MethodPut, "/cfg-bucket", "<CreateBucketConfiguration><LocationConstraint>eu-west-1</LocationConstraint></CreateBucketConfiguration>", http.StatusBadRequest, "IllegalLocationConstraintException"},
 		{"create in this region", http.MethodPut, "/cfg-bucket", "<CreateBucketConfiguration><LocationConstraint>us-east-1</LocationConstraint></CreateBucketConfiguration>", http.StatusOK, ""},
 		{"create with wrong root", http.MethodPut, "/root-bucket", "<Foo/>", http.StatusBadRequest, "MalformedXML"},
+		{"create with leading content", http.MethodPut, "/root-bucket", "junk<CreateBucketConfiguration/>", http.StatusBadRequest, "MalformedXML"},
+		{"create with prolog", http.MethodPut, "/prolog-bucket", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CreateBucketConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"/>", http.StatusOK, ""},
 		{"create with trailing content", http.MethodPut, "/root-bucket", "<CreateBucketConfiguration/>junk<<<", http.StatusBadRequest, "MalformedXML"},
 		{"create with trailing space", http.MethodPut, "/space-bucket", "<CreateBucketConfiguration/>\n  ", http.StatusOK, ""},
 		{"list with bad max-buckets", http.MethodGet, "/?max-buckets=0", "", http.StatusBadRequest, "InvalidArgument"},
