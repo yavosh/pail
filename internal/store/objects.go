@@ -50,8 +50,9 @@ type PutOptions struct {
 	IfMatch string
 	// IfNoneMatch commits only if the key does not exist (If-None-Match: *).
 	IfNoneMatch bool
-	// ChecksumAlgorithm is computed over the body; empty means checksum.Default.
-	// A non-nil Checksum must match it, else ErrChecksumMismatch.
+	// ChecksumAlgorithm is computed over the body; empty or unknown means
+	// checksum.Default, so callers validate names. A non-nil Checksum must
+	// match, else ErrChecksumMismatch.
 	ChecksumAlgorithm string
 	Checksum          []byte
 }

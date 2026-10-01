@@ -1,8 +1,8 @@
 package s3api
 
 import (
-	"cmp"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -101,6 +101,12 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	// The store reads the body to EOF before it commits, which completes the
 	// SigV4 payload check; nothing is written to w until it returns.
 	info, err := h.opts.Store.PutObject(r.Context(), t.bucket, t.key, r.Body, opts)
+	if errors.Is(err, store.ErrChecksumMismatch) {
+		e := errChecksumMismatch
+		e.Message = "The " + opts.ChecksumAlgorithm + " you specified did not match the calculated checksum."
+		writeError(w, r, e)
+		return
+	}
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
@@ -111,32 +117,39 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 }
 
 // parseChecksum reads the flexible checksum of a write: at most one
-// x-amz-checksum-* value, or only an algorithm for pail to compute. An empty
-// algorithm means the default. ok is false for anything malformed.
+// x-amz-checksum-* header with one value, optionally named by
+// x-amz-sdk-checksum-algorithm. No checksum means the default algorithm.
 func parseChecksum(h http.Header) (algorithm string, value []byte, ok bool) {
-	named := cmp.Or(h.Get("x-amz-sdk-checksum-algorithm"), h.Get("x-amz-checksum-algorithm"))
-	if named != "" {
-		if algorithm = checksum.Canonical(named); algorithm == "" {
+	named := ""
+	if v := h.Values("x-amz-sdk-checksum-algorithm"); len(v) > 0 {
+		if len(v) > 1 {
+			return "", nil, false
+		}
+		if named = checksum.Canonical(v[0]); named == "" {
 			return "", nil, false
 		}
 	}
-	found := ""
+	found, raw := "", ""
 	for _, a := range checksum.Algorithms {
-		if h.Get(checksum.Header(a)) == "" {
+		// Presence, not value: an empty checksum is invalid, not absent.
+		values, present := h[http.CanonicalHeaderKey(checksum.Header(a))]
+		if !present {
 			continue
 		}
-		if found != "" {
+		if found != "" || len(values) != 1 {
 			return "", nil, false // AWS takes a single checksum per request
 		}
-		found = a
+		found, raw = a, values[0]
 	}
 	if found == "" {
-		return algorithm, nil, true
+		// AWS needs the value with a named algorithm, in a header or, with
+		// aws-chunked uploads, a trailer.
+		return "", nil, named == ""
 	}
-	if algorithm != "" && algorithm != found {
+	if named != "" && named != found {
 		return "", nil, false
 	}
-	value, ok = checksum.Decode(found, h.Get(checksum.Header(found)))
+	value, ok = checksum.Decode(found, raw)
 	return found, value, ok
 }
 

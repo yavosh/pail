@@ -310,7 +310,10 @@ func TestPutObjectChecksumHeaders(t *testing.T) {
 	}{
 		{"default", nil, http.StatusOK, "", "CRC64NVME"},
 		{"crc32 value", map[string]string{"x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusOK, "", "CRC32"},
-		{"algorithm only", map[string]string{"x-amz-sdk-checksum-algorithm": "sha256"}, http.StatusOK, "", "SHA256"},
+		{"algorithm without a value", map[string]string{"x-amz-sdk-checksum-algorithm": "sha256"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"algorithm with its value", map[string]string{"x-amz-sdk-checksum-algorithm": "crc32", "x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusOK, "", "CRC32"},
+		{"empty value", map[string]string{"x-amz-checksum-crc32": ""}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"x-amz-checksum-algorithm is not a PutObject header", map[string]string{"x-amz-checksum-algorithm": "SHA1"}, http.StatusOK, "", "CRC64NVME"},
 		{"wrong value", map[string]string{"x-amz-checksum-crc32": "AAAAAA=="}, http.StatusBadRequest, "BadDigest", ""},
 		{"bad base64", map[string]string{"x-amz-checksum-crc32": "nope!"}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"wrong length", map[string]string{"x-amz-checksum-crc32": "AAAAAAAAAAA="}, http.StatusBadRequest, "InvalidRequest", ""},

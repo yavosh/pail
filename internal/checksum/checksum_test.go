@@ -40,7 +40,7 @@ func TestNamesAndDecode(t *testing.T) {
 		t.Errorf("Canonical(md5) = %q, want empty", got)
 	}
 	if got := Header(CRC64NVME); got != "x-amz-checksum-crc64nvme" {
-		t.Errorf("Header(CRC64NVME) = %q", got)
+		t.Errorf("Header(CRC64NVME) = %q, want %q", got, "x-amz-checksum-crc64nvme")
 	}
 	tests := []struct {
 		algorithm, value string

@@ -2,6 +2,8 @@ package test
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -32,12 +34,14 @@ func TestChecksums(t *testing.T) {
 		types.ChecksumAlgorithmCrc32, types.ChecksumAlgorithmCrc32c, types.ChecksumAlgorithmCrc64nvme,
 		types.ChecksumAlgorithmSha1, types.ChecksumAlgorithmSha256,
 	}
+	// Over 2 KiB, so the CRC tables' multi-byte paths run too.
+	body := strings.Repeat("hello world ", 400)
 	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
 		ctx := context.Background()
 		mustBucket(t, c, "sums")
 		for _, alg := range algorithms {
 			key := "k-" + strings.ToLower(string(alg))
-			put, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("sums"), Key: aws.String(key), Body: strings.NewReader("hello world"), ChecksumAlgorithm: alg})
+			put, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("sums"), Key: aws.String(key), Body: strings.NewReader(body), ChecksumAlgorithm: alg})
 			if err != nil {
 				t.Errorf("PutObject with %s error = %v", alg, err)
 				continue
@@ -47,8 +51,8 @@ func TestChecksums(t *testing.T) {
 			}
 			// With checksum mode on, the SDK also validates the body against the value.
 			got, out := getBody(t, c, &s3.GetObjectInput{Bucket: aws.String("sums"), Key: aws.String(key), ChecksumMode: types.ChecksumModeEnabled})
-			if got != "hello world" || checksumOf(out, alg) == "" {
-				t.Errorf("GetObject %s = %q, checksum %q, want the body and a checksum", alg, got, checksumOf(out, alg))
+			if got != body || checksumOf(out, alg) == "" {
+				t.Errorf("GetObject %s = %d bytes, checksum %q, want the %d-byte body and a checksum", alg, len(got), checksumOf(out, alg), len(body))
 			}
 		}
 
@@ -77,4 +81,33 @@ func TestChecksums(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestSDKValidatesReadChecksums proves the SDK checks pail's checksum on
+// reads: a corrupted checksum header must fail the body read.
+func TestSDKValidatesReadChecksums(t *testing.T) {
+	p := startPail(t)
+	c := p.client(styles[0])
+	ctx := context.Background()
+	mustBucket(t, c, "sums")
+	if _, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("sums"), Key: aws.String("k"), Body: strings.NewReader("hello world"), ChecksumAlgorithm: types.ChecksumAlgorithmCrc32}); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := p.clientWith(styles[0], func(next http.RoundTripper) http.RoundTripper {
+		return roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			resp, err := next.RoundTrip(r)
+			if err == nil && resp.Header.Get("x-amz-checksum-crc32") != "" {
+				resp.Header.Set("x-amz-checksum-crc32", "AAAAAA==")
+			}
+			return resp, err
+		})
+	})
+	out, err := corrupt.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String("sums"), Key: aws.String("k"), ChecksumMode: types.ChecksumModeEnabled})
+	if err == nil {
+		_, err = io.ReadAll(out.Body)
+		out.Body.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "checksum") {
+		t.Errorf("GetObject with a corrupted checksum header error = %v, want a checksum validation failure", err)
+	}
 }
