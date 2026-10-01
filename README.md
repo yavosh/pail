@@ -24,7 +24,7 @@ Every S3 request must carry an AWS Signature Version 4 `Authorization` header, s
 
 A captured signed request can be replayed for up to 15 minutes, as on AWS. Keep pail on `127.0.0.1`, or behind TLS, when the network is not trusted.
 
-Presigned URLs and streaming uploads (`aws-chunked`) are not supported yet, and return `501 NotImplemented`. Current AWS SDKs send streaming uploads by default.
+Presigned URLs and streaming uploads (`aws-chunked`) are not supported yet, and return `501 NotImplemented`. The AWS CLI and some SDK upload paths send streaming uploads by default.
 
 ## Configuration
 
