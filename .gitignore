@@ -2,6 +2,10 @@
 /pail
 /bin/
 
+# Local environment, often with credentials (never commit)
+.envrc
+.env
+
 # Certs and keys (never commit)
 *.key
 *.crt
