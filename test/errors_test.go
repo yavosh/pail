@@ -92,11 +92,13 @@ func TestClientSettings(t *testing.T) {
 		ctx := context.Background()
 		_, _ = c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("bkt"), Key: aws.String("k"), Body: strings.NewReader("hello")})
 		_, _ = c.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String("bkt"), Key: aws.String("k")})
-		if rec.host != tt.wantHost {
-			t.Errorf("%s request host = %q, want %q", tt.st.name, rec.host, tt.wantHost)
-		}
 		if len(rec.headers) != 2 {
 			t.Fatalf("%s: %d requests recorded, want 2", tt.st.name, len(rec.headers))
+		}
+		for i, host := range rec.hosts {
+			if host != tt.wantHost {
+				t.Errorf("%s request %d host = %q, want %q", tt.st.name, i, host, tt.wantHost)
+			}
 		}
 		if got := rec.headers[0].Get("X-Amz-Checksum-Crc32"); got == "" {
 			t.Errorf("%s PutObject sent no x-amz-checksum-crc32, want the SDK default checksum", tt.st.name)

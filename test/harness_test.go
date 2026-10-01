@@ -25,9 +25,8 @@ const (
 
 // pail is one running server for a test.
 type pail struct {
-	addr    string // host:port the server listens on
 	port    string
-	dataDir string
+	dataDir string // the server's data directory, for tests that inspect storage
 	// httpClient sends every host, including <bucket>.localhost, to the
 	// server, so virtual-hosted and presigned URLs need no DNS or proxy.
 	httpClient *http.Client
@@ -56,7 +55,7 @@ func startPail(t *testing.T) *pail {
 	t.Cleanup(func() {
 		cancel()
 		if err := <-done; err != nil {
-			t.Errorf("pail shutdown: %v (an unread response body holds a connection open)", err)
+			t.Errorf("pail shutdown: %v (an unread response body may hold a connection open)", err)
 		}
 	})
 
@@ -74,7 +73,6 @@ func startPail(t *testing.T) *pail {
 	// connection would otherwise hold Shutdown for seconds.
 	t.Cleanup(transport.CloseIdleConnections)
 	return &pail{
-		addr:       addr,
 		port:       port,
 		dataDir:    cfg.DataDir,
 		httpClient: &http.Client{Timeout: 30 * time.Second, Transport: transport},
@@ -136,18 +134,19 @@ func forEachStyle(t *testing.T, fn func(t *testing.T, p *pail, st style, c *s3.C
 	}
 }
 
-// headerRecorder captures the headers of each request it forwards.
+// headerRecorder captures the host and headers of each request it forwards.
 type headerRecorder struct {
 	next    http.RoundTripper
-	host    string
+	hosts   []string
 	headers []http.Header
 }
 
 func (h *headerRecorder) RoundTrip(r *http.Request) (*http.Response, error) {
-	h.host = r.Host
-	if h.host == "" {
-		h.host = r.URL.Host
+	host := r.Host
+	if host == "" {
+		host = r.URL.Host
 	}
+	h.hosts = append(h.hosts, host)
 	h.headers = append(h.headers, r.Header.Clone())
 	return h.next.RoundTrip(r)
 }
