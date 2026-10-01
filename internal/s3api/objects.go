@@ -2,6 +2,7 @@ package s3api
 
 import (
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yavosh/pail/internal/checksum"
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs"
 )
@@ -90,16 +92,74 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		return
 	}
 	opts.IfMatch = r.Header.Get("If-Match")
+	var ok bool
+	if opts.ChecksumAlgorithm, opts.Checksum, ok = parseChecksum(r.Header); !ok {
+		writeError(w, r, errInvalidChecksum)
+		return
+	}
 
 	// The store reads the body to EOF before it commits, which completes the
 	// SigV4 payload check; nothing is written to w until it returns.
 	info, err := h.opts.Store.PutObject(r.Context(), t.bucket, t.key, r.Body, opts)
+	if errors.Is(err, store.ErrChecksumMismatch) {
+		e := errChecksumMismatch
+		e.Message = "The " + opts.ChecksumAlgorithm + " you specified did not match the calculated checksum."
+		writeError(w, r, e)
+		return
+	}
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}
 	w.Header().Set("ETag", quoteETag(info.ETag))
+	setChecksumHeaders(w.Header(), info)
 	w.WriteHeader(http.StatusOK)
+}
+
+// parseChecksum reads the flexible checksum of a write: at most one
+// x-amz-checksum-* header with one value, optionally named by
+// x-amz-sdk-checksum-algorithm. No checksum means the default algorithm.
+func parseChecksum(h http.Header) (algorithm string, value []byte, ok bool) {
+	named := ""
+	if v := h.Values("x-amz-sdk-checksum-algorithm"); len(v) > 0 {
+		if len(v) > 1 {
+			return "", nil, false
+		}
+		if named = checksum.Canonical(v[0]); named == "" {
+			return "", nil, false
+		}
+	}
+	found, raw := "", ""
+	for _, a := range checksum.Algorithms {
+		// Presence, not value: an empty checksum is invalid, not absent.
+		values, present := h[http.CanonicalHeaderKey(checksum.Header(a))]
+		if !present {
+			continue
+		}
+		if found != "" || len(values) != 1 {
+			return "", nil, false // AWS takes a single checksum per request
+		}
+		found, raw = a, values[0]
+	}
+	if found == "" {
+		// AWS needs the value with a named algorithm, in a header or, with
+		// aws-chunked uploads, a trailer.
+		return "", nil, named == ""
+	}
+	if named != "" && named != found {
+		return "", nil, false
+	}
+	value, ok = checksum.Decode(found, raw)
+	return found, value, ok
+}
+
+// setChecksumHeaders names the object's checksum, when it has one.
+func setChecksumHeaders(h http.Header, info store.ObjectInfo) {
+	if info.Checksum == "" {
+		return
+	}
+	h.Set(checksum.Header(info.ChecksumAlgorithm), info.Checksum)
+	h.Set("x-amz-checksum-type", info.ChecksumType)
 }
 
 func (h *handler) handleGetObject(w http.ResponseWriter, r *http.Request, t target) {
@@ -138,16 +198,17 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	etag := quoteETag(info.ETag)
 	lastModified := info.LastModified.UTC().Truncate(time.Second)
 	hdr := w.Header()
-	hdr.Set("ETag", etag)
-	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 	switch checkConditions(r.Header, etag, lastModified) {
 	case http.StatusPreconditionFailed:
-		writeError(w, r, errPreconditionFailed)
+		writeError(w, r, errPreconditionFailed) // AWS sends no object headers with it
 		return
 	case http.StatusNotModified:
-		// RFC 9110 requires the caching headers a 200 would have carried.
-		for _, name := range []string{"Cache-Control", "Expires"} {
-			if v := info.Metadata[name]; v != "" {
+		// AWS sends the validators, Cache-Control, and user metadata; RFC 9110
+		// adds Expires.
+		hdr.Set("ETag", etag)
+		hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
+		for name, v := range info.Metadata {
+			if name == "Cache-Control" || name == "Expires" || strings.HasPrefix(name, userMetaPrefix) {
 				hdr.Set(name, v)
 			}
 		}
@@ -160,8 +221,7 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		first, last, ok, satisfiable := parseRange(spec, info.Size)
 		switch {
 		case ok && !satisfiable:
-			hdr.Set("Content-Range", "bytes */"+strconv.FormatInt(info.Size, 10))
-			writeError(w, r, errInvalidRange)
+			writeError(w, r, errInvalidRange) // AWS sends no Content-Range with it
 			return
 		case ok:
 			start, length, status = first, last-first+1, http.StatusPartialContent
@@ -176,7 +236,13 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		}
 	}
 
+	hdr.Set("ETag", etag)
+	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 	setObjectHeaders(hdr, r, info)
+	// The stored checksum covers the whole object, so a range gets none.
+	if status == http.StatusOK && strings.EqualFold(r.Header.Get("x-amz-checksum-mode"), "ENABLED") {
+		setChecksumHeaders(hdr, info)
+	}
 	hdr.Set("Content-Length", strconv.FormatInt(length, 10))
 	w.WriteHeader(status)
 	if f == nil {

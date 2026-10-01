@@ -23,8 +23,11 @@ Supported operations:
 - Buckets: `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, and `GetBucketLocation`. Bucket names follow the AWS general-purpose naming rules.
 - Listing: `ListObjectsV2` and `ListObjects`, with `prefix`, `delimiter`, pagination, `fetch-owner`, and `encoding-type=url`. aws-sdk-go-v2 leaves `encoding-type=url` keys encoded; decode them with `url.QueryUnescape`. Use `encoding-type=url` for keys with control characters: XML cannot carry them, so a plain listing replaces them with U+FFFD.
 - Objects: `PutObject`, `GetObject`, `HeadObject`, and `DeleteObject`. They support system and `x-amz-meta-*` metadata, `Content-MD5`, a single `Range`, the `If-*` read conditions, `If-None-Match: *` and `If-Match` on writes, and the `response-*` overrides. Objects are limited to 5 GiB, keys to 1024 bytes, and user metadata to 2 KB, as on AWS.
+- Checksums: CRC32, CRC32C, CRC64NVME, SHA-1, and SHA-256, sent as an `x-amz-checksum-*` header. pail verifies and stores one per object, computes CRC64NVME when a client sends none, as AWS does, and returns it on reads with `x-amz-checksum-mode: ENABLED` and in listings. Checksums sent in an `aws-chunked` trailer are not supported yet.
 
-pail serves one region, `--region`. A `CreateBucket` with another region's `LocationConstraint` fails, and creating a bucket you already own answers `409 BucketAlreadyOwnedByYou`.
+pail serves one region, `--region`. A `CreateBucket` with another region's `LocationConstraint` fails. Re-creating a bucket you already own succeeds in `us-east-1`, as AWS's legacy behavior there, and answers `409 BucketAlreadyOwnedByYou` in other regions.
+
+As on AWS, a request path with a literal `..` segment gets a bare `400 Bad Request`. Percent-encoded dots, such as `%2E%2E`, are not checked. An object with a `..` key that an older pail stored is now reachable only through the encoded form.
 
 ## Authentication
 

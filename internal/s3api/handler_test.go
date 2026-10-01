@@ -112,7 +112,8 @@ func TestRouting(t *testing.T) {
 		wantBody   *string // nil skips the body check
 	}{
 		{"unclean path is not redirected", http.MethodGet, "/bkt/a//b", "", http.StatusNotFound, nil},
-		{"dot segment is not redirected", http.MethodGet, "/bkt/../x", "", http.StatusNotFound, nil},
+		{"dot segment is not redirected", http.MethodGet, "/bkt/./x", "", http.StatusNotFound, nil},
+		{"dot-dot segment gets a bare 400, as on AWS", http.MethodGet, "/bkt/../x", "", http.StatusBadRequest, new("")},
 		{"health", http.MethodGet, "/_pail/health", "", http.StatusOK, new("ok\n")},
 		{"health head", http.MethodHead, "/_pail/health", "", http.StatusOK, new("")},
 		{"virtual-hosted _pail is a key", http.MethodGet, "/_pail/health", "bkt.localhost", http.StatusNotFound, nil},

@@ -57,6 +57,12 @@ func TestValidBucketName(t *testing.T) {
 // storeServer serves the S3 API on a real store in a temp directory.
 func storeServer(t *testing.T, domain string) (*httptest.Server, *store.Store) {
 	t.Helper()
+	return storeServerIn(t, domain, "us-east-1")
+}
+
+// storeServerIn is storeServer for a given region.
+func storeServerIn(t *testing.T, domain, region string) (*httptest.Server, *store.Store) {
+	t.Helper()
 	fsys, err := localdisk.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +73,7 @@ func storeServer(t *testing.T, domain string) (*httptest.Server, *store.Store) {
 		t.Fatal(err)
 	}
 	opts := testOptions(domain)
-	opts.Region, opts.Store = "us-east-1", st
+	opts.Region, opts.Store = region, st
 	srv := httptest.NewServer(New(opts))
 	t.Cleanup(srv.Close)
 	return srv, st
@@ -132,7 +138,7 @@ func TestBucketErrors(t *testing.T) {
 		{"create with trailing space", http.MethodPut, "/space-bucket", "<CreateBucketConfiguration/>\n  ", http.StatusOK, ""},
 		{"list with bad max-buckets", http.MethodGet, "/?max-buckets=0", "", http.StatusBadRequest, "InvalidArgument"},
 		{"list with bad token", http.MethodGet, "/?continuation-token=%21%21%21", "", http.StatusBadRequest, "InvalidArgument"},
-		{"create existing", http.MethodPut, "/full", "", http.StatusConflict, "BucketAlreadyOwnedByYou"},
+		{"create existing in us-east-1", http.MethodPut, "/full", "", http.StatusOK, ""},
 		{"delete not empty", http.MethodDelete, "/full", "", http.StatusConflict, "BucketNotEmpty"},
 		{"delete missing", http.MethodDelete, "/missing", "", http.StatusNotFound, "NoSuchBucket"},
 		{"location missing", http.MethodGet, "/missing?location", "", http.StatusNotFound, "NoSuchBucket"},
@@ -200,5 +206,17 @@ func TestListBucketsParameters(t *testing.T) {
 	}
 	if want := []string{"aaa", "bbb", "bbc", "ccc"}; !slices.Equal(all, want) {
 		t.Errorf("paged ListBuckets = %v, want %v", all, want)
+	}
+}
+
+// TestCreateExistingOutsideUSEast1 checks the non-legacy answer: only us-east-1
+// lets an owner re-create a bucket.
+func TestCreateExistingOutsideUSEast1(t *testing.T) {
+	srv, st := storeServerIn(t, "", "eu-west-1")
+	if err := st.CreateBucket(context.Background(), "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	if status, code, _ := doBody(t, srv, http.MethodPut, "/bkt", ""); status != http.StatusConflict || code != "BucketAlreadyOwnedByYou" {
+		t.Errorf("PUT existing bucket in eu-west-1 = %d %q, want 409 BucketAlreadyOwnedByYou", status, code)
 	}
 }

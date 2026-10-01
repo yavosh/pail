@@ -1,0 +1,133 @@
+{
+  "scenario": "bucket-lifecycle",
+  "exchanges": [
+    {
+      "step": "head-missing",
+      "request": "HEAD /",
+      "fingerprint": "79d45e79262159e9",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-missing",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchBucket\n"
+    },
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "create-again",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head",
+      "request": "HEAD /",
+      "fingerprint": "79d45e79262159e9",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "location",
+      "request": "GET /?location",
+      "fingerprint": "8436e89f953e4366",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "LocationConstraint: \n"
+    },
+    {
+      "step": "put-object",
+      "request": "PUT /k",
+      "fingerprint": "f0d339d46376f4af",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-not-empty",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 409,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BucketNotEmpty\n"
+    },
+    {
+      "step": "delete-object",
+      "request": "DELETE /k",
+      "fingerprint": "d19d2c8bc0681eba",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-after-delete",
+      "request": "HEAD /",
+      "fingerprint": "79d45e79262159e9",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

@@ -134,6 +134,11 @@ func forEachStyle(t *testing.T, fn func(t *testing.T, p *pail, st style, c *s3.C
 	}
 }
 
+// roundTripFunc adapts a function to http.RoundTripper.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 // headerRecorder captures the host and headers of each request it forwards.
 type headerRecorder struct {
 	next    http.RoundTripper

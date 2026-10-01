@@ -1,0 +1,79 @@
+{
+  "scenario": "auth-errors",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "no-credentials",
+      "request": "GET /?list-type=2",
+      "fingerprint": "95bd5fcb83f3e287",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "unknown-key",
+      "request": "GET /?list-type=2",
+      "fingerprint": "bba87ea4888e675d",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidAccessKeyId\n"
+    },
+    {
+      "step": "bad-signature",
+      "request": "GET /?list-type=2",
+      "fingerprint": "76e42315634951ed",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: SignatureDoesNotMatch\n"
+    },
+    {
+      "step": "clock-skew",
+      "request": "GET /?list-type=2",
+      "fingerprint": "9cff1de0ad971a3e",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: RequestTimeTooSkewed\n"
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

@@ -34,9 +34,8 @@ Record again after you add or change a scenario. Each golden step stores a finge
 
 Check these steps by hand in a new recording:
 
-- `bucket-lifecycle/create-again`: `us-east-1` has legacy behavior for a repeated `CreateBucket` from the owner. It may answer 200 instead of `409 BucketAlreadyOwnedByYou`. Check which one was recorded.
 - `bucket-lifecycle/head-after-delete`: AWS deletes buckets with eventual consistency, so this step can flap. Record it again if it does.
-- Object writes: AWS adds default checksums, such as `x-amz-checksum-crc64nvme`. The suite compares them, so list them as known differences until pail computes them.
+- Object writes and listings: AWS adds a default CRC64NVME checksum to every object. It shows as `x-amz-checksum-*` headers on writes and `ChecksumAlgorithm` and `ChecksumType` in listings. Those steps are in `pending.txt` until #10.
 
 ## What is compared
 

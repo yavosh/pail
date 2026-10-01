@@ -2,6 +2,7 @@ package s3api
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net"
@@ -188,13 +189,14 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		method, rng string
-		wantStatus  int
-		wantCR      string
+		method, rng, ifMatch string
+		wantStatus           int
+		wantCR               string
 	}{
-		{http.MethodGet, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, "bytes */11"},
-		{http.MethodHead, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, "bytes */11"},
-		{http.MethodHead, "bytes=0-4", http.StatusPartialContent, "bytes 0-4/11"},
+		{http.MethodGet, "bytes=100-200", "", http.StatusRequestedRangeNotSatisfiable, ""},
+		{http.MethodHead, "bytes=100-200", "", http.StatusRequestedRangeNotSatisfiable, ""},
+		{http.MethodGet, "bytes=0-4", `"nope"`, http.StatusPreconditionFailed, ""},
+		{http.MethodHead, "bytes=0-4", "", http.StatusPartialContent, "bytes 0-4/11"},
 	}
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(ctx, tt.method, srv.URL+"/bkt/k", nil)
@@ -202,6 +204,9 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.Header.Set("Range", tt.rng)
+		if tt.ifMatch != "" {
+			req.Header.Set("If-Match", tt.ifMatch)
+		}
 		req.Header.Set("Accept-Encoding", "identity")
 		signRequest(t, req, time.Now())
 		resp, err := http.DefaultClient.Do(req)
@@ -213,7 +218,8 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 			t.Errorf("%s Range %s = %d %q, want %d %q", tt.method, tt.rng, resp.StatusCode, resp.Header.Get("Content-Range"), tt.wantStatus, tt.wantCR)
 		}
 		if tt.wantStatus >= 400 {
-			for _, h := range []string{"Content-Encoding", "Cache-Control", "X-Amz-Meta-Color"} {
+			// As recorded from AWS: an error carries no object headers at all.
+			for _, h := range []string{"Content-Encoding", "Cache-Control", "X-Amz-Meta-Color", "ETag", "Last-Modified"} {
 				if v := resp.Header.Get(h); v != "" {
 					t.Errorf("%s Range %s error response has %s: %q, want none", tt.method, tt.rng, h, v)
 				}
@@ -236,8 +242,11 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotModified || resp.Header.Get("Cache-Control") != "max-age=3600" {
-		t.Errorf("GET If-None-Match * = %d, Cache-Control %q, want 304, max-age=3600", resp.StatusCode, resp.Header.Get("Cache-Control"))
+	if resp.StatusCode != http.StatusNotModified || resp.Header.Get("Cache-Control") != "max-age=3600" || resp.Header.Get("X-Amz-Meta-Color") != "blue" || resp.Header.Get("ETag") == "" {
+		t.Errorf("GET If-None-Match * = %d, Cache-Control %q, X-Amz-Meta-Color %q, ETag %q, want 304 with all three", resp.StatusCode, resp.Header.Get("Cache-Control"), resp.Header.Get("X-Amz-Meta-Color"), resp.Header.Get("ETag"))
+	}
+	if v := resp.Header.Get("Content-Encoding"); v != "" {
+		t.Errorf("GET If-None-Match * Content-Encoding = %q, want none: AWS sends no content headers with a 304", v)
 	}
 }
 
@@ -283,5 +292,61 @@ func TestIncompleteBody(t *testing.T) {
 	}
 	if _, err := st.HeadObject(ctx, "bkt", "k"); !errors.Is(err, store.ErrNoSuchKey) {
 		t.Errorf("a short body stored the object: HeadObject error = %v", err)
+	}
+}
+
+func TestPutObjectChecksumHeaders(t *testing.T) {
+	srv, st := storeServer(t, "")
+	ctx := context.Background()
+	if err := st.CreateBucket(ctx, "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name       string
+		header     map[string]string
+		wantStatus int
+		wantCode   string
+		wantAlg    string
+	}{
+		{"default", nil, http.StatusOK, "", "CRC64NVME"},
+		{"crc32 value", map[string]string{"x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusOK, "", "CRC32"},
+		{"algorithm without a value", map[string]string{"x-amz-sdk-checksum-algorithm": "sha256"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"algorithm with its value", map[string]string{"x-amz-sdk-checksum-algorithm": "crc32", "x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusOK, "", "CRC32"},
+		{"empty value", map[string]string{"x-amz-checksum-crc32": ""}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"x-amz-checksum-algorithm is not a PutObject header", map[string]string{"x-amz-checksum-algorithm": "SHA1"}, http.StatusOK, "", "CRC64NVME"},
+		{"wrong value", map[string]string{"x-amz-checksum-crc32": "AAAAAA=="}, http.StatusBadRequest, "BadDigest", ""},
+		{"bad base64", map[string]string{"x-amz-checksum-crc32": "nope!"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"wrong length", map[string]string{"x-amz-checksum-crc32": "AAAAAAAAAAA="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"two values", map[string]string{"x-amz-checksum-crc32": "DUoRhQ==", "x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"algorithm disagrees with value", map[string]string{"x-amz-sdk-checksum-algorithm": "SHA1", "x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"unknown algorithm", map[string]string{"x-amz-sdk-checksum-algorithm": "MD5"}, http.StatusBadRequest, "InvalidRequest", ""},
+	}
+	for _, tt := range tests {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader("hello world"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range tt.header {
+			req.Header.Set(k, v)
+		}
+		signPayload(t, req, time.Now(), "hello world")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var e errorBody
+		_ = xml.Unmarshal(body, &e)
+		if resp.StatusCode != tt.wantStatus || e.Code != tt.wantCode {
+			t.Errorf("%s: PUT = %d %q, want %d %q", tt.name, resp.StatusCode, e.Code, tt.wantStatus, tt.wantCode)
+			continue
+		}
+		if tt.wantAlg != "" {
+			header := "x-amz-checksum-" + strings.ToLower(tt.wantAlg)
+			if resp.Header.Get("x-amz-checksum-type") != "FULL_OBJECT" || resp.Header.Get(header) == "" {
+				t.Errorf("%s: PUT response = type %q, %s %q; want FULL_OBJECT and a value", tt.name, resp.Header.Get("x-amz-checksum-type"), header, resp.Header.Get(header))
+			}
+		}
 	}
 }

@@ -1,0 +1,219 @@
+{
+  "scenario": "object-basics",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put",
+      "request": "PUT /docs/hello.txt",
+      "fingerprint": "736a8c5dd5cb6b05",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "X-Amz-Checksum-Crc64nvme": "jSnVw/bqjr4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head",
+      "request": "HEAD /docs/hello.txt",
+      "fingerprint": "371fbae1d3f39e58",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "max-age=60",
+        "Content-Disposition": "attachment",
+        "Content-Length": "11",
+        "Content-Type": "text/plain",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get",
+      "request": "GET /docs/hello.txt",
+      "fingerprint": "4258a8c7fcb6f0d4",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "max-age=60",
+        "Content-Disposition": "attachment",
+        "Content-Length": "11",
+        "Content-Type": "text/plain",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "hello world"
+    },
+    {
+      "step": "get-range",
+      "request": "GET /docs/hello.txt",
+      "fingerprint": "eefd152cb57685ce",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "max-age=60",
+        "Content-Disposition": "attachment",
+        "Content-Length": "5",
+        "Content-Range": "bytes 0-4/11",
+        "Content-Type": "text/plain",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "hello"
+    },
+    {
+      "step": "get-suffix-range",
+      "request": "GET /docs/hello.txt",
+      "fingerprint": "cad178e2fac32801",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "max-age=60",
+        "Content-Disposition": "attachment",
+        "Content-Length": "5",
+        "Content-Range": "bytes 6-10/11",
+        "Content-Type": "text/plain",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "world"
+    },
+    {
+      "step": "get-range-unsatisfiable",
+      "request": "GET /docs/hello.txt",
+      "fingerprint": "94e255e7443fa67e",
+      "status": 416,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRange\n"
+    },
+    {
+      "step": "get-if-none-match",
+      "request": "GET /docs/hello.txt",
+      "fingerprint": "18c0fa12a7830fcf",
+      "status": 304,
+      "headers": {
+        "Cache-Control": "max-age=60",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-if-match-mismatch",
+      "request": "GET /docs/hello.txt",
+      "fingerprint": "6b5a885745bd86b7",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "get-override",
+      "request": "GET /docs/hello.txt?response-content-type=application%2Fjson",
+      "fingerprint": "089be475510d666c",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "max-age=60",
+        "Content-Disposition": "attachment",
+        "Content-Length": "11",
+        "Content-Type": "application/json",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "hello world"
+    },
+    {
+      "step": "put-if-none-match-star",
+      "request": "PUT /docs/hello.txt",
+      "fingerprint": "fe9f9b1788a9004f",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "get-missing",
+      "request": "GET /missing",
+      "fingerprint": "e0195c2b3e601e35",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "delete",
+      "request": "DELETE /docs/hello.txt",
+      "fingerprint": "0291f23741e86c2c",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-again",
+      "request": "DELETE /docs/hello.txt",
+      "fingerprint": "0291f23741e86c2c",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

@@ -36,6 +36,7 @@ var (
 	ErrNoSuchKey          = errors.New("no such key")
 	ErrPreconditionFailed = errors.New("precondition failed")
 	ErrBadDigest          = errors.New("content MD5 does not match")
+	ErrChecksumMismatch   = errors.New("checksum does not match")
 )
 
 const maxKeyLen = 1024

@@ -35,9 +35,9 @@ func TestBucketLifecycle(t *testing.T) {
 		if _, err := c.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: bucket}); err != nil {
 			t.Fatalf("CreateBucket error = %v", err)
 		}
-		_, err := c.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: bucket})
-		if _, ok := errors.AsType[*types.BucketAlreadyOwnedByYou](err); !ok {
-			t.Errorf("CreateBucket(existing) error = %v, want BucketAlreadyOwnedByYou", err)
+		// us-east-1 keeps AWS's legacy answer: re-creating your own bucket succeeds.
+		if _, err := c.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: bucket}); err != nil {
+			t.Errorf("CreateBucket(existing) in us-east-1 error = %v, want success", err)
 		}
 
 		head, err := c.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: bucket})

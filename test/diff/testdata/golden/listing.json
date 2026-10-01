@@ -1,0 +1,375 @@
+{
+  "scenario": "listing",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-a",
+      "request": "PUT /a",
+      "fingerprint": "712c2b4295cd2830",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-a-b",
+      "request": "PUT /a/b",
+      "fingerprint": "bec1c3d8b6a5960b",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-a-c-d",
+      "request": "PUT /a/c/d",
+      "fingerprint": "4b2dc4251d300097",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-dir",
+      "request": "PUT /dir/",
+      "fingerprint": "b93177d65aac47b6",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-dir-x",
+      "request": "PUT /dir/x",
+      "fingerprint": "50b0b70eef54f1e9",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-e-1",
+      "request": "PUT /e-1",
+      "fingerprint": "5ae44af59d4c8e48",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-e-2",
+      "request": "PUT /e-2",
+      "fingerprint": "6ea9e03881b71b27",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-space-plus",
+      "request": "PUT /sp ace+plus/k",
+      "fingerprint": "b54549c41edd24b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"d41d8cd98f00b204e9800998ecf8427e\"",
+        "X-Amz-Checksum-Crc64nvme": "AAAAAAAAAAA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "v2-root-folders",
+      "request": "GET /?list-type=2&delimiter=%2F",
+      "fingerprint": "779d2443e7ea274d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  KeyCount: 6\n  MaxKeys: 1000\n  Delimiter: /\n  IsTruncated: false\n  Contents\n    Key: a\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: e-1\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: e-2\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  CommonPrefixes\n    Prefix: a/\n  CommonPrefixes\n    Prefix: dir/\n  CommonPrefixes\n    Prefix: sp ace+plus/\n"
+    },
+    {
+      "step": "v2-inside-a-folder",
+      "request": "GET /?list-type=2&prefix=a%2F&delimiter=%2F",
+      "fingerprint": "f5059815634f6123",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: a/\n  KeyCount: 2\n  MaxKeys: 1000\n  Delimiter: /\n  IsTruncated: false\n  Contents\n    Key: a/b\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  CommonPrefixes\n    Prefix: a/c/\n"
+    },
+    {
+      "step": "v2-other-delimiter",
+      "request": "GET /?list-type=2&delimiter=-",
+      "fingerprint": "370323b66a69f6d9",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  KeyCount: 7\n  MaxKeys: 1000\n  Delimiter: -\n  IsTruncated: false\n  Contents\n    Key: a\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: a/b\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: a/c/d\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: dir/\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: dir/x\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: sp ace+plus/k\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  CommonPrefixes\n    Prefix: e-\n"
+    },
+    {
+      "step": "v2-first-page",
+      "request": "GET /?list-type=2&max-keys=1",
+      "fingerprint": "45588812a6e1ec27",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  NextContinuationToken: <volatile>\n  KeyCount: 1\n  MaxKeys: 1\n  IsTruncated: true\n  Contents\n    Key: a\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "v2-start-after-inside-a-prefix",
+      "request": "GET /?list-type=2&delimiter=%2F&start-after=a%2Fb",
+      "fingerprint": "c259f72f4fbde50a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  StartAfter: a/b\n  KeyCount: 4\n  MaxKeys: 1000\n  Delimiter: /\n  IsTruncated: false\n  Contents\n    Key: e-1\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: e-2\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  CommonPrefixes\n    Prefix: dir/\n  CommonPrefixes\n    Prefix: sp ace+plus/\n"
+    },
+    {
+      "step": "v2-url-encoding",
+      "request": "GET /?list-type=2&encoding-type=url",
+      "fingerprint": "7092aa1235b09a27",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  KeyCount: 8\n  MaxKeys: 1000\n  EncodingType: url\n  IsTruncated: false\n  Contents\n    Key: a\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: a/b\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: a/c/d\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: dir/\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: dir/x\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: e-1\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: e-2\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: sp+ace%2Bplus/k\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "v2-max-keys-zero",
+      "request": "GET /?list-type=2&max-keys=0",
+      "fingerprint": "2379338046aaa155",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  KeyCount: 0\n  MaxKeys: 0\n  IsTruncated: false\n"
+    },
+    {
+      "step": "v2-max-keys-over-limit",
+      "request": "GET /?list-type=2&max-keys=5000",
+      "fingerprint": "e65034ab20b73353",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  KeyCount: 8\n  MaxKeys: 5000\n  IsTruncated: false\n  Contents\n    Key: a\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: a/b\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: a/c/d\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: dir/\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: dir/x\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: e-1\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: e-2\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n  Contents\n    Key: sp ace+plus/k\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "v2-fetch-owner",
+      "request": "GET /?list-type=2&prefix=e&fetch-owner=true",
+      "fingerprint": "0f9dfd088bef8a6a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: e\n  KeyCount: 2\n  MaxKeys: 1000\n  IsTruncated: false\n  Contents\n    Key: e-1\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Contents\n    Key: e-2\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "v1-page-with-delimiter",
+      "request": "GET /?max-keys=2&delimiter=%2F",
+      "fingerprint": "3774f359715fca78",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  Marker: \n  NextMarker: a/\n  MaxKeys: 2\n  Delimiter: /\n  IsTruncated: true\n  Contents\n    Key: a\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  CommonPrefixes\n    Prefix: a/\n"
+    },
+    {
+      "step": "v1-page-without-delimiter",
+      "request": "GET /?max-keys=2",
+      "fingerprint": "f1c9689ac4be1730",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  Marker: \n  MaxKeys: 2\n  IsTruncated: true\n  Contents\n    Key: a\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Contents\n    Key: a/b\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "v1-url-encoding-and-marker",
+      "request": "GET /?encoding-type=url&marker=a%2Fb",
+      "fingerprint": "c1f6cd14a193aa55",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  Marker: a/b\n  MaxKeys: 1000\n  EncodingType: url\n  IsTruncated: false\n  Contents\n    Key: a/c/d\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Contents\n    Key: dir/\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Contents\n    Key: dir/x\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Contents\n    Key: e-1\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Contents\n    Key: e-2\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Contents\n    Key: sp+ace%2Bplus/k\n    LastModified: <volatile>\n    ETag: \"d41d8cd98f00b204e9800998ecf8427e\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 0\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "delete-a",
+      "request": "DELETE /a",
+      "fingerprint": "58589c416d6e22ca",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-a-b",
+      "request": "DELETE /a/b",
+      "fingerprint": "cab1a564432b4231",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-a-c-d",
+      "request": "DELETE /a/c/d",
+      "fingerprint": "215514d4d40d4928",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-dir",
+      "request": "DELETE /dir/",
+      "fingerprint": "3cfb888fe89a6545",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-dir-x",
+      "request": "DELETE /dir/x",
+      "fingerprint": "eb0d6726bc224a8a",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-e-1",
+      "request": "DELETE /e-1",
+      "fingerprint": "3f0458f2c4447dba",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-e-2",
+      "request": "DELETE /e-2",
+      "fingerprint": "23ee43a3faff1734",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-space-plus",
+      "request": "DELETE /sp ace+plus/k",
+      "fingerprint": "ea2efb152f9d3aba",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}
