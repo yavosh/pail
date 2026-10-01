@@ -123,6 +123,7 @@ func cleanupBucket(t *testing.T, tg *target, bucket string) {
 		t.Fatalf("cleanup refuses bucket %q: not created by this suite", bucket)
 	}
 	ctx := context.Background()
+list:
 	for range 100 {
 		resp, err := tg.do(ctx, step{method: http.MethodGet, query: "list-type=2"}, bucket)
 		if err != nil || resp.status != http.StatusOK {
@@ -138,7 +139,7 @@ func cleanupBucket(t *testing.T, tg *target, bucket string) {
 			resp, err := tg.do(ctx, step{method: http.MethodDelete, key: c.Key}, bucket)
 			if err != nil || resp.status != http.StatusNoContent {
 				t.Logf("cleanup: delete %q: %s", c.Key, failure(resp, err))
-				return
+				break list
 			}
 		}
 	}
@@ -166,6 +167,9 @@ func failure(resp response, err error) string {
 	if err != nil {
 		return err.Error()
 	}
-	code, _, _ := canonicalXML(string(resp.body))
-	return fmt.Sprintf("status %d %s", resp.status, strings.TrimSpace(strings.ReplaceAll(code, "\n", " ")))
+	s := fmt.Sprintf("status %d", resp.status)
+	if body, isErr, _ := canonicalXML(string(resp.body)); isErr {
+		s += " " + strings.Join(strings.Fields(body), " ")
+	}
+	return s
 }
