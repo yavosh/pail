@@ -15,6 +15,7 @@ go run ./cmd/pail --access-key dev --secret-key devsecret   # run the server; fl
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
 go test ./test/      # aws-sdk-go-v2 tests against an in-process pail, path-style and virtual-hosted
+go test ./test/diff  # replay the AWS S3 golden files against pail; see test/diff/README.md
 make lint            # golangci-lint
 ```
 
@@ -36,7 +37,7 @@ make lint            # golangci-lint
 - Time-dependent tests use `testing/synctest`, not sleeps. HTTP endpoints inside a bubble use `httptest.NewTestServer`; its in-memory network is the only one `synctest` can see.
 - Comments are 2 to 3 lines at most. State the one non-obvious thing and stop.
 - Every long-lived goroutine takes a `context.Context` or a stop channel, and the starter stops it. Prefer synchronous functions.
-- Accept interfaces, return structs. Define an interface in the package that consumes it.
+- Accept interfaces, return structs. Define an interface in the package that consumes it. Shared backend contracts, such as `vfs.FS`, are the exception: every backend must return the same types, so they live in a neutral package, like `io/fs`.
 - Indent error flow. No `else` after `return`. No naked returns. Don't panic outside `main` or `init`.
 - Use one short receiver name per type. Never mix value and pointer receivers.
 - Initialisms keep their case: `bucketID`, `URL`, `ETag`.
@@ -60,6 +61,12 @@ make lint            # golangci-lint
 
 - Update `README.md` and `CLAUDE.md` in the same PR as the change. Stale docs are a bug.
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
+
+## Differential suite
+
+- `test/diff` checks pail against golden files recorded from AWS S3. A new S3 behavior adds a scenario there.
+- Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
+- Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.
 
 ## After opening a PR
 
