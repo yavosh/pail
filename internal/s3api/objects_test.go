@@ -1,11 +1,10 @@
 package s3api
 
 import (
-	"io"
-	"net"
-
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -274,7 +273,10 @@ func TestIncompleteBody(t *testing.T) {
 	if _, err := conn.Write([]byte(b.String())); err != nil {
 		t.Fatal(err)
 	}
-	_ = conn.(*net.TCPConn).CloseWrite()
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.CloseWrite()
+	}
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	reply, _ := io.ReadAll(conn)
 	if !strings.Contains(string(reply), "<Code>IncompleteBody</Code>") {
 		t.Errorf("short body reply = %.200q, want IncompleteBody", reply)
