@@ -11,6 +11,13 @@ PAIL_ACCESS_KEY_ID=... PAIL_SECRET_ACCESS_KEY=... ./pail
 
 pail stops cleanly on SIGINT or SIGTERM.
 
+## Requests
+
+- Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
+- Virtual-hosted-style requests work when `--domain` is set. For example, `--domain localhost` serves `http://<bucket>.localhost:9000/<key>`.
+- An operation that pail does not support returns `501 NotImplemented` with an S3 XML error.
+- `GET /_pail/health` returns 200 and needs no credentials.
+
 ## Configuration
 
 Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides its variable. An empty variable counts as unset.
