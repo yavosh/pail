@@ -143,6 +143,7 @@ func TestVerifyChunked(t *testing.T) {
 		}, wantRead: ErrMalformedChunk},
 		{name: "data after the final chunk", mode: streamingSigned, body: body, edit: func(b []byte) []byte { return append(b, 'x') }, wantRead: ErrMalformedChunk},
 		{name: "missing decoded length", mode: streamingSigned, body: body, mutate: func(r *http.Request) { r.Header.Del("X-Amz-Decoded-Content-Length") }, wantVerify: ErrMissingDecodedLength},
+		{name: "two decoded lengths", mode: streamingSigned, body: body, mutate: func(r *http.Request) { r.Header.Add("X-Amz-Decoded-Content-Length", "5") }, wantVerify: ErrMissingDecodedLength},
 		{name: "invalid decoded length", mode: streamingSigned, body: body, mutate: func(r *http.Request) { r.Header.Set("X-Amz-Decoded-Content-Length", "+20000") }, wantVerify: ErrMissingDecodedLength},
 	}
 	for _, tt := range tests {

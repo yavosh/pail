@@ -320,6 +320,7 @@ func TestPutObjectChecksumHeaders(t *testing.T) {
 		{"two values", map[string]string{"x-amz-checksum-crc32": "DUoRhQ==", "x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"algorithm disagrees with value", map[string]string{"x-amz-sdk-checksum-algorithm": "SHA1", "x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"unknown algorithm", map[string]string{"x-amz-sdk-checksum-algorithm": "MD5"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"trailer without aws-chunked", map[string]string{"x-amz-trailer": "x-amz-checksum-crc32"}, http.StatusBadRequest, "InvalidRequest", ""},
 	}
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader("hello world"))
@@ -424,5 +425,27 @@ func TestPutObjectStreaming(t *testing.T) {
 			t.Errorf("%s: stored size %d, checksum %q, Content-Encoding %q, %v; want %d, %q, %q",
 				tt.name, info.Size, info.ChecksumAlgorithm, info.Metadata["Content-Encoding"], err, len(body), tt.wantAlg, tt.wantEnc)
 		}
+	}
+}
+
+// Only an aws-chunked upload loses the aws-chunked coding; others store it as sent.
+func TestPlainPutKeepsContentEncoding(t *testing.T) {
+	srv, st := storeServer(t, "")
+	ctx := context.Background()
+	if err := st.CreateBucket(ctx, "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Encoding", "gzip, aws-chunked")
+	signPayload(t, req, time.Now(), "x")
+	if status, code := send(t, req); status != http.StatusOK {
+		t.Fatalf("PUT = %d %q, want 200", status, code)
+	}
+	info, err := st.HeadObject(ctx, "bkt", "k")
+	if got := info.Metadata["Content-Encoding"]; err != nil || got != "gzip, aws-chunked" {
+		t.Errorf("stored Content-Encoding = %q, %v, want %q", got, err, "gzip, aws-chunked")
 	}
 }

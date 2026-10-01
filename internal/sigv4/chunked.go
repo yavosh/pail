@@ -37,9 +37,8 @@ type chunkParams struct {
 }
 
 // chunkedReader decodes an aws-chunked body and verifies it as it reads. A
-// bad chunk fails the read that finds it; the data of a chunk may reach the
-// caller before its signature is checked, so the caller must not commit
-// before EOF. Errors are sticky.
+// chunk's data may reach the caller before its signature is checked, so the
+// caller must not commit before EOF.
 type chunkedReader struct {
 	body io.Closer
 	br   *bufio.Reader
@@ -50,7 +49,7 @@ type chunkedReader struct {
 	remaining int64 // data bytes left in the current chunk
 	decoded   int64
 	seen      map[string]bool // declared trailer name -> received
-	err       error
+	err       error           // sticky
 }
 
 func newChunkedReader(body io.ReadCloser, p chunkParams) *chunkedReader {

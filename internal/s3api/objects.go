@@ -44,8 +44,8 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, apiErr)
 		return
 	}
-	size := r.ContentLength
-	if sigv4.IsStreaming(r.Header) {
+	size, streaming := r.ContentLength, sigv4.IsStreaming(r.Header)
+	if streaming {
 		size, _ = sigv4.DecodedLength(r.Header) // Verify checked it
 	}
 	if r.ContentLength < 0 {
@@ -63,7 +63,7 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		}
 	}
 	// The SDKs append aws-chunked to any encoding the caller set.
-	if v, found := withoutAWSChunked(r.Header); found {
+	if v, found := withoutAWSChunked(r.Header); streaming && found {
 		delete(opts.Metadata, "Content-Encoding")
 		if v != "" {
 			opts.Metadata["Content-Encoding"] = v
@@ -110,7 +110,8 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		inTrailer bool
 		ok        bool
 	)
-	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, ok = parseChecksum(r.Header); !ok {
+	// Only an aws-chunked body has trailers; fail before reading the body.
+	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
 		writeError(w, r, errInvalidChecksum)
 		return
 	}
@@ -138,10 +139,9 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	w.WriteHeader(http.StatusOK)
 }
 
-// parseChecksum reads the flexible checksum of a write: at most one
-// x-amz-checksum-* header with one value, or an x-amz-trailer naming one,
-// optionally named by x-amz-sdk-checksum-algorithm. No checksum means the
-// default algorithm. inTrailer means the value arrives after the body.
+// parseChecksum reads the flexible checksum of a write: one x-amz-checksum-*
+// header or x-amz-trailer naming one (inTrailer), optionally named by
+// x-amz-sdk-checksum-algorithm. No checksum means the default algorithm.
 func parseChecksum(h http.Header) (algorithm string, value []byte, inTrailer, ok bool) {
 	named := ""
 	if v := h.Values("x-amz-sdk-checksum-algorithm"); len(v) > 0 {

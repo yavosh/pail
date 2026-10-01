@@ -56,10 +56,9 @@ func New(accessKeyID, secretAccessKey string) *Verifier {
 	return &Verifier{secrets: map[string]string{accessKeyID: secretAccessKey}}
 }
 
-// Verify checks the Authorization header of r. When the request carries a
-// SHA-256 payload hash or an aws-chunked body, Verify wraps r.Body so a bad
-// body fails a read by EOF; the caller must not commit before EOF. An
-// aws-chunked body fills r.Trailer once it is read to EOF, as net/http does.
+// Verify checks the Authorization header of r. For a SHA-256 payload hash or
+// an aws-chunked body it wraps r.Body, so a bad body fails a read by EOF and
+// the caller must not commit before then. aws-chunked fills r.Trailer at EOF.
 func (v *Verifier) Verify(r *http.Request) error {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
@@ -161,7 +160,11 @@ func IsStreaming(h http.Header) bool {
 // DecodedLength parses x-amz-decoded-content-length, the size of an
 // aws-chunked payload once decoded.
 func DecodedLength(h http.Header) (int64, error) {
-	v := h.Get("X-Amz-Decoded-Content-Length")
+	values := h.Values("X-Amz-Decoded-Content-Length")
+	if len(values) != 1 {
+		return 0, ErrMissingDecodedLength
+	}
+	v := values[0]
 	if v == "" || strings.Trim(v, "0123456789") != "" {
 		return 0, ErrMissingDecodedLength
 	}
