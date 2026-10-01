@@ -18,6 +18,14 @@ pail stops cleanly on SIGINT or SIGTERM.
 - An operation that pail does not support returns `501 NotImplemented` with an S3 XML error.
 - `GET /_pail/health` returns 200 and needs no credentials.
 
+## Authentication
+
+Every S3 request must carry an AWS Signature Version 4 `Authorization` header, signed with the configured access key pair. pail accepts any region in the signature. A body with a signed SHA-256 payload hash is checked as it is read. Every `x-amz-*` header must be signed.
+
+A captured signed request can be replayed for up to 15 minutes, as on AWS. Keep pail on `127.0.0.1`, or behind TLS, when the network is not trusted.
+
+Presigned URLs and streaming uploads (`aws-chunked`) are not supported yet, and return `501 NotImplemented`. The AWS CLI and some SDK upload paths send streaming uploads by default.
+
 ## Configuration
 
 Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides its variable. An empty variable counts as unset.

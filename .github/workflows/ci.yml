@@ -32,6 +32,13 @@ jobs:
       - name: Build
         run: CGO_ENABLED=0 go build ./...
 
+      - name: Check the binary does not link the AWS SDK
+        run: |
+          if go list -deps ./cmd/pail | grep -E 'aws|smithy'; then
+            echo "cmd/pail depends on the AWS SDK; it must stay a test-only dependency"
+            exit 1
+          fi
+
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)

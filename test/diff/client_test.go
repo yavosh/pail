@@ -47,7 +47,11 @@ type response struct {
 }
 
 // signer signs like the S3 SDKs: S3 paths are encoded once, never twice.
-var signer = v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+var signer = newSigner()
+
+func newSigner() *v4.Signer {
+	return v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+}
 
 // do sends one step to the target, addressed virtual-hosted-style at bucket.
 func (tg *target) do(ctx context.Context, st step, bucket string) (response, error) {
@@ -77,8 +81,10 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
 		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
 	case authBadSignature:
+		// The signer caches keys by access key, not secret, so a wrong secret
+		// through the shared signer would break every later request.
 		creds.SecretAccessKey += "-wrong"
-		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
+		err = newSigner().SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
 	case authSkewed:
 		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
 	default:

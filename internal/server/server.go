@@ -56,7 +56,11 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.ln == nil {
 		return errors.New("serve: not listening")
 	}
-	srv := &http.Server{Handler: s3api.New(s3api.Options{Domain: s.cfg.Domain}), ReadHeaderTimeout: readHeaderTimeout}
+	srv := &http.Server{Handler: s3api.New(s3api.Options{
+		Domain:          s.cfg.Domain,
+		AccessKeyID:     s.cfg.AccessKeyID,
+		SecretAccessKey: s.cfg.SecretAccessKey,
+	}), ReadHeaderTimeout: readHeaderTimeout}
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(s.ln) }()

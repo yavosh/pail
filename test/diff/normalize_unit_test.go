@@ -193,3 +193,25 @@ func TestRedirectIsNotFollowed(t *testing.T) {
 		t.Errorf("status = %d, want %d returned, not followed", resp.StatusCode, http.StatusTemporaryRedirect)
 	}
 }
+
+// TestBadSignatureDoesNotPoisonTheSigner guards against the SDK signer's key
+// cache: after a bad-signature step, a normal step must still verify.
+func TestBadSignatureDoesNotPoisonTheSigner(t *testing.T) {
+	tg := pailTarget(t)
+	steps := []step{
+		{name: "bad", method: http.MethodGet, query: "list-type=2", auth: authBadSignature},
+		{name: "good", method: http.MethodGet, query: "list-type=2"},
+	}
+	var codes []string
+	for _, st := range steps {
+		resp, err := tg.do(t.Context(), st, newBucketName())
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, _, _ := canonicalXML(string(resp.body))
+		codes = append(codes, strings.TrimSpace(code))
+	}
+	if strings.Contains(codes[1], "SignatureDoesNotMatch") {
+		t.Errorf("after a bad-signature step, a normal step got %q, want it to pass signing", codes[1])
+	}
+}

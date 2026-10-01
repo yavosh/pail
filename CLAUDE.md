@@ -14,6 +14,7 @@ go run ./cmd/pail --access-key dev --secret-key devsecret   # run the server; fl
 ./pail --version                                       # build identity
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
+go test ./test/      # aws-sdk-go-v2 tests against an in-process pail, path-style and virtual-hosted
 go test ./test/diff  # replay the AWS S3 golden files against pail; see test/diff/README.md
 make lint            # golangci-lint
 ```
@@ -47,6 +48,14 @@ make lint            # golangci-lint
 - Write Go 1.27 idioms, not their older equivalents. `modernize` and `errorlint` catch most of this in CI, and `go fix -stringsbuilder=false ./...` applies the mechanical half. The rest is on you: `errors.Is` and `errors.AsType[T]` over `==` and type assertions, `errors.Join` for accumulated errors, `cmp.Or` for fallback chains (every argument is evaluated, so no side effects), typed `atomic.Bool` and `atomic.Pointer[T]` over `atomic.Value`, `sync.OnceValue` over a `sync.Once` plus a result variable, `slices.Sorted(maps.Keys(m))` for deterministic map output, `new(v)` over a temporary variable taken by address, and method-aware `ServeMux` patterns with `r.PathValue`.
 - Never use `time.Tick`. It cannot be stopped, which breaks the goroutine-lifetime rule above. Use `time.NewTicker` and `Stop` it.
 - Before you write or review Go code, read [`docs/code-style.md`](docs/code-style.md). It lists the external style guides these rules come from (Effective Go, Google Go Style, modern Go idioms, Dave Cheney, Mat Ryer). Where this list is silent, follow those guides.
+
+## Client tests
+
+- Every S3 feature adds aws-sdk-go-v2 tests in `test/`. Use `forEachStyle`, so each test runs path-style and virtual-hosted.
+- Keep the SDK's default settings, such as checksums. The harness sets them explicitly, because `s3.New` skips the config loader that would. It turns retries off, so a test sees the first answer. Any other change names the issue that removes the need.
+- Use lowercase bucket names without dots. The SDK silently falls back to path-style for other names, so the virtual-hosted run would not test virtual-hosted routing.
+- Send raw or presigned requests through `pail.httpClient`. It routes every host to the test server, with no DNS or proxy.
+- aws-sdk-go-v2 is a test-only dependency. CI checks that `go list -deps ./cmd/pail` names no `aws` or `smithy` package.
 
 ## Documentation
 
