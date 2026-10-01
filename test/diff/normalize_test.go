@@ -261,3 +261,28 @@ func readKnownDiffs(r io.Reader) (map[string]string, error) {
 	}
 	return known, sc.Err()
 }
+
+// readPending parses "<scenario>/<step> <reason>" lines: steps recorded before
+// pail implements them. Every entry needs a reason.
+func readPending(r io.Reader) (map[string]string, error) {
+	pending := map[string]string{}
+	sc := bufio.NewScanner(r)
+	for n := 1; sc.Scan(); n++ {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		// A known-diffs line pasted here would make its whole step pending.
+		if len(fields) < 2 || strings.Count(fields[0], "/") != 1 || isDiffField(fields[1]) {
+			return nil, fmt.Errorf("line %d: want \"<scenario>/<step> <reason>\", got %q", n, line)
+		}
+		pending[fields[0]] = strings.Join(fields[1:], " ")
+	}
+	return pending, sc.Err()
+}
+
+// isDiffField reports whether s names a compared field, as known-diffs lines do.
+func isDiffField(s string) bool {
+	return s == "status" || s == "body" || strings.HasPrefix(s, "header:")
+}

@@ -67,6 +67,7 @@ make lint            # golangci-lint
 - `test/diff` checks pail against golden files recorded from AWS S3. A new S3 behavior adds a scenario there.
 - Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
 - Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.
+- A feature PR removes its steps from `test/diff/testdata/pending.txt`. The PR is done when they pass.
 
 ## After opening a PR
 

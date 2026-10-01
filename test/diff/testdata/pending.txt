@@ -1,0 +1,6 @@
+# Steps recorded against AWS before pail implements them.
+#
+# One per line: <scenario>/<step> <reason, with an issue link>
+# Replay tolerates differences in a pending step and logs them (go test -v).
+# Differences in any other step still fail. Once a pending step has no
+# unlisted difference, the test fails until you remove its line.

@@ -56,8 +56,21 @@ Check these steps by hand in a new recording:
 
 `<field>` is `status`, `body`, or `header:<Name>`, as the failure message prints it. An unlisted difference fails the test. A listed difference that no longer occurs also fails, so the list stays current.
 
+## Pending steps
+
+`testdata/pending.txt` lists steps recorded before pail implements them, one per line:
+
+```text
+<scenario>/<step> <reason, with an issue link>
+```
+
+Replay tolerates differences in a pending step, and logs them when you run `go test -v`. A difference in any other step still fails, so the steps that already work stay checked. Once a pending step has no unlisted difference, the test fails until you remove its line. A line that names no step also fails.
+
+Use `pending.txt` for behavior pail will implement, with the issue that implements it. Use `known-diffs.txt` for accepted, permanent differences.
+
 ## Add a scenario
 
 1. Add the scenario to `scenarios()`. Use a new bucket per scenario, and delete what you create.
-2. Record it against AWS, and commit the golden file.
-3. Run replay. Fix pail, or list each remaining difference with a reason.
+2. Record it against AWS.
+3. Run replay. For each step that differs, fix pail, add the step to `pending.txt` with the issue that will implement it, or list the accepted difference in `known-diffs.txt`.
+4. Commit the golden file together with its `pending.txt` and `known-diffs.txt` lines, so CI stays green.

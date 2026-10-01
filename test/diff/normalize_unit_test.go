@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -213,5 +214,30 @@ func TestBadSignatureDoesNotPoisonTheSigner(t *testing.T) {
 	}
 	if strings.Contains(codes[1], "SignatureDoesNotMatch") {
 		t.Errorf("after a bad-signature step, a normal step got %q, want it to pass signing", codes[1])
+	}
+}
+
+func TestReadPending(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    map[string]string
+		wantErr bool
+	}{
+		{"# comment\n\nobject-basics/get needs GetObject (#8)\n", map[string]string{"object-basics/get": "needs GetObject (#8)"}, false},
+		{"object-basics/get\n", nil, true},
+		{"object-basics needs objects\n", nil, true},
+		{"a/b/c reason\n", nil, true},
+		{"object-basics/get status pasted from known-diffs\n", nil, true},
+		{"object-basics/get header:Etag pasted from known-diffs\n", nil, true},
+	}
+	for _, tt := range tests {
+		got, err := readPending(strings.NewReader(tt.in))
+		if (err != nil) != tt.wantErr {
+			t.Errorf("readPending(%q) error = %v, want error %v", tt.in, err, tt.wantErr)
+			continue
+		}
+		if !tt.wantErr && !maps.Equal(got, tt.want) {
+			t.Errorf("readPending(%q) = %v, want %v", tt.in, got, tt.want)
+		}
 	}
 }
