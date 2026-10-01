@@ -39,16 +39,16 @@ const timeFormat = "2006-01-02T15:04:05.000Z"
 // maxConfigBody bounds request bodies that carry XML configuration.
 const maxConfigBody = 1 << 20
 
+// owner carries only an ID; AWS no longer returns DisplayName.
 type owner struct {
-	ID          string `xml:"ID"`
-	DisplayName string `xml:"DisplayName"`
+	ID string `xml:"ID"`
 }
 
 // bucketOwner is the single account that owns every bucket. Its ID is derived
 // from the access key, so it is stable across restarts.
 func (h *handler) bucketOwner() owner {
 	sum := sha256.Sum256([]byte(h.opts.AccessKeyID))
-	return owner{ID: hex.EncodeToString(sum[:]), DisplayName: "pail"}
+	return owner{ID: hex.EncodeToString(sum[:])}
 }
 
 func (h *handler) handleListBuckets(w http.ResponseWriter, r *http.Request, _ target) {
@@ -138,7 +138,12 @@ func (h *handler) handleCreateBucket(w http.ResponseWriter, r *http.Request, t t
 			return
 		}
 	}
-	if err := h.opts.Store.CreateBucket(r.Context(), t.bucket); err != nil {
+	err = h.opts.Store.CreateBucket(r.Context(), t.bucket)
+	// us-east-1 keeps its legacy answer: re-creating your own bucket succeeds.
+	if errors.Is(err, store.ErrBucketExists) && h.opts.Region == "us-east-1" {
+		err = nil
+	}
+	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}
@@ -156,6 +161,7 @@ func (h *handler) handleHeadBucket(w http.ResponseWriter, r *http.Request, t tar
 		return
 	}
 	w.Header().Set("x-amz-bucket-region", h.opts.Region)
+	w.Header().Set("Content-Type", "application/xml") // as on AWS, though HEAD has no body
 	w.WriteHeader(http.StatusOK)
 }
 

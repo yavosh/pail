@@ -138,16 +138,16 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	etag := quoteETag(info.ETag)
 	lastModified := info.LastModified.UTC().Truncate(time.Second)
 	hdr := w.Header()
-	hdr.Set("ETag", etag)
-	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 	switch checkConditions(r.Header, etag, lastModified) {
 	case http.StatusPreconditionFailed:
-		writeError(w, r, errPreconditionFailed)
+		writeError(w, r, errPreconditionFailed) // AWS sends no object headers with it
 		return
 	case http.StatusNotModified:
-		// RFC 9110 requires the caching headers a 200 would have carried.
-		for _, name := range []string{"Cache-Control", "Expires"} {
-			if v := info.Metadata[name]; v != "" {
+		// As on AWS: the validators, the caching headers, and user metadata.
+		hdr.Set("ETag", etag)
+		hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
+		for name, v := range info.Metadata {
+			if name == "Cache-Control" || name == "Expires" || strings.HasPrefix(name, userMetaPrefix) {
 				hdr.Set(name, v)
 			}
 		}
@@ -160,8 +160,7 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		first, last, ok, satisfiable := parseRange(spec, info.Size)
 		switch {
 		case ok && !satisfiable:
-			hdr.Set("Content-Range", "bytes */"+strconv.FormatInt(info.Size, 10))
-			writeError(w, r, errInvalidRange)
+			writeError(w, r, errInvalidRange) // AWS sends no Content-Range with it
 			return
 		case ok:
 			start, length, status = first, last-first+1, http.StatusPartialContent
@@ -176,6 +175,8 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		}
 	}
 
+	hdr.Set("ETag", etag)
+	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 	setObjectHeaders(hdr, r, info)
 	hdr.Set("Content-Length", strconv.FormatInt(length, 10))
 	w.WriteHeader(status)

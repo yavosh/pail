@@ -208,12 +208,16 @@ func TestConditionalPutAndDelete(t *testing.T) {
 }
 
 // specialKeys are keys that path handling tends to break.
-var specialKeys = []string{"a//b", "../x", "a+b", "a b", "✓/ünïcode", "dir/", "100%", "a%2Fb", "?q#f"}
+var specialKeys = []string{"a//b", "a+b", "a b", "✓/ünïcode", "dir/", "100%", "a%2Fb", "?q#f"}
 
 func TestSpecialKeys(t *testing.T) {
 	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
 		ctx := context.Background()
 		mustBucket(t, c, "keys")
+		// AWS rejects a ".." path segment before S3 sees it, and so does pail.
+		if _, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("keys"), Key: aws.String("../x"), Body: strings.NewReader("x")}); errorCode(err) != "BadRequest" {
+			t.Errorf("PutObject(../x) error = %v, want a bare 400 BadRequest", err)
+		}
 		for _, key := range specialKeys {
 			if _, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("keys"), Key: aws.String(key), Body: strings.NewReader("body of " + key)}); err != nil {
 				t.Errorf("PutObject(%q) error = %v", key, err)

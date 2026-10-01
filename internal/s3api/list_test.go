@@ -85,7 +85,7 @@ func TestListObjectsParameters(t *testing.T) {
 		{"bad encoding-type", "list-type=2&encoding-type=base64", http.StatusBadRequest, "InvalidArgument", nil, nil},
 		{"bad token", "list-type=2&continuation-token=%21%21", http.StatusBadRequest, "InvalidArgument", nil, nil},
 		{"max-keys zero", "list-type=2&max-keys=0", http.StatusOK, "", []string{"<KeyCount>0</KeyCount>", "<IsTruncated>false</IsTruncated>"}, []string{"<Contents>"}},
-		{"max-keys capped", "list-type=2&max-keys=5000", http.StatusOK, "", []string{"<MaxKeys>1000</MaxKeys>"}, nil},
+		{"max-keys capped", "list-type=2&max-keys=5000", http.StatusOK, "", []string{"<MaxKeys>5000</MaxKeys>"}, nil},
 		{"v2 has no owner by default", "list-type=2", http.StatusOK, "", nil, []string{"<Owner>"}},
 		{"v2 fetch-owner", "list-type=2&fetch-owner=TRUE", http.StatusOK, "", []string{"<Owner>"}, nil},
 		{"v1 always has an owner", "", http.StatusOK, "", []string{"<Owner>"}, nil},

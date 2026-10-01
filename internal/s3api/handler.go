@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -62,6 +63,13 @@ func (h *handler) routes() {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// AWS rejects a path with a ".." segment before S3 sees it: a bare 400
+	// with no request ID. Matching it keeps such keys from working only here.
+	if slices.Contains(strings.Split(r.URL.EscapedPath(), "/"), "..") {
+		w.WriteHeader(http.StatusBadRequest)
+		clogS3api().Info("request", "method", r.Method, "op", "", "bucket", "", "status", http.StatusBadRequest, "bytes", 0, "duration", time.Duration(0))
+		return
+	}
 	start := time.Now()
 	w.Header().Set("x-amz-request-id", strings.ToUpper(hex.EncodeToString(randomBytes(8))))
 	w.Header().Set("x-amz-id-2", base64.StdEncoding.EncodeToString(randomBytes(32)))
@@ -75,6 +83,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.internal.ServeHTTP(rec, r)
 	} else {
 		op = resolve(r.Method, t, r.URL.Query(), r.Header)
+		if (op == opListObjects || op == opListObjectsV2) && h.opts.Store != nil {
+			// AWS names the region on listings of a bucket that exists, even on an auth error.
+			if _, err := h.opts.Store.HeadBucket(r.Context(), t.bucket); err == nil {
+				rec.Header().Set("x-amz-bucket-region", h.opts.Region)
+			}
+		}
 		if err := h.verifier.Verify(r); err != nil {
 			writeError(rec, r, toAPIError(err))
 		} else if fn, ok := h.ops[op]; ok {

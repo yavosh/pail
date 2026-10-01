@@ -192,8 +192,8 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 		wantStatus  int
 		wantCR      string
 	}{
-		{http.MethodGet, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, "bytes */11"},
-		{http.MethodHead, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, "bytes */11"},
+		{http.MethodGet, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, ""},
+		{http.MethodHead, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, ""},
 		{http.MethodHead, "bytes=0-4", http.StatusPartialContent, "bytes 0-4/11"},
 	}
 	for _, tt := range tests {

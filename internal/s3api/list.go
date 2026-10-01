@@ -32,28 +32,18 @@ func listEntries(objects []store.ObjectInfo, prefix, delimiter, after string, li
 	if limit == 0 {
 		return l
 	}
-	// Resuming after a common prefix skips every key under it. A marker is a
-	// common prefix only when it would group as one in this listing.
-	skip := ""
-	if delimiter != "" && strings.HasPrefix(after, prefix) {
-		if rest := after[len(prefix):]; strings.Index(rest, delimiter) == len(rest)-len(delimiter) && len(rest) >= len(delimiter) {
-			skip = after
-		}
-	}
 	count := 0
 	for _, o := range objects {
-		key := o.Key
-		if key <= after || (skip != "" && strings.HasPrefix(key, skip)) {
-			continue
-		}
-		entry, isPrefix := key, false
+		entry, isPrefix := o.Key, false
 		if delimiter != "" {
-			if i := strings.Index(key[len(prefix):], delimiter); i >= 0 {
-				entry, isPrefix = key[:len(prefix)+i+len(delimiter)], true
-				if len(l.prefixes) > 0 && l.prefixes[len(l.prefixes)-1] == entry {
-					continue
-				}
+			if i := strings.Index(o.Key[len(prefix):], delimiter); i >= 0 {
+				entry, isPrefix = o.Key[:len(prefix)+i+len(delimiter)], true
 			}
+		}
+		// Every entry, key or common prefix, must sort after the marker. As on
+		// AWS, a marker inside a common prefix therefore skips the whole prefix.
+		if entry <= after || (isPrefix && len(l.prefixes) > 0 && l.prefixes[len(l.prefixes)-1] == entry) {
+			continue
 		}
 		if count == limit {
 			l.truncated = true
@@ -62,7 +52,6 @@ func listEntries(objects []store.ObjectInfo, prefix, delimiter, after string, li
 		count++
 		if isPrefix {
 			l.prefixes = append(l.prefixes, entry)
-			skip = entry
 		} else {
 			l.contents = append(l.contents, o)
 		}
@@ -71,13 +60,14 @@ func listEntries(objects []store.ObjectInfo, prefix, delimiter, after string, li
 	return l
 }
 
+// listContent follows the AWS element order.
 type listContent struct {
 	Key          string `xml:"Key"`
 	LastModified string `xml:"LastModified"`
 	ETag         string `xml:"ETag"`
 	Size         int64  `xml:"Size"`
-	StorageClass string `xml:"StorageClass"`
 	Owner        *owner `xml:"Owner,omitempty"`
+	StorageClass string `xml:"StorageClass"`
 }
 
 type commonPrefix struct {
@@ -87,23 +77,24 @@ type commonPrefix struct {
 // listParams are the query parameters both listing versions share.
 type listParams struct {
 	prefix, delimiter string
+	maxKeys           int // as requested; AWS echoes it even above the page limit
 	limit             int
 	encode            func(string) string
 }
 
 func parseListParams(q url.Values) (listParams, bool) {
-	p := listParams{prefix: q.Get("prefix"), delimiter: q.Get("delimiter"), limit: maxKeys, encode: func(s string) string { return s }}
+	p := listParams{prefix: q.Get("prefix"), delimiter: q.Get("delimiter"), maxKeys: maxKeys, limit: maxKeys, encode: func(s string) string { return s }}
 	if s := q.Get("max-keys"); s != "" {
 		n, err := strconv.Atoi(s)
 		if err != nil || n < 0 {
 			return p, false
 		}
-		p.limit = min(n, maxKeys)
+		p.maxKeys, p.limit = n, min(n, maxKeys)
 	}
 	switch q.Get("encoding-type") {
 	case "":
 	case "url":
-		p.encode = url.QueryEscape
+		p.encode = urlEncode
 	default:
 		return p, false
 	}
@@ -146,19 +137,20 @@ func prefixesXML(l listing, p listParams) []commonPrefix {
 }
 
 func (h *handler) handleListObjectsV2(w http.ResponseWriter, r *http.Request, t target) {
+	// Fields follow the element order AWS returns.
 	type response struct {
 		XMLName               xml.Name       `xml:"ListBucketResult"`
 		Xmlns                 string         `xml:"xmlns,attr"`
 		Name                  string         `xml:"Name"`
 		Prefix                string         `xml:"Prefix"`
-		Delimiter             string         `xml:"Delimiter,omitempty"`
-		MaxKeys               int            `xml:"MaxKeys"`
-		EncodingType          string         `xml:"EncodingType,omitempty"`
-		KeyCount              int            `xml:"KeyCount"`
-		IsTruncated           bool           `xml:"IsTruncated"`
+		StartAfter            string         `xml:"StartAfter,omitempty"`
 		ContinuationToken     string         `xml:"ContinuationToken,omitempty"`
 		NextContinuationToken string         `xml:"NextContinuationToken,omitempty"`
-		StartAfter            string         `xml:"StartAfter,omitempty"`
+		KeyCount              int            `xml:"KeyCount"`
+		MaxKeys               int            `xml:"MaxKeys"`
+		Delimiter             string         `xml:"Delimiter,omitempty"`
+		EncodingType          string         `xml:"EncodingType,omitempty"`
+		IsTruncated           bool           `xml:"IsTruncated"`
 		Contents              []listContent  `xml:"Contents"`
 		CommonPrefixes        []commonPrefix `xml:"CommonPrefixes"`
 	}
@@ -184,7 +176,7 @@ func (h *handler) handleListObjectsV2(w http.ResponseWriter, r *http.Request, t 
 	}
 	resp := response{
 		Xmlns: s3Namespace, Name: t.bucket, Prefix: p.encode(p.prefix), Delimiter: p.encode(p.delimiter),
-		MaxKeys: p.limit, EncodingType: q.Get("encoding-type"), KeyCount: len(l.contents) + len(l.prefixes),
+		MaxKeys: p.maxKeys, EncodingType: q.Get("encoding-type"), KeyCount: len(l.contents) + len(l.prefixes),
 		IsTruncated: l.truncated, ContinuationToken: token, StartAfter: p.encode(q.Get("start-after")),
 		Contents: h.contentsXML(l, p, strings.EqualFold(q.Get("fetch-owner"), "true")), CommonPrefixes: prefixesXML(l, p),
 	}
@@ -195,6 +187,7 @@ func (h *handler) handleListObjectsV2(w http.ResponseWriter, r *http.Request, t 
 }
 
 func (h *handler) handleListObjects(w http.ResponseWriter, r *http.Request, t target) {
+	// Fields follow the element order AWS returns.
 	type response struct {
 		XMLName        xml.Name       `xml:"ListBucketResult"`
 		Xmlns          string         `xml:"xmlns,attr"`
@@ -202,8 +195,8 @@ func (h *handler) handleListObjects(w http.ResponseWriter, r *http.Request, t ta
 		Prefix         string         `xml:"Prefix"`
 		Marker         string         `xml:"Marker"`
 		NextMarker     string         `xml:"NextMarker,omitempty"`
-		Delimiter      string         `xml:"Delimiter,omitempty"`
 		MaxKeys        int            `xml:"MaxKeys"`
+		Delimiter      string         `xml:"Delimiter,omitempty"`
 		EncodingType   string         `xml:"EncodingType,omitempty"`
 		IsTruncated    bool           `xml:"IsTruncated"`
 		Contents       []listContent  `xml:"Contents"`
@@ -222,7 +215,7 @@ func (h *handler) handleListObjects(w http.ResponseWriter, r *http.Request, t ta
 	}
 	resp := response{
 		Xmlns: s3Namespace, Name: t.bucket, Prefix: p.encode(p.prefix), Marker: p.encode(marker),
-		Delimiter: p.encode(p.delimiter), MaxKeys: p.limit, EncodingType: q.Get("encoding-type"),
+		Delimiter: p.encode(p.delimiter), MaxKeys: p.maxKeys, EncodingType: q.Get("encoding-type"),
 		IsTruncated: l.truncated, Contents: h.contentsXML(l, p, true), CommonPrefixes: prefixesXML(l, p),
 	}
 	// AWS sends NextMarker only with a delimiter; without one, clients resume
@@ -231,4 +224,10 @@ func (h *handler) handleListObjects(w http.ResponseWriter, r *http.Request, t ta
 		resp.NextMarker = p.encode(l.last)
 	}
 	writeXML(w, r, http.StatusOK, resp)
+}
+
+// urlEncode is the encoding-type=url form AWS returns: query escaping, so a
+// space becomes "+", but with "/" left as is.
+func urlEncode(s string) string {
+	return strings.ReplaceAll(url.QueryEscape(s), "%2F", "/")
 }
