@@ -18,6 +18,8 @@ import (
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// After the first signal, restore default handling so a second one exits at once.
+	context.AfterFunc(ctx, stop)
 	err := run(ctx, os.Args[1:], os.Getenv, os.Stdout)
 	stop()
 	if err != nil {

@@ -75,6 +75,9 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 // Validate reports every required setting that is empty.
 func (c Config) Validate() error {
 	var errs []error
+	if c.Addr == "" {
+		errs = append(errs, errors.New("missing listen address: set --addr or PAIL_ADDR"))
+	}
 	if c.AccessKeyID == "" {
 		errs = append(errs, errors.New("missing access key: set --access-key or PAIL_ACCESS_KEY_ID"))
 	}

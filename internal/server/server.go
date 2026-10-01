@@ -72,6 +72,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	shutCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
+		_ = srv.Close() // force-close remaining connections; the shutdown error is the one to report
 		return fmt.Errorf("shutdown: %w", err)
 	}
 	if err := <-serveErr; !errors.Is(err, http.ErrServerClosed) {

@@ -13,7 +13,7 @@ pail stops cleanly on SIGINT or SIGTERM.
 
 ## Configuration
 
-Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides its variable.
+Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides its variable. An empty variable counts as unset.
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
@@ -23,7 +23,7 @@ Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides it
 | `--secret-key` | `PAIL_SECRET_ACCESS_KEY` | none, required | Secret access key. |
 | `--region` | `PAIL_REGION` | `us-east-1` | Region. |
 | `--domain` | `PAIL_DOMAIN` | empty | Base domain for virtual-hosted-style requests. Empty turns them off. |
-| `--log-level` | `PAIL_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. |
+| `--log-level` | `PAIL_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. Case-insensitive. |
 | `--version` | none | none | Print the build version and exit. |
 
 pail exits with an error that names the missing setting when a key is empty.

@@ -84,10 +84,11 @@ func TestValidate(t *testing.T) {
 		want    []string
 		wantNot []string
 	}{
-		{"both set", Config{AccessKeyID: "a", SecretAccessKey: "s"}, nil, nil},
-		{"access key missing", Config{SecretAccessKey: "s"}, []string{"--access-key", "PAIL_ACCESS_KEY_ID"}, []string{"PAIL_SECRET_ACCESS_KEY"}},
-		{"secret key missing", Config{AccessKeyID: "a"}, []string{"--secret-key", "PAIL_SECRET_ACCESS_KEY"}, []string{"PAIL_ACCESS_KEY_ID"}},
-		{"both missing", Config{}, []string{"PAIL_ACCESS_KEY_ID", "PAIL_SECRET_ACCESS_KEY"}, nil},
+		{"all set", Config{Addr: ":1", AccessKeyID: "a", SecretAccessKey: "s"}, nil, nil},
+		{"addr missing", Config{AccessKeyID: "a", SecretAccessKey: "s"}, []string{"--addr", "PAIL_ADDR"}, []string{"PAIL_ACCESS_KEY_ID", "PAIL_SECRET_ACCESS_KEY"}},
+		{"access key missing", Config{Addr: ":1", SecretAccessKey: "s"}, []string{"--access-key", "PAIL_ACCESS_KEY_ID"}, []string{"PAIL_SECRET_ACCESS_KEY"}},
+		{"secret key missing", Config{Addr: ":1", AccessKeyID: "a"}, []string{"--secret-key", "PAIL_SECRET_ACCESS_KEY"}, []string{"PAIL_ACCESS_KEY_ID"}},
+		{"all missing", Config{}, []string{"PAIL_ADDR", "PAIL_ACCESS_KEY_ID", "PAIL_SECRET_ACCESS_KEY"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

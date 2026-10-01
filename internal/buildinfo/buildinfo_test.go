@@ -3,7 +3,6 @@ package buildinfo
 import (
 	"runtime"
 	"runtime/debug"
-	"strings"
 	"testing"
 )
 
@@ -33,9 +32,6 @@ func TestString(t *testing.T) {
 	want := "pail v1.2.3 (" + runtime.Version() + " " + runtime.GOOS + "/" + runtime.GOARCH + ")"
 	if got := String("pail"); got != want {
 		t.Errorf("String(%q) = %q, want %q", "pail", got, want)
-	}
-	if got := String("pail"); !strings.HasPrefix(got, "pail ") {
-		t.Errorf("String(%q) = %q, want prefix %q", "pail", got, "pail ")
 	}
 }
 

@@ -11,7 +11,7 @@ pail is a small S3-compatible server written in pure Go. It targets local testin
 ```bash
 make build           # CGO_ENABLED=0 local build
 go run ./cmd/pail --access-key dev --secret-key devsecret   # run the server; flags fall back to PAIL_* variables
-pail --version                                         # build identity
+./pail --version                                       # build identity
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
 make lint            # golangci-lint
