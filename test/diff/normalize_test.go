@@ -273,10 +273,16 @@ func readPending(r io.Reader) (map[string]string, error) {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 2 || strings.Count(fields[0], "/") != 1 {
+		// A known-diffs line pasted here would make its whole step pending.
+		if len(fields) < 2 || strings.Count(fields[0], "/") != 1 || isDiffField(fields[1]) {
 			return nil, fmt.Errorf("line %d: want \"<scenario>/<step> <reason>\", got %q", n, line)
 		}
 		pending[fields[0]] = strings.Join(fields[1:], " ")
 	}
 	return pending, sc.Err()
+}
+
+// isDiffField reports whether s names a compared field, as known-diffs lines do.
+func isDiffField(s string) bool {
+	return s == "status" || s == "body" || strings.HasPrefix(s, "header:")
 }

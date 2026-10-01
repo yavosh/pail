@@ -94,7 +94,7 @@ func TestDiff(t *testing.T) {
 	// A pending step that matches AWS fails, so the list shrinks as pail grows.
 	for _, key := range slices.Sorted(maps.Keys(pending)) {
 		scenarioName, _, _ := strings.Cut(key, "/")
-		if ran[scenarioName] && !seen[key] {
+		if steps[key] && ran[scenarioName] && !seen[key] {
 			t.Errorf("%s lists %q, but that step has no unlisted difference now: remove the line", pendingFile, key)
 		}
 	}
@@ -175,7 +175,11 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 		resp, err := tg.do(t.Context(), st, bucket)
 		if err != nil {
 			// Earlier differences often explain a later failure, so keep them.
-			t.Fatalf("step %s (%s): %v\nearlier differences:\n%s", st.name, describe(st), err, strings.Join(unexpected, "\n"))
+			msg := fmt.Sprintf("step %s (%s): %v", st.name, describe(st), err)
+			if len(unexpected) > 0 {
+				msg += "\nearlier differences:\n" + strings.Join(unexpected, "\n")
+			}
+			t.Fatal(msg)
 		}
 		got := normalize(st, bucket, resp)
 		diffs := compare(w, got)
@@ -188,7 +192,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 			}
 			if reason, ok := pending[stepKey]; ok {
 				seen = append(seen, stepKey)
-				t.Logf("pending, %s: %s", reason, diffs[key])
+				t.Logf("%s: pending, %s\n%s", full, reason, diffs[key])
 				continue
 			}
 			unexpected = append(unexpected, fmt.Sprintf("%s: %s\n%s", full, w.Request, diffs[key]))

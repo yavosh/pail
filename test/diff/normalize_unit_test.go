@@ -227,6 +227,8 @@ func TestReadPending(t *testing.T) {
 		{"object-basics/get\n", nil, true},
 		{"object-basics needs objects\n", nil, true},
 		{"a/b/c reason\n", nil, true},
+		{"object-basics/get status pasted from known-diffs\n", nil, true},
+		{"object-basics/get header:Etag pasted from known-diffs\n", nil, true},
 	}
 	for _, tt := range tests {
 		got, err := readPending(strings.NewReader(tt.in))
