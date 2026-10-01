@@ -22,6 +22,7 @@ var (
 	ErrMissingAuth           = errors.New("request is not signed")
 	ErrUnsupportedAuth       = errors.New("unsupported authorization mechanism")
 	ErrMalformedAuth         = errors.New("malformed authorization header")
+	ErrUnsignedHeader        = errors.New("x-amz header present but not signed")
 	ErrInvalidAccessKeyID    = errors.New("unknown access key")
 	ErrSignatureMismatch     = errors.New("signature does not match")
 	ErrRequestTimeTooSkewed  = errors.New("request time too skewed")
@@ -73,12 +74,21 @@ func (v *Verifier) Verify(r *http.Request) error {
 		return ErrInvalidAccessKeyID
 	}
 
-	amzDate, signedAt, err := requestTime(r)
-	if err != nil {
-		return err
+	// A replayed request must not gain headers, such as x-amz-copy-source,
+	// that change what it does. The SDKs sign every x-amz header they send.
+	for name := range r.Header {
+		if lower := strings.ToLower(name); strings.HasPrefix(lower, "x-amz-") && !slices.Contains(a.signedHeaders, lower) {
+			return fmt.Errorf("%s: %w", lower, ErrUnsignedHeader)
+		}
 	}
-	if amzDate[:8] != a.date {
-		return fmt.Errorf("credential date %s does not match request date %s: %w", a.date, amzDate[:8], ErrMalformedAuth)
+
+	amzDate := r.Header.Get("X-Amz-Date")
+	signedAt, err := time.Parse(timeFormat, amzDate)
+	if err != nil {
+		return fmt.Errorf("x-amz-date %q: %w", amzDate, ErrMalformedAuth)
+	}
+	if day := signedAt.Format("20060102"); day != a.date {
+		return fmt.Errorf("credential date %s does not match request date %s: %w", a.date, day, ErrMalformedAuth)
 	}
 	if skew := time.Since(signedAt); skew > maxSkew || skew < -maxSkew {
 		return ErrRequestTimeTooSkewed
@@ -147,25 +157,6 @@ func parseAuthorization(s string) (authorization, error) {
 	}, nil
 }
 
-// requestTime returns the signing time from X-Amz-Date, else from Date.
-func requestTime(r *http.Request) (string, time.Time, error) {
-	if s := r.Header.Get("X-Amz-Date"); s != "" {
-		t, err := time.Parse(timeFormat, s)
-		if err != nil {
-			return "", time.Time{}, fmt.Errorf("x-amz-date %q: %w", s, ErrMalformedAuth)
-		}
-		return s, t, nil
-	}
-	if s := r.Header.Get("Date"); s != "" {
-		t, err := http.ParseTime(s)
-		if err != nil {
-			return "", time.Time{}, fmt.Errorf("date %q: %w", s, ErrMalformedAuth)
-		}
-		return t.UTC().Format(timeFormat), t, nil
-	}
-	return "", time.Time{}, fmt.Errorf("no request date: %w", ErrMalformedAuth)
-}
-
 // canonicalRequest builds the SigV4 canonical request with the S3 rules: the
 // path is encoded once and never normalized.
 func canonicalRequest(r *http.Request, signedHeaders []string, payloadHash string) string {
@@ -195,11 +186,11 @@ func canonicalQuery(raw string) string {
 			continue
 		}
 		k, v, _ := strings.Cut(part, "=")
-		// PathUnescape keeps "+" literal, as SigV4 clients encode it.
-		if dk, err := url.PathUnescape(k); err == nil {
+		// QueryUnescape reads "+" as a space, as the SDKs and r.URL.Query() do.
+		if dk, err := url.QueryUnescape(k); err == nil {
 			k = dk
 		}
-		if dv, err := url.PathUnescape(v); err == nil {
+		if dv, err := url.QueryUnescape(v); err == nil {
 			v = dv
 		}
 		pairs = append(pairs, pair{uriEncode(k, true), uriEncode(v, true)})
@@ -235,9 +226,25 @@ func headerValue(r *http.Request, name string) string {
 		values = slices.Clone(r.Header.Values(name)) // Values shares the header's slice
 	}
 	for i, v := range values {
-		values[i] = strings.Join(strings.Fields(v), " ")
+		values[i] = collapseSpaces(v)
 	}
 	return strings.Join(values, ",")
+}
+
+// collapseSpaces trims and collapses ASCII spaces only, as the SDK signers do.
+// Other whitespace is part of the value.
+func collapseSpaces(v string) string {
+	var b strings.Builder
+	for f := range strings.SplitSeq(strings.Trim(v, " "), " ") {
+		if f == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(f)
+	}
+	return b.String()
 }
 
 // uriEncode percent-encodes every byte except unreserved characters, and

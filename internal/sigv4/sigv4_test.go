@@ -70,6 +70,8 @@ func TestVerifyAcceptsSDKSignaturesOnTheWire(t *testing.T) {
 		{"a b", ""},
 		{"✓", ""},
 		{"dir/", ""},
+		{"100%", ""},
+		{"a%2Fb", ""},
 		{"k", "list-type=2&prefix=a%2Fb&delimiter=%2F"},
 		{"k", "uploads"},
 		{"k", "response-content-type=text%2Fplain&x-id=GetObject"},
@@ -140,6 +142,7 @@ func TestVerifyRejectsTampering(t *testing.T) {
 			r.URL.RawQuery = "X-Amz-Signature=abc"
 		}, ErrNotImplemented},
 		{"sigv2", func(r *http.Request) { r.Header.Set("Authorization", "AWS "+testKey+":c2ln") }, ErrUnsupportedAuth},
+		{"unsigned x-amz header added", func(r *http.Request) { r.Header.Set("X-Amz-Copy-Source", "/secret/object") }, ErrUnsignedHeader},
 		{"no host signed", func(r *http.Request) {
 			r.Header.Set("Authorization", strings.Replace(r.Header.Get("Authorization"), "SignedHeaders=host;", "SignedHeaders=", 1))
 		}, ErrMalformedAuth},
@@ -215,13 +218,38 @@ func TestCanonicalQuery(t *testing.T) {
 		{"b=2&a=1", "a=1&b=2"},
 		{"a=2&a=1", "a=1&a=2"},
 		{"prefix=a%2Fb", "prefix=a%2Fb"},
-		{"k=a+b", "k=a%2Bb"},
+		{"k=a+b", "k=a%20b"},
+		{"k=a%2Bb", "k=a%2Bb"},
 		{"k=a%20b", "k=a%20b"},
 		{"k=%E2%9C%93", "k=%E2%9C%93"},
 	}
 	for _, tt := range tests {
 		if got := canonicalQuery(tt.in); got != tt.want {
 			t.Errorf("canonicalQuery(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestQueryPlusIsNotPercent2B(t *testing.T) {
+	v := New(testKey, testSecret)
+	r := signed(t, http.MethodGet, "http://bkt.localhost/?prefix=a%2Bb", "", sha256Hex(""), time.Now(), nil)
+	r.URL.RawQuery = "prefix=a+b" // reads as "a b" to r.URL.Query()
+	if err := v.Verify(r); !errors.Is(err, ErrSignatureMismatch) {
+		t.Errorf("Verify() with %q signed and %q sent = %v, want ErrSignatureMismatch", "prefix=a%2Bb", "prefix=a+b", err)
+	}
+}
+
+func TestCollapseSpaces(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"a", "a"},
+		{"  a   b  ", "a b"},
+		{"a\tb", "a\tb"},
+		{"\ta b", "\ta b"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := collapseSpaces(tt.in); got != tt.want {
+			t.Errorf("collapseSpaces(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }

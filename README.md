@@ -20,7 +20,9 @@ pail stops cleanly on SIGINT or SIGTERM.
 
 ## Authentication
 
-Every S3 request must carry an AWS Signature Version 4 `Authorization` header, signed with the configured access key pair. pail accepts any region in the signature. A body with a signed SHA-256 payload hash is checked as it is read.
+Every S3 request must carry an AWS Signature Version 4 `Authorization` header, signed with the configured access key pair. pail accepts any region in the signature. A body with a signed SHA-256 payload hash is checked as it is read. Every `x-amz-*` header must be signed.
+
+A captured signed request can be replayed for up to 15 minutes, as on AWS. Keep pail on `127.0.0.1`, or behind TLS, when the network is not trusted.
 
 Presigned URLs and streaming uploads (`aws-chunked`) are not supported yet, and return `501 NotImplemented`. Current AWS SDKs send streaming uploads by default.
 

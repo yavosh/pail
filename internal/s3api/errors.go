@@ -20,6 +20,7 @@ var (
 	errNotImplemented     = apiError{"NotImplemented", http.StatusNotImplemented, "A header or query you provided implies functionality that is not implemented."}
 	errInternal           = apiError{"InternalError", http.StatusInternalServerError, "We encountered an internal error. Please try again."}
 	errAccessDenied       = apiError{"AccessDenied", http.StatusForbidden, "Access Denied"}
+	errUnsignedHeader     = apiError{"AccessDenied", http.StatusForbidden, "There were headers present in the request which were not signed"}
 	errUnsupportedAuth    = apiError{"InvalidRequest", http.StatusBadRequest, "The authorization mechanism you have provided is not supported. Please use AWS4-HMAC-SHA256."}
 	errMissingContentSHA  = apiError{"InvalidRequest", http.StatusBadRequest, "Missing required header for this request: x-amz-content-sha256"}
 	errMalformedAuth      = apiError{"AuthorizationHeaderMalformed", http.StatusBadRequest, "The authorization header is malformed."}
@@ -35,6 +36,7 @@ var apiErrors = []struct {
 	api apiError
 }{
 	{sigv4.ErrMissingAuth, errAccessDenied},
+	{sigv4.ErrUnsignedHeader, errUnsignedHeader},
 	{sigv4.ErrUnsupportedAuth, errUnsupportedAuth},
 	{sigv4.ErrMissingContentSHA256, errMissingContentSHA},
 	{sigv4.ErrMalformedAuth, errMalformedAuth},
