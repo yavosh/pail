@@ -56,8 +56,14 @@ func TestListObjectsV2Paginator(t *testing.T) {
 				}
 			}
 		}
-		if !slices.Equal(got, want) || pages != 3 {
-			t.Errorf("paginator walked %d keys in %d pages, want %d keys in 3 pages, in order with no gaps or repeats", len(got), pages, len(want))
+		if pages != 3 || len(got) != len(want) {
+			t.Errorf("paginator walked %d keys in %d pages, want %d keys in 3 pages", len(got), pages, len(want))
+		}
+		for i := range min(len(got), len(want)) {
+			if got[i] != want[i] {
+				t.Errorf("paginator key %d = %q, want %q (keys must be in order with no gaps or repeats)", i, got[i], want[i])
+				break
+			}
 		}
 	})
 }
@@ -136,4 +142,32 @@ func unescape(t *testing.T, s string) string {
 		t.Fatalf("QueryUnescape(%q) error = %v", s, err)
 	}
 	return u
+}
+
+func TestListObjectsStartAfterAndOwner(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "owned")
+		putKeys(t, c, "owned", []string{"a", "b", "c"})
+
+		out, err := c.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String("owned"), StartAfter: aws.String("a")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var keys []string
+		for _, o := range out.Contents {
+			keys = append(keys, aws.ToString(o.Key))
+			if o.Owner != nil {
+				t.Errorf("ListObjectsV2 without FetchOwner returned an owner for %s", aws.ToString(o.Key))
+			}
+		}
+		if want := []string{"b", "c"}; !slices.Equal(keys, want) {
+			t.Errorf("ListObjectsV2(StartAfter a) = %q, want %q", keys, want)
+		}
+
+		out, err = c.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String("owned"), FetchOwner: aws.Bool(true)})
+		if err != nil || len(out.Contents) == 0 || out.Contents[0].Owner == nil || aws.ToString(out.Contents[0].Owner.ID) == "" {
+			t.Errorf("ListObjectsV2(FetchOwner) = %+v, %v, want an owner ID on each object", out, err)
+		}
+	})
 }

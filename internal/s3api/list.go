@@ -28,6 +28,10 @@ type listing struct {
 // common prefix, and both count toward limit.
 func listEntries(objects []store.ObjectInfo, prefix, delimiter, after string, limit int) listing {
 	var l listing
+	// An empty page must not claim truncation: there is nothing to resume from.
+	if limit == 0 {
+		return l
+	}
 	// Resuming after a common prefix skips every key under it. A marker is a
 	// common prefix only when it would group as one in this listing.
 	skip := ""
@@ -111,7 +115,7 @@ func (h *handler) listPage(w http.ResponseWriter, r *http.Request, t target, p l
 		writeError(w, r, errInvalidBucketName)
 		return listing{}, false
 	}
-	objects, err := h.opts.Store.ListObjects(r.Context(), t.bucket, p.prefix, "")
+	objects, err := h.opts.Store.ListObjects(r.Context(), t.bucket, p.prefix, after)
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return listing{}, false
@@ -120,13 +124,14 @@ func (h *handler) listPage(w http.ResponseWriter, r *http.Request, t target, p l
 }
 
 func (h *handler) contentsXML(l listing, p listParams, withOwner bool) []listContent {
+	var own *owner
+	if withOwner {
+		o := h.bucketOwner()
+		own = &o
+	}
 	out := make([]listContent, 0, len(l.contents))
 	for _, o := range l.contents {
-		c := listContent{Key: p.encode(o.Key), LastModified: o.LastModified.UTC().Format(timeFormat), ETag: quoteETag(o.ETag), Size: o.Size, StorageClass: "STANDARD"}
-		if withOwner {
-			own := h.bucketOwner()
-			c.Owner = &own
-		}
+		c := listContent{Key: p.encode(o.Key), LastModified: o.LastModified.UTC().Format(timeFormat), ETag: quoteETag(o.ETag), Size: o.Size, StorageClass: "STANDARD", Owner: own}
 		out = append(out, c)
 	}
 	return out
@@ -181,7 +186,7 @@ func (h *handler) handleListObjectsV2(w http.ResponseWriter, r *http.Request, t 
 		Xmlns: s3Namespace, Name: t.bucket, Prefix: p.encode(p.prefix), Delimiter: p.encode(p.delimiter),
 		MaxKeys: p.limit, EncodingType: q.Get("encoding-type"), KeyCount: len(l.contents) + len(l.prefixes),
 		IsTruncated: l.truncated, ContinuationToken: token, StartAfter: p.encode(q.Get("start-after")),
-		Contents: h.contentsXML(l, p, q.Get("fetch-owner") == "true"), CommonPrefixes: prefixesXML(l, p),
+		Contents: h.contentsXML(l, p, strings.EqualFold(q.Get("fetch-owner"), "true")), CommonPrefixes: prefixesXML(l, p),
 	}
 	if l.truncated {
 		resp.NextContinuationToken = base64.RawURLEncoding.EncodeToString([]byte(l.last))
