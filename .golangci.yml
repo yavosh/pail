@@ -1,0 +1,82 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - nilerr
+    # Style rules from CLAUDE.md's Go Conventions, machine-enforced.
+    - revive
+    - nakedret
+    - bodyclose
+    - containedctx
+    - usetesting
+    - noctx
+    # Modern Go idioms. Same analyzers as Go 1.27's built-in `go fix`.
+    - modernize
+    # Go 1.13 error semantics: errors.Is/As over ==, %w over %v.
+    - errorlint
+    # Every log line must name its subsystem.
+    - forbidigo
+  settings:
+    forbidigo:
+      # A package-level slog call emits a line with no "component" attribute,
+      # so a backend cannot select the subsystem by field. Use the package's
+      # clog* helper instead.
+      forbid:
+        - pattern: '^slog\.(Info|Warn|Error|Debug|Log|LogAttrs|Default)$'
+          msg: use the package's clog* helper so the line carries a component
+    modernize:
+      disable:
+        # Rewrites short concatenation loops into strings.Builder, which
+        # reads worse for no measurable gain.
+        - stringsbuilder
+    errorlint:
+      comparison: true
+      asserts: true
+      errorf: true
+    misspell:
+      locale: US
+    errcheck:
+      check-blank: false
+    revive:
+      rules:
+        - name: indent-error-flow
+        - name: error-strings
+        - name: var-naming
+        - name: receiver-naming
+        - name: error-return
+        - name: errorf
+        - name: bare-return
+        - name: unexported-return
+        - name: context-as-argument
+          arguments:
+            # Test helpers idiomatically take *testing.T first.
+            - allowTypesBefore: "*testing.T"
+        - name: context-keys-type
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          # Tests log freely; the component rule is about production lines.
+          - forbidigo
+
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/yavosh/pail
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

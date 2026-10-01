@@ -1,0 +1,22 @@
+# Binaries (repo-root build output only — anchored so they never match cmd/pail/)
+/pail
+/bin/
+
+# Certs and keys (never commit)
+*.key
+*.crt
+*.pem
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code — ignore local config, but track shared skills.
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+
+# OS
+.DS_Store
+
+.worktrees/

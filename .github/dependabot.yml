@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Keep SHA-pinned GitHub Actions current: Dependabot bumps the pinned commit
+  # and its trailing "# vX" comment when a new release ships, so pinning for
+  # supply-chain safety does not mean silently missing security patches.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
