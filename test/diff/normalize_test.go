@@ -3,6 +3,9 @@ package diff
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -12,15 +15,19 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // exchange is one step's normalized result, as stored in a golden file.
 type exchange struct {
-	Step    string            `json:"step"`
-	Request string            `json:"request"`
-	Status  int               `json:"status"`
-	Headers map[string]string `json:"headers,omitempty"`
-	Body    string            `json:"body,omitempty"`
+	Step    string `json:"step"`
+	Request string `json:"request"`
+	// Fingerprint covers everything a step sends, so any change to the
+	// step makes its golden file stale.
+	Fingerprint string            `json:"fingerprint"`
+	Status      int               `json:"status"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	Body        string            `json:"body,omitempty"`
 }
 
 // golden is the recorded AWS behavior for one scenario.
@@ -53,14 +60,18 @@ var droppedElements = map[string]bool{"HostId": true, "RequestId": true}
 
 // normalize turns a raw response into a comparable exchange.
 func normalize(st step, bucket string, r response) exchange {
-	ex := exchange{Step: st.name, Request: describe(st), Status: r.status, Headers: map[string]string{}}
+	ex := exchange{Step: st.name, Request: describe(st), Fingerprint: fingerprint(st), Status: r.status, Headers: map[string]string{}}
 	body := strings.ReplaceAll(string(r.body), bucket, "{bucket}")
-	isError := false
-	if looksXML(r.header.Get("Content-Type"), body) {
+	isXML := looksXML(r.header.Get("Content-Type"), body)
+	switch {
+	case isXML:
 		var err error
-		if body, isError, err = canonicalXML(body); err != nil {
+		if body, _, err = canonicalXML(body); err != nil {
 			body = "unparsable XML: " + err.Error()
 		}
+	case !utf8.ValidString(body):
+		// JSON would replace invalid UTF-8, so binary bodies are stored encoded.
+		body = "base64:" + base64.StdEncoding.EncodeToString(r.body)
 	}
 	ex.Body = body
 	for _, h := range comparedHeaders {
@@ -78,14 +89,26 @@ func normalize(st step, bucket string, r response) exchange {
 			ex.Headers[h] = "<present>"
 		}
 	}
-	if isError {
-		// An error's length tracks its Message text, which is not compared.
+	if isXML || r.status >= 400 {
+		// XML formatting and error Message text differ between servers, and
+		// neither is compared, so their length is not either.
 		delete(ex.Headers, "Content-Length")
 	}
 	if len(ex.Headers) == 0 {
 		ex.Headers = nil
 	}
 	return ex
+}
+
+// fingerprint hashes everything a step sends.
+func fingerprint(st step) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%s\n%s\n%s\n%d\n", st.method, st.key, st.query, st.auth)
+	for _, k := range slices.Sorted(maps.Keys(st.header)) {
+		fmt.Fprintf(h, "%s: %s\n", k, st.header[k])
+	}
+	h.Write([]byte(st.body))
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // describe is the request line a reader sees in a golden file.

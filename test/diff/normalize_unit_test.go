@@ -2,6 +2,7 @@ package diff
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -126,5 +127,69 @@ func TestS3Escape(t *testing.T) {
 		if got := s3Escape(tt.in); got != tt.want {
 			t.Errorf("s3Escape(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+func TestNormalizeDropsUncomparedLengths(t *testing.T) {
+	tests := []struct {
+		name string
+		r    response
+	}{
+		{"xml success", response{status: http.StatusOK, header: http.Header{"Content-Type": {"application/xml"}, "Content-Length": {"120"}}, body: []byte("<LocationConstraint/>")}},
+		{"head error without body", response{status: http.StatusNotFound, header: http.Header{"Content-Length": {"243"}}}},
+	}
+	for _, tt := range tests {
+		if got := normalize(step{name: "s", method: http.MethodHead}, "b", tt.r); got.Headers["Content-Length"] != "" {
+			t.Errorf("%s: Content-Length = %q, want it dropped", tt.name, got.Headers["Content-Length"])
+		}
+	}
+}
+
+func TestNormalizeBinaryBody(t *testing.T) {
+	r := response{status: http.StatusOK, header: http.Header{}, body: []byte{0xff, 0xfe, 'a'}}
+	if got := normalize(step{name: "s", method: http.MethodGet}, "b", r); got.Body != "base64://5h" {
+		t.Errorf("body = %q, want %q", got.Body, "base64://5h")
+	}
+}
+
+func TestFingerprintCoversTheWholeRequest(t *testing.T) {
+	base := step{method: http.MethodGet, key: "k", header: map[string]string{"Range": "bytes=0-4"}}
+	variants := []step{
+		{method: http.MethodGet, key: "k", header: map[string]string{"Range": "bytes=0-2"}},
+		{method: http.MethodGet, key: "k", header: map[string]string{"Range": "bytes=0-4"}, body: "x"},
+		{method: http.MethodGet, key: "k", header: map[string]string{"Range": "bytes=0-4"}, auth: authNone},
+	}
+	for _, v := range variants {
+		if fingerprint(v) == fingerprint(base) {
+			t.Errorf("fingerprint(%+v) equals fingerprint(%+v), want different", v, base)
+		}
+	}
+}
+
+func TestFailureNeverEchoesTheBody(t *testing.T) {
+	r := response{status: http.StatusForbidden, body: []byte("<Error><Code>ExpiredToken</Code><Token-0>SECRET</Token-0></Error>")}
+	got := failure(r, nil)
+	if strings.Contains(got, "SECRET") || !strings.Contains(got, "ExpiredToken") {
+		t.Errorf("failure() = %q, want the status and code without the token", got)
+	}
+}
+
+func TestRedirectIsNotFollowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/elsewhere", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(srv.Close)
+	client := &http.Client{CheckRedirect: noRedirect}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("status = %d, want %d returned, not followed", resp.StatusCode, http.StatusTemporaryRedirect)
 	}
 }

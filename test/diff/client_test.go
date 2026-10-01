@@ -31,7 +31,6 @@ const (
 
 // target is one S3 implementation the suite talks to over HTTP.
 type target struct {
-	name   string
 	region string
 	creds  aws.Credentials
 	client *http.Client
@@ -116,10 +115,13 @@ func s3Escape(key string) string {
 	return b.String()
 }
 
-// cleanupBucket deletes every object, upload, and finally the bucket. It runs
-// only against buckets this run created, and logs instead of failing.
+// cleanupBucket deletes every object, upload, and finally the bucket. It logs
+// instead of failing, and never logs a raw error body: AWS can echo the token.
 func cleanupBucket(t *testing.T, tg *target, bucket string) {
 	t.Helper()
+	if !strings.HasPrefix(bucket, "pail-diff-") {
+		t.Fatalf("cleanup refuses bucket %q: not created by this suite", bucket)
+	}
 	ctx := context.Background()
 	for range 100 {
 		resp, err := tg.do(ctx, step{method: http.MethodGet, query: "list-type=2"}, bucket)
@@ -133,8 +135,10 @@ func cleanupBucket(t *testing.T, tg *target, bucket string) {
 			break
 		}
 		for _, c := range list.Contents {
-			if _, err := tg.do(ctx, step{method: http.MethodDelete, key: c.Key}, bucket); err != nil {
-				t.Logf("cleanup: delete %q: %v", c.Key, err)
+			resp, err := tg.do(ctx, step{method: http.MethodDelete, key: c.Key}, bucket)
+			if err != nil || resp.status != http.StatusNoContent {
+				t.Logf("cleanup: delete %q: %s", c.Key, failure(resp, err))
+				return
 			}
 		}
 	}
@@ -152,11 +156,16 @@ func cleanupBucket(t *testing.T, tg *target, bucket string) {
 		}
 	}
 	resp, err := tg.do(ctx, step{method: http.MethodDelete}, bucket)
+	if err != nil || resp.status != http.StatusNoContent && resp.status != http.StatusNotFound {
+		t.Logf("cleanup: delete bucket %s: %s", bucket, failure(resp, err))
+	}
+}
+
+// failure describes a failed cleanup call by status and S3 error code only.
+func failure(resp response, err error) string {
 	if err != nil {
-		t.Logf("cleanup: delete bucket %s: %v", bucket, err)
-		return
+		return err.Error()
 	}
-	if resp.status != http.StatusNoContent && resp.status != http.StatusNotFound {
-		t.Logf("cleanup: delete bucket %s: status %d: %s", bucket, resp.status, resp.body)
-	}
+	code, _, _ := canonicalXML(string(resp.body))
+	return fmt.Sprintf("status %d %s", resp.status, strings.TrimSpace(strings.ReplaceAll(code, "\n", " ")))
 }

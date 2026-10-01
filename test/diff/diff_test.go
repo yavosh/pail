@@ -8,13 +8,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -50,7 +50,10 @@ func TestDiff(t *testing.T) {
 		t.Fatalf("%s: %v", knownDiffsFile, err)
 	}
 
-	var mu sync.Mutex
+	names := map[string]bool{}
+	for _, sc := range scenarios() {
+		names[sc.name] = true
+	}
 	seen := map[string]bool{}
 	ran := map[string]bool{}
 	for _, sc := range scenarios() {
@@ -67,13 +70,12 @@ func TestDiff(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mu.Lock()
+			// ran is set only after replay returns, so a step that fails fatally
+			// does not also report its listed differences as stale.
+			got := replayScenario(t, tg, sc, want, known)
 			ran[sc.name] = true
-			mu.Unlock()
-			for _, key := range replayScenario(t, tg, sc, want, known) {
-				mu.Lock()
+			for _, key := range got {
 				seen[key] = true
-				mu.Unlock()
 			}
 		})
 	}
@@ -82,14 +84,11 @@ func TestDiff(t *testing.T) {
 		return
 	}
 	// A listed difference that no longer occurs fails, so the list stays current.
-	for _, key := range slices.Sorted(func(yield func(string) bool) {
-		for k := range known {
-			if !yield(k) {
-				return
-			}
-		}
-	}) {
+	for _, key := range slices.Sorted(maps.Keys(known)) {
 		scenarioName, _, _ := strings.Cut(key, "/")
+		if !names[scenarioName] {
+			t.Errorf("%s lists %q, but no scenario is named %q", knownDiffsFile, key, scenarioName)
+		}
 		if ran[scenarioName] && !seen[key] {
 			t.Errorf("%s lists %q, but that difference no longer occurs: remove the line", knownDiffsFile, key)
 		}
@@ -152,8 +151,8 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known ma
 	var seen []string
 	for i, st := range sc.steps {
 		w := want.Exchanges[i]
-		if w.Step != st.name || w.Request != describe(st) {
-			t.Fatalf("step %d is %q (%s) in the golden file and %q (%s) in the scenario: record it again", i, w.Step, w.Request, st.name, describe(st))
+		if w.Step != st.name || w.Request != describe(st) || w.Fingerprint != fingerprint(st) {
+			t.Fatalf("step %d %q (%s) changed since the golden file was recorded: record it again", i, st.name, describe(st))
 		}
 		resp, err := tg.do(t.Context(), st, bucket)
 		if err != nil {
@@ -161,13 +160,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known ma
 		}
 		got := normalize(st, bucket, resp)
 		diffs := compare(w, got)
-		for _, key := range slices.Sorted(func(yield func(string) bool) {
-			for k := range diffs {
-				if !yield(k) {
-					return
-				}
-			}
-		}) {
+		for _, key := range slices.Sorted(maps.Keys(diffs)) {
 			full := sc.name + "/" + key
 			if _, ok := known[full]; ok {
 				seen = append(seen, full)
@@ -197,11 +190,12 @@ func awsTarget(t *testing.T) *target {
 	if creds.AccessKeyID == "" || creds.SecretAccessKey == "" {
 		t.Fatal(`record mode needs AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY; for a profile, run eval "$(aws configure export-credentials --format env)"`)
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableCompression = true
 	return &target{
-		name:   "aws",
 		region: region,
 		creds:  creds,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: 30 * time.Second, Transport: transport, CheckRedirect: noRedirect},
 		scheme: "https",
 		host:   func(bucket string) string { return bucket + ".s3." + region + ".amazonaws.com" },
 	}
@@ -238,16 +232,23 @@ func pailTarget(t *testing.T) *target {
 	_, port, _ := net.SplitHostPort(addr)
 	dialer := &net.Dialer{}
 	return &target{
-		name:   "pail",
 		region: region,
 		creds:  aws.Credentials{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey},
 		client: &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, addr)
-			}},
+			Timeout:       30 * time.Second,
+			CheckRedirect: noRedirect,
+			Transport: &http.Transport{
+				DisableCompression: true,
+				DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+					return dialer.DialContext(ctx, network, addr)
+				},
+			},
 		},
 		scheme: "http",
 		host:   func(bucket string) string { return bucket + ".localhost:" + port },
 	}
 }
+
+// noRedirect returns a redirect as the response. Following it would resend a
+// request signed for another host and hide what the server answered.
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

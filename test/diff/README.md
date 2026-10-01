@@ -2,7 +2,9 @@
 
 This suite checks pail against AWS S3 as a black box. It talks to both over HTTP only.
 
-Each scenario in `scenarios_test.go` is a list of raw S3 requests. One SigV4 signer signs them, so AWS and pail receive the same requests. The suite does not use an SDK, because SDK retries and normalization would hide differences.
+Each scenario in `scenarios_test.go` is a list of raw S3 requests. One SigV4 signer signs them, so AWS and pail receive the same requests. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
+
+The signer writes a bare subresource such as `?location` as `?location=`, as the AWS SDKs do. Golden files show the scenario form.
 
 ## Replay
 
@@ -28,14 +30,21 @@ go test ./test/diff -record -run TestDiff -v
 - It never calls `ListBuckets`, so the golden files never contain your other buckets.
 - Review the golden file diff before you commit it.
 
-Record again after you add or change a scenario. Replay fails when a golden file does not match its scenario's steps.
+Record again after you add or change a scenario. Each golden step stores a fingerprint of its method, key, query, headers, body, and signing mode, so replay fails when a step changed since it was recorded.
+
+Check these steps by hand in a new recording:
+
+- `bucket-lifecycle/create-again`: `us-east-1` has legacy behavior for a repeated `CreateBucket` from the owner. It may answer 200 instead of `409 BucketAlreadyOwnedByYou`. Check which one was recorded.
+- `bucket-lifecycle/head-after-delete`: AWS deletes buckets with eventual consistency, so this step can flap. Record it again if it does.
+- Object writes: AWS adds default checksums, such as `x-amz-checksum-crc64nvme`. The suite compares them, so list them as known differences until pail computes them.
 
 ## What is compared
 
 - The status code.
 - The S3 error `Code`. The error `Message` and diagnostic fields are not compared.
 - A fixed list of headers, in `normalize_test.go`. `Last-Modified`, `x-amz-request-id`, and `x-amz-id-2` are compared for presence only.
-- The body. An XML body is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, and continuation tokens, are compared for presence only. Bucket names become `{bucket}`.
+- `Content-Length` only for object data. XML formatting and error messages differ between servers.
+- The body. A body that is not valid UTF-8 is stored as base64. An XML body is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, and continuation tokens, are compared for presence only. Bucket names become `{bucket}`.
 
 ## Known differences
 
