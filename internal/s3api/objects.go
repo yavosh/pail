@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/vfs"
 )
 
 const (
@@ -58,6 +59,10 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	userSize := 0
 	for name, values := range r.Header {
 		if suffix, ok := strings.CutPrefix(name, userMetaPrefix); ok {
+			if suffix == "" {
+				writeError(w, r, errInvalidArgument)
+				return
+			}
 			v := strings.Join(values, ",")
 			opts.Metadata[name] = v
 			userSize += len(suffix) + len(v)
@@ -67,8 +72,9 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, errMetadataTooLarge)
 		return
 	}
-	if s := r.Header.Get("Content-MD5"); s != "" {
-		sum, err := base64.StdEncoding.DecodeString(s)
+	// A present but empty Content-MD5 is invalid, not absent.
+	if values, ok := r.Header["Content-Md5"]; ok {
+		sum, err := base64.StdEncoding.DecodeString(values[0])
 		if err != nil || len(sum) != 16 {
 			writeError(w, r, errInvalidDigest)
 			return
@@ -97,60 +103,106 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 }
 
 func (h *handler) handleGetObject(w http.ResponseWriter, r *http.Request, t target) {
+	h.serveObject(w, r, t, true)
+}
+
+func (h *handler) handleHeadObject(w http.ResponseWriter, r *http.Request, t target) {
+	h.serveObject(w, r, t, false)
+}
+
+// serveObject answers GET and HEAD alike: conditions first, then the range,
+// and the object's stored headers only once the answer is a success.
+func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, withBody bool) {
 	if apiErr, ok := checkObjectTarget(t); !ok {
 		writeError(w, r, apiErr)
 		return
 	}
-	f, info, err := h.opts.Store.GetObject(r.Context(), t.bucket, t.key)
+	var (
+		f    vfs.File
+		info store.ObjectInfo
+		err  error
+	)
+	if withBody {
+		f, info, err = h.opts.Store.GetObject(r.Context(), t.bucket, t.key)
+	} else {
+		info, err = h.opts.Store.HeadObject(r.Context(), t.bucket, t.key)
+	}
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}
-	defer func() { _ = f.Close() }()
+	if f != nil {
+		defer func() { _ = f.Close() }()
+	}
 
-	if !h.writeObjectHeaders(w, r, info) {
+	etag := quoteETag(info.ETag)
+	lastModified := info.LastModified.UTC().Truncate(time.Second)
+	hdr := w.Header()
+	hdr.Set("ETag", etag)
+	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
+	switch checkConditions(r.Header, etag, lastModified) {
+	case http.StatusPreconditionFailed:
+		writeError(w, r, errPreconditionFailed)
+		return
+	case http.StatusNotModified:
+		// RFC 9110 requires the caching headers a 200 would have carried.
+		for _, name := range []string{"Cache-Control", "Expires"} {
+			if v := info.Metadata[name]; v != "" {
+				hdr.Set(name, v)
+			}
+		}
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
+
 	start, length, status := int64(0), info.Size, http.StatusOK
 	if spec := r.Header.Get("Range"); spec != "" {
 		first, last, ok, satisfiable := parseRange(spec, info.Size)
 		switch {
 		case ok && !satisfiable:
-			w.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(info.Size, 10))
+			hdr.Set("Content-Range", "bytes */"+strconv.FormatInt(info.Size, 10))
 			writeError(w, r, errInvalidRange)
 			return
 		case ok:
 			start, length, status = first, last-first+1, http.StatusPartialContent
-			w.Header().Set("Content-Range", "bytes "+strconv.FormatInt(first, 10)+"-"+strconv.FormatInt(last, 10)+"/"+strconv.FormatInt(info.Size, 10))
+			hdr.Set("Content-Range", "bytes "+strconv.FormatInt(first, 10)+"-"+strconv.FormatInt(last, 10)+"/"+strconv.FormatInt(info.Size, 10))
 		}
 	}
-	if _, err := f.Seek(start, io.SeekStart); err != nil {
-		writeError(w, r, toAPIError(err))
+	if f != nil {
+		if _, err := f.Seek(start, io.SeekStart); err != nil {
+			hdr.Del("Content-Range")
+			writeError(w, r, toAPIError(err))
+			return
+		}
+	}
+
+	setObjectHeaders(hdr, r, info)
+	hdr.Set("Content-Length", strconv.FormatInt(length, 10))
+	w.WriteHeader(status)
+	if f == nil {
 		return
 	}
-	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
-	w.WriteHeader(status)
 	if _, err := io.CopyN(w, f, length); err != nil {
 		// Headers are sent, so the client sees a short body; log the cause.
 		clogS3api().Warn("object body copy failed", "bucket", t.bucket, "error", err)
 	}
 }
 
-func (h *handler) handleHeadObject(w http.ResponseWriter, r *http.Request, t target) {
-	if apiErr, ok := checkObjectTarget(t); !ok {
-		writeError(w, r, apiErr)
-		return
+// setObjectHeaders sets the stored headers, metadata, and response-* overrides.
+func setObjectHeaders(hdr http.Header, r *http.Request, info store.ObjectInfo) {
+	hdr.Set("Accept-Ranges", "bytes")
+	for name, v := range info.Metadata {
+		hdr.Set(name, v)
 	}
-	info, err := h.opts.Store.HeadObject(r.Context(), t.bucket, t.key)
-	if err != nil {
-		writeError(w, r, toAPIError(err))
-		return
+	if hdr.Get("Content-Type") == "" {
+		hdr.Set("Content-Type", defaultType)
 	}
-	if !h.writeObjectHeaders(w, r, info) {
-		return
+	q := r.URL.Query()
+	for param, name := range responseOverrides {
+		if v := q.Get(param); v != "" {
+			hdr.Set(name, v)
+		}
 	}
-	w.Header().Set("Content-Length", strconv.FormatInt(info.Size, 10))
-	w.WriteHeader(http.StatusOK)
 }
 
 func (h *handler) handleDeleteObject(w http.ResponseWriter, r *http.Request, t target) {
@@ -165,53 +217,19 @@ func (h *handler) handleDeleteObject(w http.ResponseWriter, r *http.Request, t t
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// writeObjectHeaders evaluates the read conditions and sets the object's
-// headers. It returns false when it already answered 304 or 412.
-func (h *handler) writeObjectHeaders(w http.ResponseWriter, r *http.Request, info store.ObjectInfo) bool {
-	etag := quoteETag(info.ETag)
-	lastModified := info.LastModified.UTC().Truncate(time.Second)
-	hdr := w.Header()
-	hdr.Set("ETag", etag)
-	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
-
-	switch checkConditions(r.Header, etag, lastModified) {
-	case http.StatusPreconditionFailed:
-		writeError(w, r, errPreconditionFailed)
-		return false
-	case http.StatusNotModified:
-		w.WriteHeader(http.StatusNotModified)
-		return false
-	}
-
-	hdr.Set("Accept-Ranges", "bytes")
-	for name, v := range info.Metadata {
-		hdr.Set(name, v)
-	}
-	if hdr.Get("Content-Type") == "" {
-		hdr.Set("Content-Type", defaultType)
-	}
-	q := r.URL.Query()
-	for param, name := range responseOverrides {
-		if v := q.Get(param); v != "" {
-			hdr.Set(name, v)
-		}
-	}
-	return true
-}
-
 // checkConditions applies RFC 9110 precedence: If-Match decides over
 // If-Unmodified-Since, and If-None-Match over If-Modified-Since. It returns
 // 0 to serve the object, 304, or 412.
 func checkConditions(h http.Header, etag string, lastModified time.Time) int {
 	if im := h.Get("If-Match"); im != "" {
-		if !etagListMatches(im, etag) {
+		if !etagListMatches(im, etag, false) {
 			return http.StatusPreconditionFailed
 		}
 	} else if t, err := http.ParseTime(h.Get("If-Unmodified-Since")); err == nil && lastModified.After(t) {
 		return http.StatusPreconditionFailed
 	}
 	if inm := h.Get("If-None-Match"); inm != "" {
-		if etagListMatches(inm, etag) {
+		if etagListMatches(inm, etag, true) {
 			return http.StatusNotModified
 		}
 	} else if t, err := http.ParseTime(h.Get("If-Modified-Since")); err == nil && !lastModified.After(t) {
@@ -220,11 +238,17 @@ func checkConditions(h http.Header, etag string, lastModified time.Time) int {
 	return 0
 }
 
-// etagListMatches reports whether a comma-separated If-Match or If-None-Match
-// value names etag. S3 has no weak ETags, so W/ is ignored.
-func etagListMatches(list, etag string) bool {
+// etagListMatches reports whether a comma-separated ETag list names etag.
+// If-Match compares strongly, so a W/ tag never matches; If-None-Match is weak.
+func etagListMatches(list, etag string, weak bool) bool {
 	for v := range strings.SplitSeq(list, ",") {
-		v = strings.TrimPrefix(strings.TrimSpace(v), "W/")
+		v = strings.TrimSpace(v)
+		if after, isWeak := strings.CutPrefix(v, "W/"); isWeak {
+			if !weak {
+				continue
+			}
+			v = after
+		}
 		if v == "*" || v == etag || quoteETag(v) == etag {
 			return true
 		}
@@ -236,17 +260,21 @@ func etagListMatches(list, etag string) bool {
 // ok is false for anything S3 ignores, such as a malformed or multi-range
 // header; satisfiable is false when the range starts past the end.
 func parseRange(spec string, size int64) (first, last int64, ok, satisfiable bool) {
-	r, found := strings.CutPrefix(spec, "bytes=")
-	if !found || strings.Contains(r, ",") {
+	const unit = "bytes="
+	if len(spec) < len(unit) || !strings.EqualFold(spec[:len(unit)], unit) {
 		return 0, 0, false, false
 	}
-	a, b, found := strings.Cut(strings.TrimSpace(r), "-")
+	r := strings.TrimSpace(spec[len(unit):])
+	if strings.Contains(r, ",") {
+		return 0, 0, false, false
+	}
+	a, b, found := strings.Cut(r, "-")
 	if !found {
 		return 0, 0, false, false
 	}
 	if a == "" { // suffix: the last b bytes
-		n, err := strconv.ParseInt(b, 10, 64)
-		if err != nil || n < 0 {
+		n, ok := parseDigits(b)
+		if !ok {
 			return 0, 0, false, false
 		}
 		if n == 0 || size == 0 {
@@ -254,13 +282,13 @@ func parseRange(spec string, size int64) (first, last int64, ok, satisfiable boo
 		}
 		return max(size-n, 0), size - 1, true, true
 	}
-	first, err := strconv.ParseInt(a, 10, 64)
-	if err != nil || first < 0 {
+	first, ok = parseDigits(a)
+	if !ok {
 		return 0, 0, false, false
 	}
 	last = size - 1
 	if b != "" {
-		if last, err = strconv.ParseInt(b, 10, 64); err != nil || last < first {
+		if last, ok = parseDigits(b); !ok || last < first {
 			return 0, 0, false, false
 		}
 		last = min(last, size-1)
@@ -269,6 +297,16 @@ func parseRange(spec string, size int64) (first, last int64, ok, satisfiable boo
 		return 0, 0, true, false
 	}
 	return first, last, true, true
+}
+
+// parseDigits parses a non-negative decimal of digits only; RFC 9110 allows
+// no sign, which strconv would accept.
+func parseDigits(s string) (int64, bool) {
+	if s == "" || strings.Trim(s, "0123456789") != "" {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	return n, err == nil
 }
 
 // checkObjectTarget validates the bucket name and key for an object request.

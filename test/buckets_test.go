@@ -13,9 +13,6 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-// errorAs is errors.AsType, named for reading at call sites.
-func errorAs[T error](err error) (T, bool) { return errors.AsType[T](err) }
-
 // errorCode returns the S3 error code of err, or "" for none.
 func errorCode(err error) string {
 	if apiErr, ok := errors.AsType[smithy.APIError](err); ok {

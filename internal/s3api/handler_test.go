@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,6 +123,9 @@ func TestRouting(t *testing.T) {
 			status, _, body := do(t, srv, tt.method, tt.path, tt.host)
 			if status != tt.wantStatus {
 				t.Errorf("%s %s (host %q) status = %d, want %d", tt.method, tt.path, tt.host, status, tt.wantStatus)
+			}
+			if tt.wantStatus == http.StatusNotFound && !strings.Contains(string(body), "<Code>NoSuchBucket</Code>") {
+				t.Errorf("%s %s body = %q, want an S3 NoSuchBucket error, not a mux 404", tt.method, tt.path, body)
 			}
 			if tt.wantBody != nil && string(body) != *tt.wantBody {
 				t.Errorf("%s %s body = %q, want %q", tt.method, tt.path, body, *tt.wantBody)

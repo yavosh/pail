@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -191,7 +193,7 @@ func TestConditionalPutAndDelete(t *testing.T) {
 			}
 		}
 		_, err = c.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String("docs"), Key: aws.String("k")})
-		if _, ok := errorAs[*types.NoSuchKey](err); !ok {
+		if _, ok := errors.AsType[*types.NoSuchKey](err); !ok {
 			t.Errorf("GetObject after delete error = %v, want NoSuchKey", err)
 		}
 		_, err = c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String("docs"), Key: aws.String("k")})
@@ -220,6 +222,84 @@ func TestSpecialKeys(t *testing.T) {
 			if got, _ := getBody(t, c, &s3.GetObjectInput{Bucket: aws.String("keys"), Key: aws.String(key)}); got != "body of "+key {
 				t.Errorf("GetObject(%q) = %q, want %q", key, got, "body of "+key)
 			}
+		}
+	})
+}
+
+func TestObjectConditionsMatrix(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "docs")
+		put, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("docs"), Key: aws.String("k"), Body: strings.NewReader("hello world")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		past, future := aws.Time(time.Now().Add(-time.Hour)), aws.Time(time.Now().Add(time.Hour))
+		tests := []struct {
+			name                  string
+			ifMatch, ifNoneMatch  *string
+			ifModified, ifUnmodif *time.Time
+			want                  string // "" means 200
+		}{
+			{"if-none-match miss", nil, aws.String(`"nope"`), nil, nil, ""},
+			{"if-modified-since past", nil, nil, past, nil, ""},
+			{"if-unmodified-since future", nil, nil, nil, future, ""},
+			{"if-match hit beats if-unmodified-since past", put.ETag, nil, nil, past, ""},
+			{"if-none-match miss beats if-modified-since future", nil, aws.String(`"nope"`), future, nil, ""},
+			{"if-none-match hit with if-modified-since past", nil, put.ETag, past, nil, "NotModified"},
+		}
+		for _, tt := range tests {
+			get := &s3.GetObjectInput{Bucket: aws.String("docs"), Key: aws.String("k"), IfMatch: tt.ifMatch, IfNoneMatch: tt.ifNoneMatch, IfModifiedSince: tt.ifModified, IfUnmodifiedSince: tt.ifUnmodif}
+			out, err := c.GetObject(ctx, get)
+			if err == nil {
+				out.Body.Close()
+			}
+			if code := errorCode(err); code != tt.want {
+				t.Errorf("GetObject %s error = %v, want %q", tt.name, err, tt.want)
+			}
+		}
+
+		head := func(f func(*s3.HeadObjectInput)) (*s3.HeadObjectOutput, error) {
+			in := &s3.HeadObjectInput{Bucket: aws.String("docs"), Key: aws.String("k")}
+			f(in)
+			return c.HeadObject(ctx, in)
+		}
+		if _, err := head(func(i *s3.HeadObjectInput) { i.IfNoneMatch = put.ETag }); errorCode(err) != "NotModified" {
+			t.Errorf("HeadObject If-None-Match hit error = %v, want NotModified", err)
+		}
+		if _, err := head(func(i *s3.HeadObjectInput) { i.IfMatch = aws.String(`"nope"`) }); errorCode(err) != "PreconditionFailed" {
+			t.Errorf("HeadObject If-Match miss error = %v, want PreconditionFailed", err)
+		}
+		out, err := head(func(i *s3.HeadObjectInput) { i.Range = aws.String("bytes=0-4") })
+		if err != nil || aws.ToInt64(out.ContentLength) != 5 || aws.ToString(out.ContentRange) != "bytes 0-4/11" {
+			t.Errorf("HeadObject Range 0-4 = length %d, range %q, %v, want 5, bytes 0-4/11", aws.ToInt64(out.ContentLength), aws.ToString(out.ContentRange), err)
+		}
+	})
+}
+
+func TestObjectHeadersAndLimits(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "docs")
+		expires := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+		_, err := c.PutObject(ctx, &s3.PutObjectInput{
+			Bucket: aws.String("docs"), Key: aws.String("k"), Body: strings.NewReader("x"),
+			ContentEncoding: aws.String("identity"), Expires: aws.Time(expires),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String("docs"), Key: aws.String("k")})
+		if err != nil || aws.ToString(out.ContentEncoding) != "identity" || aws.ToString(out.ExpiresString) != expires.Format(http.TimeFormat) {
+			t.Errorf("HeadObject = encoding %q, expires %q, %v, want identity, %s", aws.ToString(out.ContentEncoding), aws.ToString(out.ExpiresString), err, expires.Format(http.TimeFormat))
+		}
+
+		longest := strings.Repeat("k", 1024)
+		if _, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("docs"), Key: aws.String(longest), Body: strings.NewReader("x")}); err != nil {
+			t.Errorf("PutObject with a 1024-byte key error = %v", err)
+		}
+		if _, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("docs"), Key: aws.String(longest + "k"), Body: strings.NewReader("x")}); errorCode(err) != "KeyTooLongError" {
+			t.Errorf("PutObject with a 1025-byte key error = %v, want KeyTooLongError", err)
 		}
 	})
 }
