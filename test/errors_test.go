@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -14,66 +13,96 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-func TestUnsignedRequestIsDenied(t *testing.T) {
-	p := startPail(t)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+p.addr+"/bkt?list-type=2", nil)
+// get sends an unsigned GET through p's client and returns the status and body.
+func get(t *testing.T, p *pail, url string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), "<Code>AccessDenied</Code>") {
-		t.Errorf("unsigned GET /bkt = %d %s, want 403 AccessDenied", resp.StatusCode, body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(body)
+}
+
+func TestUnsignedRequestIsDenied(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, p *pail, st style, _ *s3.Client) {
+		url := p.bucketURL(st, "bkt") + "/?list-type=2"
+		if status, body := get(t, p, url); status != http.StatusForbidden || !strings.Contains(body, "<Code>AccessDenied</Code>") {
+			t.Errorf("unsigned GET %s = %d %s, want 403 AccessDenied", url, status, body)
+		}
+	})
+}
+
+// TestVirtualHostedRouting proves the server routes by host: /_pail/health on a
+// bucket host is an S3 key, so it needs a signature, while path-style it is
+// pail's open health endpoint.
+func TestVirtualHostedRouting(t *testing.T) {
+	p := startPail(t)
+	tests := []struct {
+		url        string
+		wantStatus int
+	}{
+		{"http://localhost:" + p.port + "/_pail/health", http.StatusOK},
+		{"http://bkt.localhost:" + p.port + "/_pail/health", http.StatusForbidden},
+	}
+	for _, tt := range tests {
+		if status, body := get(t, p, tt.url); status != tt.wantStatus {
+			t.Errorf("unsigned GET %s = %d %s, want %d", tt.url, status, body, tt.wantStatus)
+		}
 	}
 }
 
 // TestSDKParsesErrors proves the SDK reads pail's XML errors: a signed call to
 // an operation that does not exist yet surfaces its S3 code.
 func TestSDKParsesErrors(t *testing.T) {
-	forEachStyle(t, func(t *testing.T, c *s3.Client) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
 		_, err := c.GetBucketLocation(context.Background(), &s3.GetBucketLocationInput{Bucket: aws.String("bkt")})
-		var apiErr smithy.APIError
-		if !errors.As(err, &apiErr) || apiErr.ErrorCode() != "NotImplemented" {
+		apiErr, ok := errors.AsType[smithy.APIError](err)
+		if !ok || apiErr.ErrorCode() != "NotImplemented" {
 			t.Errorf("GetBucketLocation error = %v, want an API error with code NotImplemented", err)
 		}
 	})
 }
 
-// roundTripFunc adapts a function to http.RoundTripper.
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-// TestAddressingStyles checks the host each style sends, so the virtual-hosted
-// runs really exercise virtual-hosted routing.
-func TestAddressingStyles(t *testing.T) {
+// TestClientSettings checks what the SDK client sends: the host for each
+// style, and the default checksum headers users' clients send.
+func TestClientSettings(t *testing.T) {
 	p := startPail(t)
-	_, port, _ := net.SplitHostPort(p.addr)
 	tests := []struct {
 		st       style
 		wantHost string
 	}{
-		{styles[0], "localhost:" + port},
-		{styles[1], "bkt.localhost:" + port},
+		{styles[0], "localhost:" + p.port},
+		{styles[1], "bkt.localhost:" + p.port},
 	}
 	for _, tt := range tests {
-		var host string
+		rec := &headerRecorder{}
 		c := p.clientWith(tt.st, func(next http.RoundTripper) http.RoundTripper {
-			return roundTripFunc(func(r *http.Request) (*http.Response, error) {
-				host = r.Host
-				if host == "" {
-					host = r.URL.Host
-				}
-				return next.RoundTrip(r)
-			})
+			rec.next = next
+			return rec
 		})
-		_, _ = c.GetBucketLocation(context.Background(), &s3.GetBucketLocationInput{Bucket: aws.String("bkt")})
-		if host != tt.wantHost {
-			t.Errorf("%s request host = %q, want %q", tt.st.name, host, tt.wantHost)
+		ctx := context.Background()
+		_, _ = c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("bkt"), Key: aws.String("k"), Body: strings.NewReader("hello")})
+		_, _ = c.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String("bkt"), Key: aws.String("k")})
+		if rec.host != tt.wantHost {
+			t.Errorf("%s request host = %q, want %q", tt.st.name, rec.host, tt.wantHost)
+		}
+		if len(rec.headers) != 2 {
+			t.Fatalf("%s: %d requests recorded, want 2", tt.st.name, len(rec.headers))
+		}
+		if got := rec.headers[0].Get("X-Amz-Checksum-Crc32"); got == "" {
+			t.Errorf("%s PutObject sent no x-amz-checksum-crc32, want the SDK default checksum", tt.st.name)
+		}
+		if got := rec.headers[1].Get("X-Amz-Checksum-Mode"); got != "ENABLED" {
+			t.Errorf("%s GetObject x-amz-checksum-mode = %q, want ENABLED", tt.st.name, got)
 		}
 	}
 }

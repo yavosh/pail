@@ -51,8 +51,10 @@ make lint            # golangci-lint
 ## Client tests
 
 - Every S3 feature adds aws-sdk-go-v2 tests in `test/`. Use `forEachStyle`, so each test runs path-style and virtual-hosted.
-- Keep the SDK's default settings, such as checksums. A test that must change one names the issue that removes the need.
-- aws-sdk-go-v2 is a test-only dependency. Check that the `pail` binary does not link it: `go version -m ./pail | grep aws` prints nothing.
+- Keep the SDK's default settings, such as checksums. The harness sets them explicitly, because `s3.New` skips the config loader that would. It turns retries off, so a test sees the first answer. Any other change names the issue that removes the need.
+- Use lowercase bucket names without dots. The SDK silently falls back to path-style for other names, so the virtual-hosted run would not test virtual-hosted routing.
+- Send raw or presigned requests through `pail.httpClient`. It routes every host to the test server, with no DNS or proxy.
+- aws-sdk-go-v2 is a test-only dependency. CI checks that `go list -deps ./cmd/pail` names no `aws` or `smithy` package.
 
 ## Documentation
 
