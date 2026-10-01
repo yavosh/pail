@@ -188,13 +188,14 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		method, rng string
-		wantStatus  int
-		wantCR      string
+		method, rng, ifMatch string
+		wantStatus           int
+		wantCR               string
 	}{
-		{http.MethodGet, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, ""},
-		{http.MethodHead, "bytes=100-200", http.StatusRequestedRangeNotSatisfiable, ""},
-		{http.MethodHead, "bytes=0-4", http.StatusPartialContent, "bytes 0-4/11"},
+		{http.MethodGet, "bytes=100-200", "", http.StatusRequestedRangeNotSatisfiable, ""},
+		{http.MethodHead, "bytes=100-200", "", http.StatusRequestedRangeNotSatisfiable, ""},
+		{http.MethodGet, "bytes=0-4", `"nope"`, http.StatusPreconditionFailed, ""},
+		{http.MethodHead, "bytes=0-4", "", http.StatusPartialContent, "bytes 0-4/11"},
 	}
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(ctx, tt.method, srv.URL+"/bkt/k", nil)
@@ -202,6 +203,9 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.Header.Set("Range", tt.rng)
+		if tt.ifMatch != "" {
+			req.Header.Set("If-Match", tt.ifMatch)
+		}
 		req.Header.Set("Accept-Encoding", "identity")
 		signRequest(t, req, time.Now())
 		resp, err := http.DefaultClient.Do(req)
@@ -213,7 +217,8 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 			t.Errorf("%s Range %s = %d %q, want %d %q", tt.method, tt.rng, resp.StatusCode, resp.Header.Get("Content-Range"), tt.wantStatus, tt.wantCR)
 		}
 		if tt.wantStatus >= 400 {
-			for _, h := range []string{"Content-Encoding", "Cache-Control", "X-Amz-Meta-Color"} {
+			// As recorded from AWS: an error carries no object headers at all.
+			for _, h := range []string{"Content-Encoding", "Cache-Control", "X-Amz-Meta-Color", "ETag", "Last-Modified"} {
 				if v := resp.Header.Get(h); v != "" {
 					t.Errorf("%s Range %s error response has %s: %q, want none", tt.method, tt.rng, h, v)
 				}
@@ -236,8 +241,11 @@ func TestErrorResponsesCarryNoObjectHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotModified || resp.Header.Get("Cache-Control") != "max-age=3600" {
-		t.Errorf("GET If-None-Match * = %d, Cache-Control %q, want 304, max-age=3600", resp.StatusCode, resp.Header.Get("Cache-Control"))
+	if resp.StatusCode != http.StatusNotModified || resp.Header.Get("Cache-Control") != "max-age=3600" || resp.Header.Get("X-Amz-Meta-Color") != "blue" || resp.Header.Get("ETag") == "" {
+		t.Errorf("GET If-None-Match * = %d, Cache-Control %q, X-Amz-Meta-Color %q, ETag %q, want 304 with all three", resp.StatusCode, resp.Header.Get("Cache-Control"), resp.Header.Get("X-Amz-Meta-Color"), resp.Header.Get("ETag"))
+	}
+	if v := resp.Header.Get("Content-Encoding"); v != "" {
+		t.Errorf("GET If-None-Match * Content-Encoding = %q, want none: AWS sends no content headers with a 304", v)
 	}
 }
 

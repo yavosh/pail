@@ -143,7 +143,8 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		writeError(w, r, errPreconditionFailed) // AWS sends no object headers with it
 		return
 	case http.StatusNotModified:
-		// As on AWS: the validators, the caching headers, and user metadata.
+		// AWS sends the validators, Cache-Control, and user metadata; RFC 9110
+		// adds Expires.
 		hdr.Set("ETag", etag)
 		hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 		for name, v := range info.Metadata {

@@ -63,25 +63,22 @@ func (h *handler) routes() {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// AWS rejects a path with a ".." segment before S3 sees it: a bare 400
-	// with no request ID. Matching it keeps such keys from working only here.
-	if slices.Contains(strings.Split(r.URL.EscapedPath(), "/"), "..") {
-		w.WriteHeader(http.StatusBadRequest)
-		clogS3api().Info("request", "method", r.Method, "op", "", "bucket", "", "status", http.StatusBadRequest, "bytes", 0, "duration", time.Duration(0))
-		return
-	}
 	start := time.Now()
-	w.Header().Set("x-amz-request-id", strings.ToUpper(hex.EncodeToString(randomBytes(8))))
-	w.Header().Set("x-amz-id-2", base64.StdEncoding.EncodeToString(randomBytes(32)))
 	rec := &recorder{ResponseWriter: w, status: http.StatusOK}
-
 	t := parseTarget(r, h.opts.Domain)
 	var op operation
-	if !t.virtualHost && strings.HasPrefix(r.URL.Path, "/_pail/") {
+	if slices.Contains(strings.Split(r.URL.EscapedPath(), "/"), "..") {
+		// AWS's front end answers a literal ".." segment with a bare 400 before
+		// S3 sees it, so no request ID. Percent-encoded dots are not checked.
+		op, t = "", target{}
+		rec.WriteHeader(http.StatusBadRequest)
+	} else if !t.virtualHost && strings.HasPrefix(r.URL.Path, "/_pail/") {
 		// "_" is not allowed in bucket names, so path-style /_pail/ is never a bucket.
 		op, t = "_pail", target{}
+		setRequestIDs(rec)
 		h.internal.ServeHTTP(rec, r)
 	} else {
+		setRequestIDs(rec)
 		op = resolve(r.Method, t, r.URL.Query(), r.Header)
 		if (op == opListObjects || op == opListObjectsV2) && h.opts.Store != nil {
 			// AWS names the region on listings of a bucket that exists, even on an auth error.
@@ -100,6 +97,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	clogS3api().Info("request", "method", r.Method, "op", op, "bucket", t.bucket,
 		"status", rec.status, "bytes", rec.bytes, "duration", time.Since(start))
+}
+
+func setRequestIDs(w http.ResponseWriter) {
+	w.Header().Set("x-amz-request-id", strings.ToUpper(hex.EncodeToString(randomBytes(8))))
+	w.Header().Set("x-amz-id-2", base64.StdEncoding.EncodeToString(randomBytes(32)))
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {

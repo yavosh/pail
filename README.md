@@ -26,7 +26,7 @@ Supported operations:
 
 pail serves one region, `--region`. A `CreateBucket` with another region's `LocationConstraint` fails. Re-creating a bucket you already own succeeds in `us-east-1`, as AWS's legacy behavior there, and answers `409 BucketAlreadyOwnedByYou` in other regions.
 
-As on AWS, a request path with a `..` segment gets a bare `400 Bad Request`, so such keys fail locally the way they fail on S3.
+As on AWS, a request path with a literal `..` segment gets a bare `400 Bad Request`. Percent-encoded dots, such as `%2E%2E`, are not checked. An object with a `..` key that an older pail stored is now reachable only through the encoded form.
 
 ## Authentication
 

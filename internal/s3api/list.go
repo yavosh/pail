@@ -77,19 +77,19 @@ type commonPrefix struct {
 // listParams are the query parameters both listing versions share.
 type listParams struct {
 	prefix, delimiter string
-	maxKeys           int // as requested; AWS echoes it even above the page limit
+	requested         int // max-keys as sent; AWS echoes it even above the page limit
 	limit             int
 	encode            func(string) string
 }
 
 func parseListParams(q url.Values) (listParams, bool) {
-	p := listParams{prefix: q.Get("prefix"), delimiter: q.Get("delimiter"), maxKeys: maxKeys, limit: maxKeys, encode: func(s string) string { return s }}
+	p := listParams{prefix: q.Get("prefix"), delimiter: q.Get("delimiter"), requested: maxKeys, limit: maxKeys, encode: func(s string) string { return s }}
 	if s := q.Get("max-keys"); s != "" {
 		n, err := strconv.Atoi(s)
 		if err != nil || n < 0 {
 			return p, false
 		}
-		p.maxKeys, p.limit = n, min(n, maxKeys)
+		p.requested, p.limit = n, min(n, maxKeys)
 	}
 	switch q.Get("encoding-type") {
 	case "":
@@ -176,7 +176,7 @@ func (h *handler) handleListObjectsV2(w http.ResponseWriter, r *http.Request, t 
 	}
 	resp := response{
 		Xmlns: s3Namespace, Name: t.bucket, Prefix: p.encode(p.prefix), Delimiter: p.encode(p.delimiter),
-		MaxKeys: p.maxKeys, EncodingType: q.Get("encoding-type"), KeyCount: len(l.contents) + len(l.prefixes),
+		MaxKeys: p.requested, EncodingType: q.Get("encoding-type"), KeyCount: len(l.contents) + len(l.prefixes),
 		IsTruncated: l.truncated, ContinuationToken: token, StartAfter: p.encode(q.Get("start-after")),
 		Contents: h.contentsXML(l, p, strings.EqualFold(q.Get("fetch-owner"), "true")), CommonPrefixes: prefixesXML(l, p),
 	}
@@ -215,7 +215,7 @@ func (h *handler) handleListObjects(w http.ResponseWriter, r *http.Request, t ta
 	}
 	resp := response{
 		Xmlns: s3Namespace, Name: t.bucket, Prefix: p.encode(p.prefix), Marker: p.encode(marker),
-		Delimiter: p.encode(p.delimiter), MaxKeys: p.maxKeys, EncodingType: q.Get("encoding-type"),
+		Delimiter: p.encode(p.delimiter), MaxKeys: p.requested, EncodingType: q.Get("encoding-type"),
 		IsTruncated: l.truncated, Contents: h.contentsXML(l, p, true), CommonPrefixes: prefixesXML(l, p),
 	}
 	// AWS sends NextMarker only with a delimiter; without one, clients resume

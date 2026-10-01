@@ -48,6 +48,7 @@ func TestListEntries(t *testing.T) {
 		{"resume after a key inside a prefix listing", "dir/", "/", "dir/", 1000, []string{"dir/x"}, []string{"dir/y/"}, false, "dir/y/"},
 		{"start after a key", "", "", "dir/x", 1000, []string{"dir/y/z", "e-1-x", "e-1-y", "e-2"}, nil, false, "e-2"},
 		{"exact page is not truncated", "a/c/", "", "", 2, []string{"a/c/d", "a/c/e"}, nil, false, "a/c/e"},
+		{"start after a key inside a prefix skips the prefix", "", "/", "a/b", 1000, []string{"b", "e-1-x", "e-1-y", "e-2"}, []string{"dir/"}, false, "e-2"},
 		{"zero limit", "", "", "", 0, nil, nil, false, ""},
 	}
 	for _, tt := range tests {
