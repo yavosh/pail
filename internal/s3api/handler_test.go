@@ -135,8 +135,7 @@ func TestRouting(t *testing.T) {
 }
 
 func TestRequestIDs(t *testing.T) {
-	srv := httptest.NewServer(New(testOptions("")))
-	t.Cleanup(srv.Close)
+	srv, _ := storeServer(t, "")
 
 	var ids []string
 	for _, path := range []string{"/_pail/health", "/bkt"} {

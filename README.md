@@ -21,6 +21,7 @@ pail stops cleanly on SIGINT or SIGTERM.
 Supported operations:
 
 - Buckets: `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, and `GetBucketLocation`. Bucket names follow the AWS general-purpose naming rules.
+- Listing: `ListObjectsV2` and `ListObjects`, with `prefix`, `delimiter`, pagination, `fetch-owner`, and `encoding-type=url`. aws-sdk-go-v2 leaves `encoding-type=url` keys encoded; decode them with `url.QueryUnescape`.
 - Objects: `PutObject`, `GetObject`, `HeadObject`, and `DeleteObject`. They support system and `x-amz-meta-*` metadata, `Content-MD5`, a single `Range`, the `If-*` read conditions, `If-None-Match: *` and `If-Match` on writes, and the `response-*` overrides. Objects are limited to 5 GiB, keys to 1024 bytes, and user metadata to 2 KB, as on AWS.
 
 pail serves one region, `--region`. A `CreateBucket` with another region's `LocationConstraint` fails, and creating a bucket you already own answers `409 BucketAlreadyOwnedByYou`.

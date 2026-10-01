@@ -28,6 +28,7 @@ type Store interface {
 	GetObject(ctx context.Context, bucket, key string) (vfs.File, store.ObjectInfo, error)
 	HeadObject(ctx context.Context, bucket, key string) (store.ObjectInfo, error)
 	DeleteObject(ctx context.Context, bucket, key string) error
+	ListObjects(ctx context.Context, bucket, prefix, startAfter string) ([]store.ObjectInfo, error)
 }
 
 const s3Namespace = "http://s3.amazonaws.com/doc/2006-03-01/"
