@@ -66,7 +66,7 @@ func TestHeadErrorHasNoBody(t *testing.T) {
 }
 
 func TestRouting(t *testing.T) {
-	srv := httptest.NewServer(New(Options{Domain: "localhost"}))
+	srv := httptest.NewServer(New(Options{Domain: "localhost:9000"}))
 	t.Cleanup(srv.Close)
 
 	tests := []struct {
@@ -75,13 +75,14 @@ func TestRouting(t *testing.T) {
 		path       string
 		host       string
 		wantStatus int
-		wantBody   string
+		wantBody   *string // nil skips the body check
 	}{
-		{"unclean path is not redirected", http.MethodGet, "/bkt/a//b", "", http.StatusNotImplemented, ""},
-		{"dot segment is not redirected", http.MethodGet, "/bkt/../x", "", http.StatusNotImplemented, ""},
-		{"health", http.MethodGet, "/_pail/health", "", http.StatusOK, "ok\n"},
-		{"health head", http.MethodHead, "/_pail/health", "", http.StatusOK, ""},
-		{"virtual-hosted _pail is a key", http.MethodGet, "/_pail/health", "bkt.localhost", http.StatusNotImplemented, ""},
+		{"unclean path is not redirected", http.MethodGet, "/bkt/a//b", "", http.StatusNotImplemented, nil},
+		{"dot segment is not redirected", http.MethodGet, "/bkt/../x", "", http.StatusNotImplemented, nil},
+		{"health", http.MethodGet, "/_pail/health", "", http.StatusOK, new("ok\n")},
+		{"health head", http.MethodHead, "/_pail/health", "", http.StatusOK, new("")},
+		{"virtual-hosted _pail is a key", http.MethodGet, "/_pail/health", "bkt.localhost", http.StatusNotImplemented, nil},
+		{"domain with port still matches", http.MethodGet, "/_pail/health", "bkt.localhost:9000", http.StatusNotImplemented, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -89,8 +90,8 @@ func TestRouting(t *testing.T) {
 			if status != tt.wantStatus {
 				t.Errorf("%s %s (host %q) status = %d, want %d", tt.method, tt.path, tt.host, status, tt.wantStatus)
 			}
-			if tt.wantBody != "" && string(body) != tt.wantBody {
-				t.Errorf("%s %s body = %q, want %q", tt.method, tt.path, body, tt.wantBody)
+			if tt.wantBody != nil && string(body) != *tt.wantBody {
+				t.Errorf("%s %s body = %q, want %q", tt.method, tt.path, body, *tt.wantBody)
 			}
 		})
 	}
@@ -110,5 +111,14 @@ func TestRequestIDs(t *testing.T) {
 	}
 	if ids[0] == ids[1] {
 		t.Errorf("two requests share x-amz-request-id %q, want unique", ids[0])
+	}
+}
+
+func TestRecorderKeepsFirstStatus(t *testing.T) {
+	rec := &recorder{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
+	rec.WriteHeader(http.StatusNotFound)
+	rec.WriteHeader(http.StatusInternalServerError)
+	if rec.status != http.StatusNotFound {
+		t.Errorf("WriteHeader(404) then WriteHeader(500): status = %d, want %d", rec.status, http.StatusNotFound)
 	}
 }

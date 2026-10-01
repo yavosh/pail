@@ -34,6 +34,8 @@ func TestParseTarget(t *testing.T) {
 		{"host equals domain", "localhost:9000", "/bkt/k", "localhost", target{bucket: "bkt", key: "k"}},
 		{"ip host with domain", "127.0.0.1:9000", "/bkt/k", "localhost", target{bucket: "bkt", key: "k"}},
 		{"domain off", "bkt.localhost:9000", "/b2/k", "", target{bucket: "b2", key: "k"}},
+		{"virtual host trailing dot", "bkt.localhost.:9000", "/k", "localhost", target{bucket: "bkt", key: "k", virtualHost: true}},
+		{"empty bucket segment", "127.0.0.1:9000", "//k", "", target{key: "k"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -42,6 +44,22 @@ func TestParseTarget(t *testing.T) {
 				t.Errorf("parseTarget(host %q, path %q, domain %q) = %+v, want %+v", tt.host, tt.path, tt.domain, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNormalizeDomain(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"", ""},
+		{"localhost", "localhost"},
+		{".localhost", "localhost"},
+		{"localhost.", "localhost"},
+		{"LocalHost:9000", "localhost"},
+		{"s3.example.com", "s3.example.com"},
+	}
+	for _, tt := range tests {
+		if got := normalizeDomain(tt.in); got != tt.want {
+			t.Errorf("normalizeDomain(%q) = %q, want %q", tt.in, got, tt.want)
+		}
 	}
 }
 
@@ -58,6 +76,7 @@ func TestResolve(t *testing.T) {
 	}{
 		{http.MethodGet, target{}, "", nil, opListBuckets},
 		{http.MethodPut, target{}, "", nil, ""},
+		{http.MethodGet, target{key: "k"}, "", nil, ""},
 		{http.MethodPut, bucket, "", nil, opCreateBucket},
 		{http.MethodHead, bucket, "", nil, opHeadBucket},
 		{http.MethodDelete, bucket, "", nil, opDeleteBucket},

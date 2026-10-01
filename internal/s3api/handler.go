@@ -24,6 +24,7 @@ type handler struct {
 
 // New returns the HTTP handler for the S3 API and pail's /_pail/ endpoints.
 func New(opts Options) http.Handler {
+	opts.Domain = normalizeDomain(opts.Domain)
 	h := &handler{opts: opts, internal: http.NewServeMux()}
 	h.routes()
 	return h
@@ -46,7 +47,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var op operation
 	if !t.virtualHost && strings.HasPrefix(r.URL.Path, "/_pail/") {
 		// "_" is not allowed in bucket names, so path-style /_pail/ is never a bucket.
-		op = "_pail"
+		op, t = "_pail", target{}
 		h.internal.ServeHTTP(rec, r)
 	} else {
 		op = resolve(r.Method, t, r.URL.Query(), r.Header)
@@ -76,16 +77,21 @@ func randomBytes(n int) []byte {
 // recorder captures the status and body size for the access log.
 type recorder struct {
 	http.ResponseWriter
-	status int
-	bytes  int
+	status      int
+	bytes       int
+	wroteHeader bool
 }
 
+// WriteHeader records only the first status, the one net/http sends.
 func (rec *recorder) WriteHeader(status int) {
-	rec.status = status
+	if !rec.wroteHeader {
+		rec.status, rec.wroteHeader = status, true
+	}
 	rec.ResponseWriter.WriteHeader(status)
 }
 
 func (rec *recorder) Write(b []byte) (int, error) {
+	rec.wroteHeader = true
 	n, err := rec.ResponseWriter.Write(b)
 	rec.bytes += n
 	return n, err

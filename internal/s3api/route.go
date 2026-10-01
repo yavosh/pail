@@ -56,17 +56,27 @@ type target struct {
 // parseTarget reads the bucket from the host when it is a subdomain of domain,
 // else from the first path segment. r.URL.Path is decoded but never cleaned.
 func parseTarget(r *http.Request, domain string) target {
-	host := strings.ToLower(r.Host)
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
+	host := strings.TrimSuffix(hostOnly(strings.ToLower(r.Host)), ".")
 	if domain != "" {
-		if bucket, ok := strings.CutSuffix(host, "."+strings.ToLower(domain)); ok && bucket != "" {
+		if bucket, ok := strings.CutSuffix(host, "."+domain); ok && bucket != "" {
 			return target{bucket: bucket, key: strings.TrimPrefix(r.URL.Path, "/"), virtualHost: true}
 		}
 	}
 	bucket, key, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
 	return target{bucket: bucket, key: key}
+}
+
+// hostOnly drops the port from host, if there is one.
+func hostOnly(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
+	}
+	return host
+}
+
+// normalizeDomain lets --domain be given as "localhost", ".localhost", or "localhost:9000".
+func normalizeDomain(domain string) string {
+	return strings.Trim(hostOnly(strings.ToLower(domain)), ".")
 }
 
 // resolve is pail's whole S3 operation table. It returns "" for anything
@@ -95,7 +105,7 @@ func resolve(method string, t target, q url.Values, h http.Header) operation {
 
 	switch {
 	case t.bucket == "":
-		if method == http.MethodGet && only() {
+		if method == http.MethodGet && only() && t.key == "" {
 			return opListBuckets
 		}
 	case t.key == "":
