@@ -38,6 +38,9 @@ func New(cfg config.Config) *Server {
 // Listen opens the data directory and binds the configured address, so a bad
 // data directory or a port conflict fails here, before serving.
 func (s *Server) Listen(ctx context.Context) error {
+	if s.ln != nil {
+		return errors.New("listen: already listening")
+	}
 	fsys, err := localdisk.Open(s.cfg.DataDir)
 	if err != nil {
 		return err
@@ -47,15 +50,13 @@ func (s *Server) Listen(ctx context.Context) error {
 		_ = fsys.Close()
 		return fmt.Errorf("open store in %s: %w", s.cfg.DataDir, err)
 	}
-	s.fs, s.store = fsys, st
-
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", s.cfg.Addr)
 	if err != nil {
 		_ = fsys.Close()
 		return fmt.Errorf("listen on %s: %w", s.cfg.Addr, err)
 	}
-	s.ln = ln
+	s.fs, s.store, s.ln = fsys, st, ln
 	return nil
 }
 
@@ -80,6 +81,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		Region:          s.cfg.Region,
 		Store:           s.store,
 	}), ReadHeaderTimeout: readHeaderTimeout}
+	// After a shutdown timeout, handlers still running see a closed data
+	// directory and fail; their temp files are cleared at the next start.
 	defer func() { _ = s.fs.Close() }()
 
 	serveErr := make(chan error, 1)

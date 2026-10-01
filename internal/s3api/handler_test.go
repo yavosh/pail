@@ -2,6 +2,8 @@ package s3api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"io"
 	"net/http"
@@ -25,11 +27,18 @@ func testOptions(domain string) Options {
 // signRequest signs req the way the S3 SDKs do, with an empty payload.
 func signRequest(t *testing.T, req *http.Request, at time.Time) {
 	t.Helper()
-	const emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-	req.Header.Set("X-Amz-Content-Sha256", emptySHA256)
+	signPayload(t, req, at, "")
+}
+
+// signPayload signs req with the SHA-256 of body as its payload hash.
+func signPayload(t *testing.T, req *http.Request, at time.Time, body string) {
+	t.Helper()
+	sum := sha256.Sum256([]byte(body))
+	hash := hex.EncodeToString(sum[:])
+	req.Header.Set("X-Amz-Content-Sha256", hash)
 	signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
 	creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
-	if err := signer.SignHTTP(req.Context(), creds, req, emptySHA256, "s3", "us-east-1", at); err != nil {
+	if err := signer.SignHTTP(req.Context(), creds, req, hash, "s3", "us-east-1", at); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -2,18 +2,14 @@ package s3api
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs/localdisk"
@@ -46,6 +42,10 @@ func TestValidBucketName(t *testing.T) {
 		{"abc--x-s3", false},
 		{"abc--table-s3", false},
 		{"a b", false},
+		{"999.999.999.999", false},
+		{"192.168.05.004", false},
+		{"1.2.3", true},
+		{"1.2.3.a", true},
 	}
 	for _, tt := range tests {
 		if got := validBucketName(tt.name); got != tt.want {
@@ -73,21 +73,15 @@ func storeServer(t *testing.T) (*httptest.Server, *store.Store) {
 	return srv, st
 }
 
-// doBody sends one signed request with body and returns the status and the S3 error code.
-func doBody(t *testing.T, srv *httptest.Server, method, path, body string) (int, string) {
+// doBody sends one signed request with body and returns the status, the S3
+// error code, and the raw response body.
+func doBody(t *testing.T, srv *httptest.Server, method, path, body string) (int, string, []byte) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), method, srv.URL+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum := sha256.Sum256([]byte(body))
-	hash := hex.EncodeToString(sum[:])
-	req.Header.Set("X-Amz-Content-Sha256", hash)
-	signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
-	creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
-	if err := signer.SignHTTP(req.Context(), creds, req, hash, "s3", "us-east-1", time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	signPayload(t, req, time.Now(), body)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +90,7 @@ func doBody(t *testing.T, srv *httptest.Server, method, path, body string) (int,
 	b, _ := io.ReadAll(resp.Body)
 	var e errorBody
 	_ = xml.Unmarshal(b, &e)
-	return resp.StatusCode, e.Code
+	return resp.StatusCode, e.Code, b
 }
 
 func TestBucketErrors(t *testing.T) {
@@ -117,7 +111,13 @@ func TestBucketErrors(t *testing.T) {
 		{"create invalid name", http.MethodPut, "/Bad_Name", "", http.StatusBadRequest, "InvalidBucketName"},
 		{"create IP name", http.MethodPut, "/10.0.0.1", "", http.StatusBadRequest, "InvalidBucketName"},
 		{"create malformed config", http.MethodPut, "/new-bucket", "<CreateBucketConfiguration>", http.StatusBadRequest, "MalformedXML"},
-		{"create with config", http.MethodPut, "/cfg-bucket", "<CreateBucketConfiguration><LocationConstraint>eu-west-1</LocationConstraint></CreateBucketConfiguration>", http.StatusOK, ""},
+		{"create in another region", http.MethodPut, "/cfg-bucket", "<CreateBucketConfiguration><LocationConstraint>eu-west-1</LocationConstraint></CreateBucketConfiguration>", http.StatusBadRequest, "IllegalLocationConstraintException"},
+		{"create in this region", http.MethodPut, "/cfg-bucket", "<CreateBucketConfiguration><LocationConstraint>us-east-1</LocationConstraint></CreateBucketConfiguration>", http.StatusOK, ""},
+		{"create with wrong root", http.MethodPut, "/root-bucket", "<Foo/>", http.StatusBadRequest, "MalformedXML"},
+		{"create with trailing content", http.MethodPut, "/root-bucket", "<CreateBucketConfiguration/>junk<<<", http.StatusBadRequest, "MalformedXML"},
+		{"create with trailing space", http.MethodPut, "/space-bucket", "<CreateBucketConfiguration/>\n  ", http.StatusOK, ""},
+		{"list with bad max-buckets", http.MethodGet, "/?max-buckets=0", "", http.StatusBadRequest, "InvalidArgument"},
+		{"list with bad token", http.MethodGet, "/?continuation-token=%21%21%21", "", http.StatusBadRequest, "InvalidArgument"},
 		{"create existing", http.MethodPut, "/full", "", http.StatusConflict, "BucketAlreadyOwnedByYou"},
 		{"delete not empty", http.MethodDelete, "/full", "", http.StatusConflict, "BucketNotEmpty"},
 		{"delete missing", http.MethodDelete, "/missing", "", http.StatusNotFound, "NoSuchBucket"},
@@ -126,12 +126,65 @@ func TestBucketErrors(t *testing.T) {
 		{"head invalid name", http.MethodHead, "/Bad_Name", "", http.StatusBadRequest, ""},
 	}
 	for _, tt := range tests {
-		status, code := doBody(t, srv, tt.method, tt.path, tt.body)
+		status, code, _ := doBody(t, srv, tt.method, tt.path, tt.body)
 		if status != tt.wantStatus || code != tt.wantCode {
 			t.Errorf("%s: %s %s = %d %q, want %d %q", tt.name, tt.method, tt.path, status, code, tt.wantStatus, tt.wantCode)
 		}
 	}
 	if _, err := st.HeadBucket(ctx, "new-bucket"); err == nil {
 		t.Error("a CreateBucket with malformed XML created the bucket")
+	}
+}
+
+func TestListBucketsParameters(t *testing.T) {
+	srv, st := storeServer(t)
+	for _, b := range []string{"aaa", "bbb", "bbc", "ccc"} {
+		if err := st.CreateBucket(context.Background(), b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type page struct {
+		Names             []string `xml:"Buckets>Bucket>Name"`
+		ContinuationToken string   `xml:"ContinuationToken"`
+	}
+	list := func(query string) page {
+		status, code, body := doBody(t, srv, http.MethodGet, "/?"+query, "")
+		if status != http.StatusOK {
+			t.Fatalf("GET /?%s = %d %s", query, status, code)
+		}
+		var p page
+		if err := xml.Unmarshal(body, &p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{"", []string{"aaa", "bbb", "bbc", "ccc"}},
+		{"prefix=bb", []string{"bbb", "bbc"}},
+		{"bucket-region=eu-west-1", nil},
+		{"bucket-region=us-east-1&prefix=c", []string{"ccc"}},
+	}
+	for _, tt := range tests {
+		if got := list(tt.query).Names; !slices.Equal(got, tt.want) {
+			t.Errorf("ListBuckets ?%s = %v, want %v", tt.query, got, tt.want)
+		}
+	}
+
+	// Pages of two walk every bucket exactly once.
+	var all []string
+	query := "max-buckets=2"
+	for range 10 {
+		p := list(query)
+		all = append(all, p.Names...)
+		if p.ContinuationToken == "" {
+			break
+		}
+		query = "max-buckets=2&continuation-token=" + p.ContinuationToken
+	}
+	if want := []string{"aaa", "bbb", "bbc", "ccc"}; !slices.Equal(all, want) {
+		t.Errorf("paged ListBuckets = %v, want %v", all, want)
 	}
 }

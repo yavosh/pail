@@ -1,6 +1,7 @@
 package s3api
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"net/http"
@@ -18,23 +19,25 @@ type apiError struct {
 }
 
 var (
-	errNotImplemented          = apiError{"NotImplemented", http.StatusNotImplemented, "A header or query you provided implies functionality that is not implemented."}
-	errInternal                = apiError{"InternalError", http.StatusInternalServerError, "We encountered an internal error. Please try again."}
-	errAccessDenied            = apiError{"AccessDenied", http.StatusForbidden, "Access Denied"}
-	errUnsignedHeader          = apiError{"AccessDenied", http.StatusForbidden, "There were headers present in the request which were not signed"}
-	errUnsupportedAuth         = apiError{"InvalidRequest", http.StatusBadRequest, "The authorization mechanism you have provided is not supported. Please use AWS4-HMAC-SHA256."}
-	errMissingContentSHA       = apiError{"InvalidRequest", http.StatusBadRequest, "Missing required header for this request: x-amz-content-sha256"}
-	errMalformedAuth           = apiError{"AuthorizationHeaderMalformed", http.StatusBadRequest, "The authorization header is malformed."}
-	errInvalidAccessKeyID      = apiError{"InvalidAccessKeyId", http.StatusForbidden, "The AWS Access Key Id you provided does not exist in our records."}
-	errSignatureMismatch       = apiError{"SignatureDoesNotMatch", http.StatusForbidden, "The request signature we calculated does not match the signature you provided. Check your key and signing method."}
-	errTimeTooSkewed           = apiError{"RequestTimeTooSkewed", http.StatusForbidden, "The difference between the request time and the current time is too large."}
-	errContentSHAMismatch      = apiError{"XAmzContentSHA256Mismatch", http.StatusBadRequest, "The provided 'x-amz-content-sha256' header does not match what was computed."}
-	errNoSuchBucket            = apiError{"NoSuchBucket", http.StatusNotFound, "The specified bucket does not exist"}
-	errBucketAlreadyOwnedByYou = apiError{"BucketAlreadyOwnedByYou", http.StatusConflict, "Your previous request to create the named bucket succeeded and you already own it."}
-	errBucketNotEmpty          = apiError{"BucketNotEmpty", http.StatusConflict, "The bucket you tried to delete is not empty"}
-	errInvalidBucketName       = apiError{"InvalidBucketName", http.StatusBadRequest, "The specified bucket is not valid."}
-	errMalformedXML            = apiError{"MalformedXML", http.StatusBadRequest, "The XML you provided was not well-formed or did not validate against our published schema."}
-	errMaxMessageLength        = apiError{"MaxMessageLengthExceeded", http.StatusBadRequest, "Your request was too big."}
+	errNotImplemented            = apiError{"NotImplemented", http.StatusNotImplemented, "A header or query you provided implies functionality that is not implemented."}
+	errInternal                  = apiError{"InternalError", http.StatusInternalServerError, "We encountered an internal error. Please try again."}
+	errAccessDenied              = apiError{"AccessDenied", http.StatusForbidden, "Access Denied"}
+	errUnsignedHeader            = apiError{"AccessDenied", http.StatusForbidden, "There were headers present in the request which were not signed"}
+	errUnsupportedAuth           = apiError{"InvalidRequest", http.StatusBadRequest, "The authorization mechanism you have provided is not supported. Please use AWS4-HMAC-SHA256."}
+	errMissingContentSHA         = apiError{"InvalidRequest", http.StatusBadRequest, "Missing required header for this request: x-amz-content-sha256"}
+	errMalformedAuth             = apiError{"AuthorizationHeaderMalformed", http.StatusBadRequest, "The authorization header is malformed."}
+	errInvalidAccessKeyID        = apiError{"InvalidAccessKeyId", http.StatusForbidden, "The AWS Access Key Id you provided does not exist in our records."}
+	errSignatureMismatch         = apiError{"SignatureDoesNotMatch", http.StatusForbidden, "The request signature we calculated does not match the signature you provided. Check your key and signing method."}
+	errTimeTooSkewed             = apiError{"RequestTimeTooSkewed", http.StatusForbidden, "The difference between the request time and the current time is too large."}
+	errContentSHAMismatch        = apiError{"XAmzContentSHA256Mismatch", http.StatusBadRequest, "The provided 'x-amz-content-sha256' header does not match what was computed."}
+	errNoSuchBucket              = apiError{"NoSuchBucket", http.StatusNotFound, "The specified bucket does not exist"}
+	errBucketAlreadyOwnedByYou   = apiError{"BucketAlreadyOwnedByYou", http.StatusConflict, "Your previous request to create the named bucket succeeded and you already own it."}
+	errBucketNotEmpty            = apiError{"BucketNotEmpty", http.StatusConflict, "The bucket you tried to delete is not empty"}
+	errInvalidBucketName         = apiError{"InvalidBucketName", http.StatusBadRequest, "The specified bucket is not valid."}
+	errMalformedXML              = apiError{"MalformedXML", http.StatusBadRequest, "The XML you provided was not well-formed or did not validate against our published schema."}
+	errInvalidArgument           = apiError{"InvalidArgument", http.StatusBadRequest, "Invalid Argument"}
+	errIllegalLocationConstraint = apiError{"IllegalLocationConstraintException", http.StatusBadRequest, "The specified location-constraint is not valid for this endpoint."}
+	errMaxMessageLength          = apiError{"MaxMessageLengthExceeded", http.StatusBadRequest, "Your request was too big."}
 )
 
 // apiErrors maps the errors handlers check with errors.Is to S3 errors.
@@ -55,7 +58,6 @@ var apiErrors = []struct {
 	{store.ErrNoSuchBucket, errNoSuchBucket},
 	{store.ErrBucketExists, errBucketAlreadyOwnedByYou},
 	{store.ErrBucketNotEmpty, errBucketNotEmpty},
-	{store.ErrInvalidName, errInvalidBucketName},
 }
 
 // toAPIError maps err to an S3 error. An unknown error is InternalError: its
@@ -69,7 +71,10 @@ func toAPIError(err error) apiError {
 			return m.api
 		}
 	}
-	clogS3api().Error("internal error", "error", err)
+	// A client that disconnected cancels the request; that is not a server fault.
+	if !errors.Is(err, context.Canceled) {
+		clogS3api().Error("internal error", "error", err)
+	}
 	return errInternal
 }
 

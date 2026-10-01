@@ -18,7 +18,7 @@ pail stops cleanly on SIGINT or SIGTERM.
 - An operation that pail does not support returns `501 NotImplemented` with an S3 XML error.
 - `GET /_pail/health` returns 200 and needs no credentials.
 
-Supported operations: `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, and `GetBucketLocation`. Bucket names follow the AWS general-purpose naming rules.
+Supported operations: `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, and `GetBucketLocation`. Bucket names follow the AWS general-purpose naming rules. pail serves one region, `--region`. A `CreateBucket` with another region's `LocationConstraint` fails, and creating a bucket you already own answers `409 BucketAlreadyOwnedByYou`.
 
 ## Authentication
 
