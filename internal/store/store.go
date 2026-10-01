@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yavosh/pail/internal/vfs"
 )
@@ -104,6 +105,11 @@ func (s *Store) CreateBucket(ctx context.Context, name string) error {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("stat bucket %s: %w", name, err)
 	}
+	// A failed DeleteBucket can leave objects behind bucket.json; a new bucket
+	// must not inherit them.
+	if err := s.fs.RemoveAll(bucketDir(name)); err != nil {
+		return fmt.Errorf("clear bucket %s: %w", name, err)
+	}
 	for _, dir := range []string{objectsDir(name), blobsDir(name)} {
 		if err := s.fs.MkdirAll(dir); err != nil {
 			return fmt.Errorf("create bucket %s: %w", name, err)
@@ -156,8 +162,8 @@ func (s *Store) ListBuckets(ctx context.Context) ([]BucketInfo, error) {
 
 // DeleteBucket removes an empty bucket.
 func (s *Store) DeleteBucket(ctx context.Context, name string) error {
-	if err := checkBucketName(name); err != nil {
-		return err
+	if _, err := s.HeadBucket(ctx, name); err != nil {
+		return err // checked before bucketLock, so a missing bucket adds no lock entry
 	}
 	l := s.bucketLock(name)
 	l.Lock()
@@ -239,14 +245,15 @@ func (s *Store) readJSON(name string, v any) error {
 // checkBucketName rejects names that are not one path element. The S3 naming
 // rules are the API layer's job; this only keeps a name inside its directory.
 func checkBucketName(name string) error {
-	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\") || !utf8.ValidString(name) {
 		return ErrInvalidName
 	}
 	return nil
 }
 
 func checkKey(key string) error {
-	if key == "" || len(key) > maxKeyLen {
+	// JSON would replace invalid UTF-8, so the stored key would differ from its address.
+	if key == "" || len(key) > maxKeyLen || !utf8.ValidString(key) {
 		return ErrInvalidName
 	}
 	return nil
@@ -273,7 +280,8 @@ func newBlobID() string {
 	return hex.EncodeToString(b)
 }
 
-// keyLock returns the striped lock for bucket and key.
+// keyLock returns the striped lock for bucket and key. Hold at most one key
+// lock per goroutine: two keys can share a stripe, and the mutex is not reentrant.
 func (s *Store) keyLock(bucket, key string) *sync.Mutex {
 	sum := sha256.Sum256([]byte(bucket + "/" + key))
 	return &s.keys[sum[0]]

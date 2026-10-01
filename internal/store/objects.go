@@ -35,9 +35,11 @@ type record struct {
 // PutOptions are the optional parts of a PutObject.
 type PutOptions struct {
 	Metadata map[string]string
-	// ContentMD5 is the digest the client sent. A mismatch fails with ErrBadDigest.
+	// ContentMD5 is the digest the client sent; nil means none was sent. A
+	// mismatch, including an empty slice, fails with ErrBadDigest.
 	ContentMD5 []byte
-	// IfMatch commits only if the current ETag equals it. A missing key fails with ErrNoSuchKey.
+	// IfMatch commits only if the current ETag equals it exactly; "*" and weak
+	// ETags never match. A missing key fails with ErrNoSuchKey.
 	IfMatch string
 	// IfNoneMatch commits only if the key does not exist (If-None-Match: *).
 	IfNoneMatch bool
@@ -52,9 +54,8 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 	if err := checkKey(key); err != nil {
 		return ObjectInfo{}, err
 	}
-	l := s.bucketLock(bucket)
-	l.RLock()
-	defer l.RUnlock()
+	// Fail fast, but stream the body without the bucket lock: a slow upload
+	// must not hold off DeleteBucket, which would then hold off every writer.
 	if _, err := s.HeadBucket(ctx, bucket); err != nil {
 		return ObjectInfo{}, err
 	}
@@ -72,6 +73,13 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 	digest := sum.Sum(nil)
 	if opts.ContentMD5 != nil && !bytes.Equal(opts.ContentMD5, digest) {
 		return ObjectInfo{}, ErrBadDigest
+	}
+
+	l := s.bucketLock(bucket)
+	l.RLock()
+	defer l.RUnlock()
+	if _, err := s.HeadBucket(ctx, bucket); err != nil {
+		return ObjectInfo{}, err
 	}
 	blob := newBlobID()
 	if err := tf.Commit(path.Join(blobsDir(bucket), blob)); err != nil {
@@ -130,8 +138,10 @@ func (s *Store) GetObject(ctx context.Context, bucket, key string) (vfs.File, Ob
 		return nil, ObjectInfo{}, err
 	}
 	// A concurrent write may remove the blob between reading the metadata and
-	// opening the blob. The metadata read again then names the new blob.
-	for attempt := 0; ; attempt++ {
+	// opening it; then the metadata names a newer blob, so read again. The same
+	// blob missing twice is real damage, not a race.
+	var lastBlob string
+	for range maxOpenAttempts {
 		rec, err := s.readRecord(bucket, key)
 		if err != nil {
 			return nil, ObjectInfo{}, s.missing(ctx, bucket, err)
@@ -140,11 +150,15 @@ func (s *Store) GetObject(ctx context.Context, bucket, key string) (vfs.File, Ob
 		if err == nil {
 			return f, rec.ObjectInfo, nil
 		}
-		if !errors.Is(err, fs.ErrNotExist) || attempt > 0 {
+		if !errors.Is(err, fs.ErrNotExist) || rec.Blob == lastBlob {
 			return nil, ObjectInfo{}, fmt.Errorf("open blob: %w", err)
 		}
+		lastBlob = rec.Blob
 	}
+	return nil, ObjectInfo{}, fmt.Errorf("open blob: overwritten %d times while opening", maxOpenAttempts)
 }
+
+const maxOpenAttempts = 16
 
 // HeadObject describes key.
 func (s *Store) HeadObject(ctx context.Context, bucket, key string) (ObjectInfo, error) {
@@ -162,6 +176,9 @@ func (s *Store) HeadObject(ctx context.Context, bucket, key string) (ObjectInfo,
 func (s *Store) DeleteObject(ctx context.Context, bucket, key string) error {
 	if err := s.checkObject(ctx, bucket, key); err != nil {
 		return err
+	}
+	if _, err := s.HeadBucket(ctx, bucket); err != nil {
+		return err // checked before bucketLock, so a missing bucket adds no lock entry
 	}
 	l := s.bucketLock(bucket)
 	l.RLock()
@@ -187,7 +204,8 @@ func (s *Store) DeleteObject(ctx context.Context, bucket, key string) error {
 }
 
 // ListObjects returns the objects whose keys start with prefix and sort after
-// startAfter, in UTF-8 byte order. Callers paginate.
+// startAfter, in UTF-8 byte order. It reads every metadata file in the bucket,
+// so a call costs O(objects); callers paginate the result.
 func (s *Store) ListObjects(ctx context.Context, bucket, prefix, startAfter string) ([]ObjectInfo, error) {
 	if _, err := s.HeadBucket(ctx, bucket); err != nil {
 		return nil, err

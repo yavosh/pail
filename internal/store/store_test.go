@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 
 	"github.com/yavosh/pail/internal/vfs/localdisk"
 )
@@ -118,12 +119,12 @@ func TestInvalidNames(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newStore(t)
 	mustCreate(t, s, "b")
-	for _, name := range []string{"", ".", "..", "a/b", `a\b`} {
+	for _, name := range []string{"", ".", "..", "a/b", `a\b`, "a\xffb"} {
 		if err := s.CreateBucket(ctx, name); !errors.Is(err, ErrInvalidName) {
 			t.Errorf("CreateBucket(%q) error = %v, want ErrInvalidName", name, err)
 		}
 	}
-	for _, key := range []string{"", strings.Repeat("k", maxKeyLen+1)} {
+	for _, key := range []string{"", strings.Repeat("k", maxKeyLen+1), "a\xffb"} {
 		if _, err := s.PutObject(ctx, "b", key, strings.NewReader("x"), PutOptions{}); !errors.Is(err, ErrInvalidName) {
 			t.Errorf("PutObject(key of %d bytes) error = %v, want ErrInvalidName", len(key), err)
 		}
@@ -433,5 +434,95 @@ func TestDeleteBucketWaitsForWriters(t *testing.T) {
 		if _, err := fsys.Stat("buckets/b"); err == nil {
 			t.Error("bucket directory exists after the bucket was deleted")
 		}
+	}
+}
+
+func TestSlowPutDoesNotBlockDeleteBucket(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		s, _ := newStore(t)
+		mustCreate(t, s, "b")
+		pr, pw := io.Pipe()
+		done := make(chan error, 1)
+		go func() {
+			_, err := s.PutObject(ctx, "b", "slow", pr, PutOptions{})
+			done <- err
+		}()
+		synctest.Wait() // the put is now blocked reading its body
+		// If the slow put held the bucket lock, this would deadlock the bubble.
+		if err := s.DeleteBucket(ctx, "b"); err != nil {
+			t.Fatalf("DeleteBucket during a slow put error = %v", err)
+		}
+		_, _ = pw.Write([]byte("late"))
+		_ = pw.Close()
+		if err := <-done; !errors.Is(err, ErrNoSuchBucket) {
+			t.Errorf("slow put after DeleteBucket error = %v, want ErrNoSuchBucket", err)
+		}
+	})
+}
+
+func TestGetDuringRapidOverwrites(t *testing.T) {
+	s, _ := newStore(t)
+	mustCreate(t, s, "b")
+	mustPut(t, s, "b", "k", strings.Repeat("0", 64))
+	var wg sync.WaitGroup
+	for w := range 4 {
+		wg.Go(func() {
+			for range 100 {
+				if _, err := s.PutObject(context.Background(), "b", "k", strings.NewReader(strings.Repeat(fmt.Sprint(w), 64)), PutOptions{}); err != nil {
+					t.Errorf("put: %v", err)
+				}
+			}
+		})
+	}
+	for range 4 {
+		wg.Go(func() {
+			for range 200 {
+				f, _, err := s.GetObject(context.Background(), "b", "k")
+				if err != nil {
+					t.Errorf("GetObject during overwrites error = %v", err)
+					return
+				}
+				b, err := io.ReadAll(f)
+				f.Close()
+				if err != nil || len(b) != 64 || strings.Count(string(b), string(b[:1])) != 64 {
+					t.Errorf("GetObject during overwrites read %q, %v, want one complete version", b, err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+}
+
+func TestRecreateAfterPartialDelete(t *testing.T) {
+	ctx := context.Background()
+	s, fsys := newStore(t)
+	mustCreate(t, s, "b")
+	mustPut(t, s, "b", "stale", "x")
+	// Simulate a DeleteBucket that removed bucket.json and then failed.
+	if err := fsys.Remove("buckets/b/bucket.json"); err != nil {
+		t.Fatal(err)
+	}
+	mustCreate(t, s, "b")
+	if got, err := s.ListObjects(ctx, "b", "", ""); err != nil || len(got) != 0 {
+		t.Errorf("ListObjects on a recreated bucket = %v, %v, want none", got, err)
+	}
+	if n := dirLen(t, fsys, "buckets/b/blobs"); n != 0 {
+		t.Errorf("blobs in a recreated bucket = %d, want 0", n)
+	}
+}
+
+func TestMissingBucketAddsNoLock(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newStore(t)
+	for i := range 10 {
+		name := fmt.Sprint("nope-", i)
+		_ = putErr(s, name, "k")
+		_ = s.DeleteObject(ctx, name, "k")
+		_ = s.DeleteBucket(ctx, name)
+	}
+	if n := len(s.buckets); n != 0 {
+		t.Errorf("lock entries after operations on missing buckets = %d, want 0", n)
 	}
 }
