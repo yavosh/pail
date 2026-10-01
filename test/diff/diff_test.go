@@ -47,12 +47,16 @@ func TestDiff(t *testing.T) {
 	pending := readListFile(t, pendingFile, readPending)
 
 	names := map[string]bool{}
+	steps := map[string]bool{}
 	for _, sc := range scenarios() {
 		names[sc.name] = true
+		for _, st := range sc.steps {
+			steps[sc.name+"/"+st.name] = true
+		}
 	}
-	for _, name := range slices.Sorted(maps.Keys(pending)) {
-		if !names[name] {
-			t.Errorf("%s lists %q, but no scenario has that name", pendingFile, name)
+	for _, key := range slices.Sorted(maps.Keys(pending)) {
+		if !steps[key] {
+			t.Errorf("%s lists %q, but no scenario has that step", pendingFile, key)
 		}
 	}
 	seen := map[string]bool{}
@@ -73,17 +77,10 @@ func TestDiff(t *testing.T) {
 			}
 			// ran is set only after replay returns, so a step that fails fatally
 			// does not also report its listed differences as stale.
-			unexpected, got := replayScenario(t, tg, sc, want, known)
+			unexpected, got := replayScenario(t, tg, sc, want, known, pending)
 			ran[sc.name] = true
 			for _, key := range got {
 				seen[key] = true
-			}
-			if reason, ok := pending[sc.name]; ok {
-				if len(unexpected) == 0 {
-					t.Errorf("%s matches AWS now: remove it from %s", sc.name, pendingFile)
-					return
-				}
-				t.Skipf("pending, %s: %d differences, first:\n%s", reason, len(unexpected), unexpected[0])
 			}
 			for _, d := range unexpected {
 				t.Error(d)
@@ -93,6 +90,13 @@ func TestDiff(t *testing.T) {
 
 	if *record {
 		return
+	}
+	// A pending step that matches AWS fails, so the list shrinks as pail grows.
+	for _, key := range slices.Sorted(maps.Keys(pending)) {
+		scenarioName, _, _ := strings.Cut(key, "/")
+		if ran[scenarioName] && !seen[key] {
+			t.Errorf("%s lists %q, but that step has no unlisted difference now: remove the line", pendingFile, key)
+		}
 	}
 	// A listed difference that no longer occurs fails, so the list stays current.
 	for _, key := range slices.Sorted(maps.Keys(known)) {
@@ -145,7 +149,7 @@ func TestReplayIsDeterministic(t *testing.T) {
 	for _, sc := range scenarios() {
 		t.Run(sc.name, func(t *testing.T) {
 			want := runScenario(t, tg, sc, newBucketName())
-			unexpected, seen := replayScenario(t, tg, sc, want, nil)
+			unexpected, seen := replayScenario(t, tg, sc, want, nil, nil)
 			for _, d := range unexpected {
 				t.Error(d)
 			}
@@ -157,8 +161,8 @@ func TestReplayIsDeterministic(t *testing.T) {
 }
 
 // replayScenario runs sc against pail. It returns every difference not listed
-// in known, and the known-difference keys it saw.
-func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known map[string]string) (unexpected, seen []string) {
+// in known or pending, and the known and pending keys it saw.
+func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, pending map[string]string) (unexpected, seen []string) {
 	if len(want.Exchanges) != len(sc.steps) {
 		t.Fatalf("golden file has %d steps, scenario has %d: record it again", len(want.Exchanges), len(sc.steps))
 	}
@@ -170,14 +174,21 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known ma
 		}
 		resp, err := tg.do(t.Context(), st, bucket)
 		if err != nil {
-			t.Fatalf("step %s (%s): %v", st.name, describe(st), err)
+			// Earlier differences often explain a later failure, so keep them.
+			t.Fatalf("step %s (%s): %v\nearlier differences:\n%s", st.name, describe(st), err, strings.Join(unexpected, "\n"))
 		}
 		got := normalize(st, bucket, resp)
 		diffs := compare(w, got)
+		stepKey := sc.name + "/" + st.name
 		for _, key := range slices.Sorted(maps.Keys(diffs)) {
 			full := sc.name + "/" + key
 			if _, ok := known[full]; ok {
 				seen = append(seen, full)
+				continue
+			}
+			if reason, ok := pending[stepKey]; ok {
+				seen = append(seen, stepKey)
+				t.Logf("pending, %s: %s", reason, diffs[key])
 				continue
 			}
 			unexpected = append(unexpected, fmt.Sprintf("%s: %s\n%s", full, w.Request, diffs[key]))

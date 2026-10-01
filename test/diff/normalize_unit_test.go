@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -217,16 +218,24 @@ func TestBadSignatureDoesNotPoisonTheSigner(t *testing.T) {
 }
 
 func TestReadPending(t *testing.T) {
-	pending, err := readPending(strings.NewReader("# comment\n\nobject-basics needs object operations (#8)\n"))
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		in      string
+		want    map[string]string
+		wantErr bool
+	}{
+		{"# comment\n\nobject-basics/get needs GetObject (#8)\n", map[string]string{"object-basics/get": "needs GetObject (#8)"}, false},
+		{"object-basics/get\n", nil, true},
+		{"object-basics needs objects\n", nil, true},
+		{"a/b/c reason\n", nil, true},
 	}
-	if got := pending["object-basics"]; got != "needs object operations (#8)" {
-		t.Errorf("reason = %q, want the rest of the line", got)
-	}
-	for _, bad := range []string{"object-basics\n", "a/b reason\n"} {
-		if _, err := readPending(strings.NewReader(bad)); err == nil {
-			t.Errorf("readPending(%q) error = nil, want an error", bad)
+	for _, tt := range tests {
+		got, err := readPending(strings.NewReader(tt.in))
+		if (err != nil) != tt.wantErr {
+			t.Errorf("readPending(%q) error = %v, want error %v", tt.in, err, tt.wantErr)
+			continue
+		}
+		if !tt.wantErr && !maps.Equal(got, tt.want) {
+			t.Errorf("readPending(%q) = %v, want %v", tt.in, got, tt.want)
 		}
 	}
 }

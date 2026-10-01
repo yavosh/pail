@@ -262,8 +262,8 @@ func readKnownDiffs(r io.Reader) (map[string]string, error) {
 	return known, sc.Err()
 }
 
-// readPending parses "<scenario> <reason>" lines: scenarios recorded before
-// pail implements them. Every entry needs a reason with an issue link.
+// readPending parses "<scenario>/<step> <reason>" lines: steps recorded before
+// pail implements them. Every entry needs a reason.
 func readPending(r io.Reader) (map[string]string, error) {
 	pending := map[string]string{}
 	sc := bufio.NewScanner(r)
@@ -273,8 +273,8 @@ func readPending(r io.Reader) (map[string]string, error) {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 2 || strings.Contains(fields[0], "/") {
-			return nil, fmt.Errorf("line %d: want \"<scenario> <reason>\", got %q", n, line)
+		if len(fields) < 2 || strings.Count(fields[0], "/") != 1 {
+			return nil, fmt.Errorf("line %d: want \"<scenario>/<step> <reason>\", got %q", n, line)
 		}
 		pending[fields[0]] = strings.Join(fields[1:], " ")
 	}

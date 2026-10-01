@@ -1,9 +1,6 @@
-# Scenarios recorded against AWS before pail implements them.
+# Steps recorded against AWS before pail implements them.
 #
-# One per line: <scenario> <reason, with an issue link>
-# Replay skips a pending scenario and reports its first difference. Once the
-# scenario matches AWS, the test fails until you remove its line.
-auth-errors needs CreateBucket and DeleteBucket (#7)
-bucket-lifecycle needs the bucket operations (#7)
-object-basics needs the object operations (#8)
-special-keys needs the object operations and ListObjectsV2 (#8, #12)
+# One per line: <scenario>/<step> <reason, with an issue link>
+# Replay tolerates differences in a pending step and logs them (go test -v).
+# Differences in any other step still fail. Once a pending step has no
+# unlisted difference, the test fails until you remove its line.
