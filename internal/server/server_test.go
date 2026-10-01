@@ -38,7 +38,7 @@ func TestServeStopsOnCancel(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- s.Serve(ctx) }()
 
-	url := "http://" + s.Addr().String() + "/"
+	url := "http://" + s.Addr().String() + "/_pail/health"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -48,8 +48,8 @@ func TestServeStopsOnCancel(t *testing.T) {
 		t.Fatalf("GET %s error = %v", url, err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("GET %s status = %d, want %d", url, resp.StatusCode, http.StatusNotFound)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET %s status = %d, want %d", url, resp.StatusCode, http.StatusOK)
 	}
 
 	cancel()

@@ -14,6 +14,7 @@ go run ./cmd/pail --access-key dev --secret-key devsecret   # run the server; fl
 ./pail --version                                       # build identity
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
+go test ./test/diff  # replay the AWS S3 golden files against pail; see test/diff/README.md
 make lint            # golangci-lint
 ```
 
@@ -41,6 +42,7 @@ make lint            # golangci-lint
 - Initialisms keep their case: `bucketID`, `URL`, `ETag`.
 - `main()` is a few lines: it parses flags, sets up a signal context, and calls `run(ctx, ...) error`.
 - HTTP handlers: register routes in one place, do setup at construction, and declare request and response types next to the handler. When middleware or auth is part of what you verify, test the route through `httptest.NewTestServer` and the real mux.
+- S3 requests bypass `http.ServeMux`, because it redirects paths that are not clean, such as `a//b`, and those are valid keys. `internal/s3api` routes them from one operation table. `ServeMux` serves only pail's own `/_pail/` endpoints.
 - `golangci-lint` enforces much of this (revive, nakedret, bodyclose, containedctx, usetesting, noctx, modernize, errorlint). For noctx, use `ExecContext`, `DialContext`, `HandshakeContext`, and `httptest.NewRequestWithContext`.
 - Write Go 1.27 idioms, not their older equivalents. `modernize` and `errorlint` catch most of this in CI, and `go fix -stringsbuilder=false ./...` applies the mechanical half. The rest is on you: `errors.Is` and `errors.AsType[T]` over `==` and type assertions, `errors.Join` for accumulated errors, `cmp.Or` for fallback chains (every argument is evaluated, so no side effects), typed `atomic.Bool` and `atomic.Pointer[T]` over `atomic.Value`, `sync.OnceValue` over a `sync.Once` plus a result variable, `slices.Sorted(maps.Keys(m))` for deterministic map output, `new(v)` over a temporary variable taken by address, and method-aware `ServeMux` patterns with `r.PathValue`.
 - Never use `time.Tick`. It cannot be stopped, which breaks the goroutine-lifetime rule above. Use `time.NewTicker` and `Stop` it.
@@ -50,6 +52,12 @@ make lint            # golangci-lint
 
 - Update `README.md` and `CLAUDE.md` in the same PR as the change. Stale docs are a bug.
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
+
+## Differential suite
+
+- `test/diff` checks pail against golden files recorded from AWS S3. A new S3 behavior adds a scenario there.
+- Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
+- Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.
 
 ## After opening a PR
 
