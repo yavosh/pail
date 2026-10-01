@@ -14,6 +14,7 @@ go run ./cmd/pail --access-key dev --secret-key devsecret   # run the server; fl
 ./pail --version                                       # build identity
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
+go test ./test/diff  # replay the AWS S3 golden files against pail; see test/diff/README.md
 make lint            # golangci-lint
 ```
 
@@ -50,6 +51,12 @@ make lint            # golangci-lint
 
 - Update `README.md` and `CLAUDE.md` in the same PR as the change. Stale docs are a bug.
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
+
+## Differential suite
+
+- `test/diff` checks pail against golden files recorded from AWS S3. A new S3 behavior adds a scenario there.
+- Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
+- Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.
 
 ## After opening a PR
 
