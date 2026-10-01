@@ -62,12 +62,14 @@ func listEntries(objects []store.ObjectInfo, prefix, delimiter, after string, li
 
 // listContent follows the AWS element order.
 type listContent struct {
-	Key          string `xml:"Key"`
-	LastModified string `xml:"LastModified"`
-	ETag         string `xml:"ETag"`
-	Size         int64  `xml:"Size"`
-	Owner        *owner `xml:"Owner,omitempty"`
-	StorageClass string `xml:"StorageClass"`
+	Key               string `xml:"Key"`
+	LastModified      string `xml:"LastModified"`
+	ETag              string `xml:"ETag"`
+	ChecksumAlgorithm string `xml:"ChecksumAlgorithm,omitempty"`
+	ChecksumType      string `xml:"ChecksumType,omitempty"`
+	Size              int64  `xml:"Size"`
+	Owner             *owner `xml:"Owner,omitempty"`
+	StorageClass      string `xml:"StorageClass"`
 }
 
 type commonPrefix struct {
@@ -122,7 +124,8 @@ func (h *handler) contentsXML(l listing, p listParams, withOwner bool) []listCon
 	}
 	out := make([]listContent, 0, len(l.contents))
 	for _, o := range l.contents {
-		c := listContent{Key: p.encode(o.Key), LastModified: o.LastModified.UTC().Format(timeFormat), ETag: quoteETag(o.ETag), Size: o.Size, StorageClass: "STANDARD", Owner: own}
+		c := listContent{Key: p.encode(o.Key), LastModified: o.LastModified.UTC().Format(timeFormat), ETag: quoteETag(o.ETag), Size: o.Size, StorageClass: "STANDARD", Owner: own,
+			ChecksumAlgorithm: o.ChecksumAlgorithm, ChecksumType: o.ChecksumType}
 		out = append(out, c)
 	}
 	return out

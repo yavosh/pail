@@ -49,6 +49,8 @@ var (
 	errMetadataTooLarge          = apiError{"MetadataTooLarge", http.StatusBadRequest, "Your metadata headers exceed the maximum allowed metadata size."}
 	errMissingContentLength      = apiError{"MissingContentLength", http.StatusLengthRequired, "You must provide the Content-Length HTTP header."}
 	errIncompleteBody            = apiError{"IncompleteBody", http.StatusBadRequest, "You did not provide the number of bytes specified by the Content-Length HTTP header."}
+	errChecksumMismatch          = apiError{"BadDigest", http.StatusBadRequest, "The checksum you specified did not match the calculated checksum."}
+	errInvalidChecksum           = apiError{"InvalidRequest", http.StatusBadRequest, "The x-amz-checksum header or algorithm you specified is invalid."}
 )
 
 // apiErrors maps the errors handlers check with errors.Is to S3 errors.
@@ -72,6 +74,7 @@ var apiErrors = []struct {
 	{store.ErrNoSuchKey, errNoSuchKey},
 	{store.ErrPreconditionFailed, errPreconditionFailed},
 	{store.ErrBadDigest, errBadDigest},
+	{store.ErrChecksumMismatch, errChecksumMismatch},
 	// A body shorter than its Content-Length: the client's fault, not ours.
 	{io.ErrUnexpectedEOF, errIncompleteBody},
 }

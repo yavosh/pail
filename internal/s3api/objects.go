@@ -1,6 +1,7 @@
 package s3api
 
 import (
+	"cmp"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yavosh/pail/internal/checksum"
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs"
 )
@@ -90,6 +92,11 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		return
 	}
 	opts.IfMatch = r.Header.Get("If-Match")
+	var ok bool
+	if opts.ChecksumAlgorithm, opts.Checksum, ok = parseChecksum(r.Header); !ok {
+		writeError(w, r, errInvalidChecksum)
+		return
+	}
 
 	// The store reads the body to EOF before it commits, which completes the
 	// SigV4 payload check; nothing is written to w until it returns.
@@ -99,7 +106,47 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		return
 	}
 	w.Header().Set("ETag", quoteETag(info.ETag))
+	setChecksumHeaders(w.Header(), info)
 	w.WriteHeader(http.StatusOK)
+}
+
+// parseChecksum reads the flexible checksum of a write: at most one
+// x-amz-checksum-* value, or only an algorithm for pail to compute. An empty
+// algorithm means the default. ok is false for anything malformed.
+func parseChecksum(h http.Header) (algorithm string, value []byte, ok bool) {
+	named := cmp.Or(h.Get("x-amz-sdk-checksum-algorithm"), h.Get("x-amz-checksum-algorithm"))
+	if named != "" {
+		if algorithm = checksum.Canonical(named); algorithm == "" {
+			return "", nil, false
+		}
+	}
+	found := ""
+	for _, a := range checksum.Algorithms {
+		if h.Get(checksum.Header(a)) == "" {
+			continue
+		}
+		if found != "" {
+			return "", nil, false // AWS takes a single checksum per request
+		}
+		found = a
+	}
+	if found == "" {
+		return algorithm, nil, true
+	}
+	if algorithm != "" && algorithm != found {
+		return "", nil, false
+	}
+	value, ok = checksum.Decode(found, h.Get(checksum.Header(found)))
+	return found, value, ok
+}
+
+// setChecksumHeaders names the object's checksum, when it has one.
+func setChecksumHeaders(h http.Header, info store.ObjectInfo) {
+	if info.Checksum == "" {
+		return
+	}
+	h.Set(checksum.Header(info.ChecksumAlgorithm), info.Checksum)
+	h.Set("x-amz-checksum-type", info.ChecksumType)
 }
 
 func (h *handler) handleGetObject(w http.ResponseWriter, r *http.Request, t target) {
@@ -179,6 +226,10 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	hdr.Set("ETag", etag)
 	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 	setObjectHeaders(hdr, r, info)
+	// The stored checksum covers the whole object, so a range gets none.
+	if status == http.StatusOK && strings.EqualFold(r.Header.Get("x-amz-checksum-mode"), "ENABLED") {
+		setChecksumHeaders(hdr, info)
+	}
 	hdr.Set("Content-Length", strconv.FormatInt(length, 10))
 	w.WriteHeader(status)
 	if f == nil {

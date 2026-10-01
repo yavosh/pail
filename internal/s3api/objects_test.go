@@ -2,6 +2,7 @@ package s3api
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net"
@@ -291,5 +292,58 @@ func TestIncompleteBody(t *testing.T) {
 	}
 	if _, err := st.HeadObject(ctx, "bkt", "k"); !errors.Is(err, store.ErrNoSuchKey) {
 		t.Errorf("a short body stored the object: HeadObject error = %v", err)
+	}
+}
+
+func TestPutObjectChecksumHeaders(t *testing.T) {
+	srv, st := storeServer(t, "")
+	ctx := context.Background()
+	if err := st.CreateBucket(ctx, "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name       string
+		header     map[string]string
+		wantStatus int
+		wantCode   string
+		wantAlg    string
+	}{
+		{"default", nil, http.StatusOK, "", "CRC64NVME"},
+		{"crc32 value", map[string]string{"x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusOK, "", "CRC32"},
+		{"algorithm only", map[string]string{"x-amz-sdk-checksum-algorithm": "sha256"}, http.StatusOK, "", "SHA256"},
+		{"wrong value", map[string]string{"x-amz-checksum-crc32": "AAAAAA=="}, http.StatusBadRequest, "BadDigest", ""},
+		{"bad base64", map[string]string{"x-amz-checksum-crc32": "nope!"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"wrong length", map[string]string{"x-amz-checksum-crc32": "AAAAAAAAAAA="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"two values", map[string]string{"x-amz-checksum-crc32": "DUoRhQ==", "x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"algorithm disagrees with value", map[string]string{"x-amz-sdk-checksum-algorithm": "SHA1", "x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"unknown algorithm", map[string]string{"x-amz-sdk-checksum-algorithm": "MD5"}, http.StatusBadRequest, "InvalidRequest", ""},
+	}
+	for _, tt := range tests {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader("hello world"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range tt.header {
+			req.Header.Set(k, v)
+		}
+		signPayload(t, req, time.Now(), "hello world")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var e errorBody
+		_ = xml.Unmarshal(body, &e)
+		if resp.StatusCode != tt.wantStatus || e.Code != tt.wantCode {
+			t.Errorf("%s: PUT = %d %q, want %d %q", tt.name, resp.StatusCode, e.Code, tt.wantStatus, tt.wantCode)
+			continue
+		}
+		if tt.wantAlg != "" {
+			header := "x-amz-checksum-" + strings.ToLower(tt.wantAlg)
+			if resp.Header.Get("x-amz-checksum-type") != "FULL_OBJECT" || resp.Header.Get(header) == "" {
+				t.Errorf("%s: PUT response = type %q, %s %q; want FULL_OBJECT and a value", tt.name, resp.Header.Get("x-amz-checksum-type"), header, resp.Header.Get(header))
+			}
+		}
 	}
 }

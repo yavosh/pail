@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yavosh/pail/internal/checksum"
 	"github.com/yavosh/pail/internal/vfs"
 )
 
@@ -24,6 +26,11 @@ type ObjectInfo struct {
 	LastModified time.Time `json:"lastModified"`
 	// Metadata holds the headers stored with the object. The store does not interpret them.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// ChecksumAlgorithm, Checksum (base64), and ChecksumType describe the
+	// flexible checksum; objects stored before checksums had none.
+	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
+	Checksum          string `json:"checksum,omitempty"`
+	ChecksumType      string `json:"checksumType,omitempty"`
 }
 
 // record is the metadata file: the object description plus its blob name.
@@ -43,6 +50,10 @@ type PutOptions struct {
 	IfMatch string
 	// IfNoneMatch commits only if the key does not exist (If-None-Match: *).
 	IfNoneMatch bool
+	// ChecksumAlgorithm is computed over the body; empty means checksum.Default.
+	// A non-nil Checksum must match it, else ErrChecksumMismatch.
+	ChecksumAlgorithm string
+	Checksum          []byte
 }
 
 // PutObject stores body under key. A body read error, such as a signature
@@ -65,14 +76,20 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 		return ObjectInfo{}, fmt.Errorf("create temp file: %w", err)
 	}
 	defer func() { _ = tf.Abort() }()
+	algorithm := cmp.Or(checksum.Canonical(opts.ChecksumAlgorithm), checksum.Default)
+	flexible, _ := checksum.New(algorithm)
 	sum := md5.New()
-	n, err := io.Copy(io.MultiWriter(tf, sum), body)
+	n, err := io.Copy(io.MultiWriter(tf, sum, flexible), body)
 	if err != nil {
 		return ObjectInfo{}, fmt.Errorf("read body: %w", err)
 	}
 	digest := sum.Sum(nil)
 	if opts.ContentMD5 != nil && !bytes.Equal(opts.ContentMD5, digest) {
 		return ObjectInfo{}, ErrBadDigest
+	}
+	flexibleSum := flexible.Sum(nil)
+	if opts.Checksum != nil && !bytes.Equal(opts.Checksum, flexibleSum) {
+		return ObjectInfo{}, ErrChecksumMismatch
 	}
 
 	l := s.bucketLock(bucket)
@@ -93,6 +110,10 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 		LastModified: time.Now().UTC(),
 		Metadata:     opts.Metadata,
 		Blob:         blob,
+
+		ChecksumAlgorithm: algorithm,
+		Checksum:          checksum.Encode(flexibleSum),
+		ChecksumType:      checksum.FullObject,
 	}
 	if err := s.commitRecord(ctx, bucket, rec, opts); err != nil {
 		_ = s.fs.Remove(path.Join(blobsDir(bucket), blob))

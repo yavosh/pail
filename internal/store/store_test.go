@@ -247,6 +247,7 @@ func TestFailedPutLeavesNoTrace(t *testing.T) {
 		{"bad content MD5", strings.NewReader("new"), PutOptions{ContentMD5: make([]byte, 16)}, ErrBadDigest},
 		{"if-none-match on existing key", strings.NewReader("new"), PutOptions{IfNoneMatch: true}, ErrPreconditionFailed},
 		{"if-match mismatch", strings.NewReader("new"), PutOptions{IfMatch: `"0000"`}, ErrPreconditionFailed},
+		{"checksum mismatch", strings.NewReader("new"), PutOptions{ChecksumAlgorithm: "CRC32", Checksum: make([]byte, 4)}, ErrChecksumMismatch},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
