@@ -2,8 +2,12 @@ package diff
 
 import (
 	"crypto/md5"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
+	"hash/crc32"
 	"net/http"
+	"strings"
 )
 
 // step is one raw S3 request. key empty addresses the bucket. query is
@@ -16,6 +20,11 @@ type step struct {
 	header map[string]string
 	body   string
 	auth   authMode
+	// stream sends the body aws-chunked in this x-amz-content-sha256 mode.
+	stream      string
+	chunk       int    // chunk size; 0 means 8 KiB
+	trailer     string // a trailing header line, such as "x-amz-checksum-crc32:<value>"
+	badChunkSig bool   // corrupt the first chunk signature
 }
 
 // scenario runs its steps in order against one fresh bucket name. Scenarios
@@ -28,6 +37,12 @@ type scenario struct {
 func etagOf(body string) string {
 	sum := md5.Sum([]byte(body))
 	return `"` + hex.EncodeToString(sum[:]) + `"`
+}
+
+// crc32Trailer is the CRC32 trailer line of body.
+func crc32Trailer(body string) string {
+	sum := binary.BigEndian.AppendUint32(nil, crc32.ChecksumIEEE([]byte(body)))
+	return "x-amz-checksum-crc32:" + base64.StdEncoding.EncodeToString(sum)
 }
 
 func createBucket() step { return step{name: "create-bucket", method: http.MethodPut} }
@@ -103,7 +118,40 @@ func scenarios() []scenario {
 		keys.steps = append(keys.steps, step{name: "delete-" + k.name, method: http.MethodDelete, key: k.key})
 	}
 	keys.steps = append(keys.steps, deleteBucket())
-	return append(all, keys, listingScenario())
+	return append(all, keys, listingScenario(), streamingScenario())
+}
+
+// streamingScenario records aws-chunked uploads in each signing mode, and
+// how AWS rejects broken ones.
+func streamingScenario() scenario {
+	body := strings.Repeat("0123456789abcdef", 1280) // three 8 KiB chunks
+	crc := crc32Trailer(body)
+	checksumMode := map[string]string{"x-amz-checksum-mode": "ENABLED"}
+	sc := scenario{name: "streaming", steps: []step{
+		createBucket(),
+		{name: "put-unsigned-trailer", method: http.MethodPut, key: "unsigned-trailer", body: body, stream: streamUnsignedTrailer, trailer: crc},
+		{name: "head-unsigned-trailer", method: http.MethodHead, key: "unsigned-trailer", header: checksumMode},
+		{name: "put-signed", method: http.MethodPut, key: "signed", body: body, stream: streamSigned},
+		{name: "head-signed", method: http.MethodHead, key: "signed", header: checksumMode},
+		{name: "put-signed-trailer", method: http.MethodPut, key: "signed-trailer", body: body, stream: streamSignedTrailer, trailer: crc},
+		{name: "head-signed-trailer", method: http.MethodHead, key: "signed-trailer", header: checksumMode},
+		{name: "put-gzip", method: http.MethodPut, key: "gzip", body: body, stream: streamUnsignedTrailer, trailer: crc,
+			header: map[string]string{"Content-Encoding": "gzip,aws-chunked"}},
+		{name: "head-gzip", method: http.MethodHead, key: "gzip"},
+		{name: "put-small-chunks", method: http.MethodPut, key: "small-chunks", body: body, stream: streamSigned, chunk: 1 << 10},
+		{name: "put-bad-chunk-signature", method: http.MethodPut, key: "bad", body: body, stream: streamSigned, badChunkSig: true},
+		{name: "put-trailer-checksum-mismatch", method: http.MethodPut, key: "bad", body: body, stream: streamUnsignedTrailer, trailer: crc32Trailer("other")},
+		{name: "put-decoded-length-mismatch", method: http.MethodPut, key: "bad", body: body, stream: streamSigned,
+			header: map[string]string{"X-Amz-Decoded-Content-Length": "20481"}},
+		{name: "put-missing-decoded-length", method: http.MethodPut, key: "bad", body: body, stream: streamSigned,
+			header: map[string]string{"X-Amz-Decoded-Content-Length": ""}},
+		{name: "head-bad", method: http.MethodHead, key: "bad"},
+	}}
+	for _, key := range []string{"unsigned-trailer", "signed", "signed-trailer", "gzip", "small-chunks"} {
+		sc.steps = append(sc.steps, step{name: "delete-" + key, method: http.MethodDelete, key: key})
+	}
+	sc.steps = append(sc.steps, deleteBucket())
+	return sc
 }
 
 // listingKeys exercise delimiters, nesting, and characters that encoding-type=url changes.

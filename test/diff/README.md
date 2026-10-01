@@ -2,7 +2,7 @@
 
 This suite checks pail against AWS S3 as a black box. It talks to both over HTTP only.
 
-Each scenario in `scenarios_test.go` is a list of raw S3 requests. One SigV4 signer signs them, so AWS and pail receive the same requests. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
+Each scenario in `scenarios_test.go` is a list of raw S3 requests. One SigV4 signer signs them, so AWS and pail receive the same requests. A streaming step sends its body `aws-chunked` and signs each chunk with the suite's own code, so a recording checks that code against AWS. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
 
 The signer writes a bare subresource such as `?location` as `?location=`, as the AWS SDKs do. Golden files show the scenario form.
 

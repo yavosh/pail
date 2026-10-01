@@ -28,6 +28,8 @@ var (
 	ErrRequestTimeTooSkewed  = errors.New("request time too skewed")
 	ErrMissingContentSHA256  = errors.New("missing x-amz-content-sha256")
 	ErrContentSHA256Mismatch = errors.New("x-amz-content-sha256 does not match the body")
+	ErrMissingDecodedLength  = errors.New("missing or invalid x-amz-decoded-content-length")
+	ErrMalformedChunk        = errors.New("malformed aws-chunked body")
 	// ErrNotImplemented marks valid requests pail cannot verify yet.
 	ErrNotImplemented = errors.New("signing mode not implemented")
 )
@@ -38,6 +40,10 @@ const (
 	maxSkew       = 15 * time.Minute
 	unsignedHash  = "UNSIGNED-PAYLOAD"
 	streamingMode = "STREAMING-"
+
+	streamingSigned          = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD"
+	streamingUnsignedTrailer = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
+	streamingSignedTrailer   = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER"
 )
 
 // Verifier checks signatures against one set of access keys.
@@ -51,8 +57,9 @@ func New(accessKeyID, secretAccessKey string) *Verifier {
 }
 
 // Verify checks the Authorization header of r. When the request carries a
-// SHA-256 payload hash, Verify wraps r.Body so a mismatch fails the last read
-// with ErrContentSHA256Mismatch; the caller must not commit before EOF.
+// SHA-256 payload hash or an aws-chunked body, Verify wraps r.Body so a bad
+// body fails a read by EOF; the caller must not commit before EOF. An
+// aws-chunked body fills r.Trailer once it is read to EOF, as net/http does.
 func (v *Verifier) Verify(r *http.Request) error {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
@@ -95,9 +102,11 @@ func (v *Verifier) Verify(r *http.Request) error {
 	}
 
 	payloadHash := r.Header.Get("X-Amz-Content-Sha256")
+	streaming := payloadHash == streamingSigned || payloadHash == streamingUnsignedTrailer || payloadHash == streamingSignedTrailer
 	switch {
 	case payloadHash == "":
 		return ErrMissingContentSHA256
+	case streaming:
 	case strings.HasPrefix(payloadHash, streamingMode):
 		return fmt.Errorf("%s: %w", payloadHash, ErrNotImplemented)
 	case payloadHash != unsignedHash && !isSHA256Hex(payloadHash):
@@ -114,11 +123,66 @@ func (v *Verifier) Verify(r *http.Request) error {
 		return ErrSignatureMismatch
 	}
 
+	if streaming {
+		decodedLen, err := DecodedLength(r.Header)
+		if err != nil {
+			return err
+		}
+		r.Trailer = http.Header{}
+		body := r.Body
+		if body == nil {
+			body = http.NoBody
+		}
+		r.Body = newChunkedReader(body, chunkParams{
+			signed:     payloadHash != streamingUnsignedTrailer,
+			trailers:   payloadHash != streamingSigned,
+			key:        key,
+			amzDate:    amzDate,
+			scope:      scope,
+			seed:       a.signature,
+			decodedLen: decodedLen,
+			declared:   declaredTrailers(r.Header),
+			trailer:    r.Trailer,
+		})
+		return nil
+	}
 	if payloadHash != unsignedHash && r.Body != nil {
 		want, _ := hex.DecodeString(payloadHash)
 		r.Body = &hashingBody{body: r.Body, h: sha256.New(), want: want}
 	}
 	return nil
+}
+
+// IsStreaming reports whether h names an aws-chunked payload.
+func IsStreaming(h http.Header) bool {
+	return strings.HasPrefix(h.Get("X-Amz-Content-Sha256"), streamingMode)
+}
+
+// DecodedLength parses x-amz-decoded-content-length, the size of an
+// aws-chunked payload once decoded.
+func DecodedLength(h http.Header) (int64, error) {
+	v := h.Get("X-Amz-Decoded-Content-Length")
+	if v == "" || strings.Trim(v, "0123456789") != "" {
+		return 0, ErrMissingDecodedLength
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, ErrMissingDecodedLength
+	}
+	return n, nil
+}
+
+// declaredTrailers lists the lowercase names in x-amz-trailer.
+func declaredTrailers(h http.Header) []string {
+	var names []string
+	for _, v := range h.Values("X-Amz-Trailer") {
+		for name := range strings.SplitSeq(v, ",") {
+			if name = strings.ToLower(strings.TrimSpace(name)); name != "" {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
 }
 
 type authorization struct {

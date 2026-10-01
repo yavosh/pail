@@ -350,3 +350,79 @@ func TestPutObjectChecksumHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestPutObjectStreaming(t *testing.T) {
+	srv, st := storeServer(t, "")
+	ctx := context.Background()
+	if err := st.CreateBucket(ctx, "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	const crc32 = "x-amz-checksum-crc32" // "DUoRhQ==" is the CRC32 of "hello world"
+	tests := []struct {
+		name       string
+		header     http.Header
+		trailer    string // a trailer line, without CRLF
+		wantStatus int
+		wantCode   string
+		wantAlg    string
+		wantEnc    string
+	}{
+		{"checksum trailer", http.Header{"X-Amz-Trailer": {crc32}}, crc32 + ":DUoRhQ==", http.StatusOK, "", "CRC32", ""},
+		{"no trailer", nil, "", http.StatusOK, "", "CRC64NVME", ""},
+		{"gzip under aws-chunked", http.Header{"Content-Encoding": {"gzip", "aws-chunked"}}, "", http.StatusOK, "", "CRC64NVME", "gzip"},
+		{"one list value", http.Header{"Content-Encoding": {"gzip, aws-chunked"}}, "", http.StatusOK, "", "CRC64NVME", "gzip"},
+		{"named algorithm", http.Header{"X-Amz-Trailer": {crc32}, "X-Amz-Sdk-Checksum-Algorithm": {"CRC32"}}, crc32 + ":DUoRhQ==", http.StatusOK, "", "CRC32", ""},
+		{"wrong trailer value", http.Header{"X-Amz-Trailer": {crc32}}, crc32 + ":AAAAAA==", http.StatusBadRequest, "BadDigest", "", ""},
+		{"bad trailer base64", http.Header{"X-Amz-Trailer": {crc32}}, crc32 + ":nope!", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"trailer is not a checksum", http.Header{"X-Amz-Trailer": {"x-amz-meta-color"}}, "x-amz-meta-color:blue", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"two trailers", http.Header{"X-Amz-Trailer": {crc32 + ",x-amz-checksum-sha1"}}, crc32 + ":DUoRhQ==", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"header and trailer", http.Header{"X-Amz-Trailer": {crc32}, "X-Amz-Checksum-Crc32": {"DUoRhQ=="}}, crc32 + ":DUoRhQ==", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"algorithm disagrees with trailer", http.Header{"X-Amz-Trailer": {crc32}, "X-Amz-Sdk-Checksum-Algorithm": {"SHA1"}}, crc32 + ":DUoRhQ==", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"missing decoded length", http.Header{"X-Amz-Decoded-Content-Length": nil}, "", http.StatusLengthRequired, "MissingContentLength", "", ""},
+		{"decoded length over 5 GiB", http.Header{"X-Amz-Decoded-Content-Length": {"5368709121"}}, "", http.StatusBadRequest, "EntityTooLarge", "", ""},
+		{"decoded length mismatch", http.Header{"X-Amz-Decoded-Content-Length": {"12"}}, "", http.StatusBadRequest, "IncompleteBody", "", ""},
+	}
+	for _, tt := range tests {
+		const body = "hello world"
+		enc := "6\r\nhello \r\n5\r\nworld\r\n0\r\n"
+		if tt.trailer != "" {
+			enc += tt.trailer + "\r\n"
+		}
+		enc += "\r\n"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader(enc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Encoding", "aws-chunked")
+		req.Header.Set("X-Amz-Decoded-Content-Length", "11")
+		for k, v := range tt.header {
+			req.Header[k] = v
+			if v == nil {
+				req.Header.Del(k)
+			}
+		}
+		req.Header.Set("X-Amz-Content-Sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER")
+		signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+		creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
+		if err := signer.SignHTTP(ctx, creds, req, "STREAMING-UNSIGNED-PAYLOAD-TRAILER", "s3", "us-east-1", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		_ = st.DeleteObject(ctx, "bkt", "k")
+		status, code := send(t, req)
+		if status != tt.wantStatus || code != tt.wantCode {
+			t.Errorf("%s: PUT = %d %q, want %d %q", tt.name, status, code, tt.wantStatus, tt.wantCode)
+			continue
+		}
+		info, err := st.HeadObject(ctx, "bkt", "k")
+		if tt.wantStatus != http.StatusOK {
+			if !errors.Is(err, store.ErrNoSuchKey) {
+				t.Errorf("%s: a failed PUT stored the object: HeadObject error = %v", tt.name, err)
+			}
+			continue
+		}
+		if err != nil || info.Size != int64(len(body)) || info.ChecksumAlgorithm != tt.wantAlg || info.Metadata["Content-Encoding"] != tt.wantEnc {
+			t.Errorf("%s: stored size %d, checksum %q, Content-Encoding %q, %v; want %d, %q, %q",
+				tt.name, info.Size, info.ChecksumAlgorithm, info.Metadata["Content-Encoding"], err, len(body), tt.wantAlg, tt.wantEnc)
+		}
+	}
+}

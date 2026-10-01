@@ -134,7 +134,7 @@ func TestVerifyRejectsTampering(t *testing.T) {
 		{"no payload hash", func(r *http.Request) { r.Header.Del("X-Amz-Content-Sha256") }, ErrMissingContentSHA256},
 		{"bad payload hash", func(r *http.Request) { r.Header.Set("X-Amz-Content-Sha256", "nope") }, ErrMalformedAuth},
 		{"streaming", func(r *http.Request) {
-			r.Header.Set("X-Amz-Content-Sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER")
+			r.Header.Set("X-Amz-Content-Sha256", "STREAMING-AWS4-ECDSA-P256-SHA256-PAYLOAD")
 		}, ErrNotImplemented},
 		{"no authorization", func(r *http.Request) { r.Header.Del("Authorization") }, ErrMissingAuth},
 		{"presigned", func(r *http.Request) {

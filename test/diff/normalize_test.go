@@ -108,6 +108,9 @@ func fingerprint(st step) string {
 		fmt.Fprintf(h, "%s: %s\n", k, st.header[k])
 	}
 	h.Write([]byte(st.body))
+	if st.stream != "" { // only here, so older steps keep their fingerprints
+		fmt.Fprintf(h, "\nstream %s %d %q %v", st.stream, st.chunk, st.trailer, st.badChunkSig)
+	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 

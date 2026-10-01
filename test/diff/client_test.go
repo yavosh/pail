@@ -2,7 +2,9 @@ package diff
 
 import (
 	"bytes"
+	"cmp"
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -10,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +75,10 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 	}
 	sum := sha256.Sum256([]byte(st.body))
 	payloadHash := hex.EncodeToString(sum[:])
+	if st.stream != "" {
+		payloadHash = st.stream
+		setStreamHeaders(req, st)
+	}
 	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
 
 	creds, signTime := tg.creds, time.Now()
@@ -93,6 +100,13 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 	if err != nil {
 		return response{}, fmt.Errorf("sign: %w", err)
 	}
+	if st.stream != "" {
+		amzDate := req.Header.Get("X-Amz-Date")
+		scope := amzDate[:8] + "/" + tg.region + "/s3/aws4_request"
+		_, seed, _ := strings.Cut(req.Header.Get("Authorization"), "Signature=")
+		enc := encodeChunked(st, signingKey(creds.SecretAccessKey, amzDate[:8], tg.region), amzDate, scope, seed)
+		req.Body, req.GetBody = io.NopCloser(bytes.NewReader(enc)), nil
+	}
 
 	resp, err := tg.client.Do(req)
 	if err != nil {
@@ -104,6 +118,92 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		return response{}, err
 	}
 	return response{status: resp.StatusCode, header: resp.Header, body: body}, nil
+}
+
+const (
+	streamSigned          = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD"
+	streamUnsignedTrailer = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
+	streamSignedTrailer   = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER"
+)
+
+// setStreamHeaders adds the aws-chunked headers a step does not set itself;
+// an empty value in the step removes one. Signatures have a fixed length, so
+// a dummy encoding gives the Content-Length to sign.
+func setStreamHeaders(req *http.Request, st step) {
+	defaults := map[string]string{
+		"Content-Encoding":             "aws-chunked",
+		"X-Amz-Decoded-Content-Length": strconv.Itoa(len(st.body)),
+	}
+	if name, _, ok := strings.Cut(st.trailer, ":"); ok {
+		defaults["X-Amz-Trailer"] = name
+	}
+	for k, v := range defaults {
+		if _, set := st.header[k]; !set {
+			req.Header.Set(k, v)
+		}
+		if req.Header.Get(k) == "" {
+			req.Header.Del(k)
+		}
+	}
+	req.ContentLength = int64(len(encodeChunked(st, nil, "", "", "")))
+}
+
+// encodeChunked aws-chunk encodes st.body, chaining chunk signatures from
+// seed. The suite signs chunks itself, so recording checks this code against
+// AWS, independently of pail's verifier.
+func encodeChunked(st step, key []byte, amzDate, scope, seed string) []byte {
+	prev := seed
+	sign := func(stringToSign string) string {
+		prev = hex.EncodeToString(hmacSHA256(key, stringToSign))
+		return prev
+	}
+	size := cmp.Or(st.chunk, 8<<10)
+	var b bytes.Buffer
+	for rest := st.body; ; {
+		data := rest[:min(size, len(rest))]
+		rest = rest[len(data):]
+		if st.stream == streamUnsignedTrailer {
+			fmt.Fprintf(&b, "%x\r\n", len(data))
+		} else {
+			sig := sign("AWS4-HMAC-SHA256-PAYLOAD\n" + amzDate + "\n" + scope + "\n" + prev + "\n" + sha256Hex("") + "\n" + sha256Hex(data))
+			if st.badChunkSig && b.Len() == 0 {
+				sig = strings.Repeat("0", len(sig))
+			}
+			fmt.Fprintf(&b, "%x;chunk-signature=%s\r\n", len(data), sig)
+		}
+		if data == "" {
+			break
+		}
+		b.WriteString(data + "\r\n")
+	}
+	if st.trailer != "" {
+		b.WriteString(st.trailer + "\r\n")
+		if st.stream == streamSignedTrailer {
+			sig := sign("AWS4-HMAC-SHA256-TRAILER\n" + amzDate + "\n" + scope + "\n" + prev + "\n" + sha256Hex(st.trailer+"\n"))
+			b.WriteString("x-amz-trailer-signature:" + sig + "\r\n")
+		}
+	}
+	b.WriteString("\r\n")
+	return b.Bytes()
+}
+
+func signingKey(secret, date, region string) []byte {
+	k := hmacSHA256([]byte("AWS4"+secret), date)
+	for _, s := range []string{region, "s3", "aws4_request"} {
+		k = hmacSHA256(k, s)
+	}
+	return k
+}
+
+func hmacSHA256(key []byte, data string) []byte {
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte(data))
+	return m.Sum(nil)
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 // s3Escape percent-encodes a key the way S3 clients do: every byte except
