@@ -56,8 +56,19 @@ Check these steps by hand in a new recording:
 
 `<field>` is `status`, `body`, or `header:<Name>`, as the failure message prints it. An unlisted difference fails the test. A listed difference that no longer occurs also fails, so the list stays current.
 
+## Pending scenarios
+
+`testdata/pending.txt` lists scenarios recorded before pail implements them, one per line:
+
+```text
+<scenario> <reason, with an issue link>
+```
+
+Replay skips a pending scenario and prints its first difference, so CI stays green while the feature is open. Once the scenario matches AWS, or every remaining difference is in `known-diffs.txt`, the test fails until you remove the line. A line that names no scenario also fails.
+
 ## Add a scenario
 
 1. Add the scenario to `scenarios()`. Use a new bucket per scenario, and delete what you create.
 2. Record it against AWS, and commit the golden file.
-3. Run replay. Fix pail, or list each remaining difference with a reason.
+3. Until pail implements it, add the scenario to `testdata/pending.txt` with its issue.
+4. Run replay. Fix pail, or list each remaining difference with a reason. Then remove the scenario from `pending.txt`.

@@ -8,6 +8,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"flag"
+	"fmt"
+	"io"
 	"maps"
 	"net"
 	"net/http"
@@ -29,6 +31,7 @@ var record = flag.Bool("record", false, "record golden files against AWS S3 in u
 const (
 	goldenDir      = "testdata/golden"
 	knownDiffsFile = "testdata/known-diffs.txt"
+	pendingFile    = "testdata/pending.txt"
 	region         = "us-east-1"
 )
 
@@ -40,19 +43,17 @@ func TestDiff(t *testing.T) {
 		tg = pailTarget(t)
 	}
 
-	f, err := os.Open(knownDiffsFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	known, err := readKnownDiffs(f)
-	f.Close()
-	if err != nil {
-		t.Fatalf("%s: %v", knownDiffsFile, err)
-	}
+	known := readListFile(t, knownDiffsFile, readKnownDiffs)
+	pending := readListFile(t, pendingFile, readPending)
 
 	names := map[string]bool{}
 	for _, sc := range scenarios() {
 		names[sc.name] = true
+	}
+	for _, name := range slices.Sorted(maps.Keys(pending)) {
+		if !names[name] {
+			t.Errorf("%s lists %q, but no scenario has that name", pendingFile, name)
+		}
 	}
 	seen := map[string]bool{}
 	ran := map[string]bool{}
@@ -72,10 +73,20 @@ func TestDiff(t *testing.T) {
 			}
 			// ran is set only after replay returns, so a step that fails fatally
 			// does not also report its listed differences as stale.
-			got := replayScenario(t, tg, sc, want, known)
+			unexpected, got := replayScenario(t, tg, sc, want, known)
 			ran[sc.name] = true
 			for _, key := range got {
 				seen[key] = true
+			}
+			if reason, ok := pending[sc.name]; ok {
+				if len(unexpected) == 0 {
+					t.Errorf("%s matches AWS now: remove it from %s", sc.name, pendingFile)
+					return
+				}
+				t.Skipf("pending, %s: %d differences, first:\n%s", reason, len(unexpected), unexpected[0])
+			}
+			for _, d := range unexpected {
+				t.Error(d)
 			}
 		})
 	}
@@ -134,21 +145,24 @@ func TestReplayIsDeterministic(t *testing.T) {
 	for _, sc := range scenarios() {
 		t.Run(sc.name, func(t *testing.T) {
 			want := runScenario(t, tg, sc, newBucketName())
-			if seen := replayScenario(t, tg, sc, want, nil); len(seen) != 0 {
+			unexpected, seen := replayScenario(t, tg, sc, want, nil)
+			for _, d := range unexpected {
+				t.Error(d)
+			}
+			if len(seen) != 0 {
 				t.Errorf("known differences seen = %v, want none", seen)
 			}
 		})
 	}
 }
 
-// replayScenario runs sc against pail and reports every difference not listed
-// in known. It returns the known-difference keys it saw.
-func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known map[string]string) []string {
+// replayScenario runs sc against pail. It returns every difference not listed
+// in known, and the known-difference keys it saw.
+func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known map[string]string) (unexpected, seen []string) {
 	if len(want.Exchanges) != len(sc.steps) {
 		t.Fatalf("golden file has %d steps, scenario has %d: record it again", len(want.Exchanges), len(sc.steps))
 	}
 	bucket := newBucketName()
-	var seen []string
 	for i, st := range sc.steps {
 		w := want.Exchanges[i]
 		if w.Step != st.name || w.Request != describe(st) || w.Fingerprint != fingerprint(st) {
@@ -166,10 +180,25 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known ma
 				seen = append(seen, full)
 				continue
 			}
-			t.Errorf("%s: %s\n%s", full, w.Request, diffs[key])
+			unexpected = append(unexpected, fmt.Sprintf("%s: %s\n%s", full, w.Request, diffs[key]))
 		}
 	}
-	return seen
+	return unexpected, seen
+}
+
+// readListFile opens and parses one of the testdata lists.
+func readListFile(t *testing.T, path string, parse func(io.Reader) (map[string]string, error)) map[string]string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	m, err := parse(f)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	return m
 }
 
 func newBucketName() string {

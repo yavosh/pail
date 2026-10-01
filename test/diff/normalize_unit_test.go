@@ -215,3 +215,18 @@ func TestBadSignatureDoesNotPoisonTheSigner(t *testing.T) {
 		t.Errorf("after a bad-signature step, a normal step got %q, want it to pass signing", codes[1])
 	}
 }
+
+func TestReadPending(t *testing.T) {
+	pending, err := readPending(strings.NewReader("# comment\n\nobject-basics needs object operations (#8)\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pending["object-basics"]; got != "needs object operations (#8)" {
+		t.Errorf("reason = %q, want the rest of the line", got)
+	}
+	for _, bad := range []string{"object-basics\n", "a/b reason\n"} {
+		if _, err := readPending(strings.NewReader(bad)); err == nil {
+			t.Errorf("readPending(%q) error = nil, want an error", bad)
+		}
+	}
+}
