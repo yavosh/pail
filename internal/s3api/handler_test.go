@@ -91,18 +91,16 @@ func TestNotImplementedError(t *testing.T) {
 }
 
 func TestHeadErrorHasNoBody(t *testing.T) {
-	srv := httptest.NewServer(New(testOptions("")))
-	t.Cleanup(srv.Close)
+	srv, _ := storeServer(t, "")
 
 	status, _, body := do(t, srv, http.MethodHead, "/bkt/key", "")
-	if status != http.StatusNotImplemented || len(body) != 0 {
-		t.Errorf("HEAD /bkt/key = %d with %d body bytes, want %d with none", status, len(body), http.StatusNotImplemented)
+	if status != http.StatusNotFound || len(body) != 0 {
+		t.Errorf("HEAD /bkt/key = %d with %d body bytes, want %d with none", status, len(body), http.StatusNotFound)
 	}
 }
 
 func TestRouting(t *testing.T) {
-	srv := httptest.NewServer(New(testOptions("localhost:9000")))
-	t.Cleanup(srv.Close)
+	srv, _ := storeServer(t, "localhost:9000")
 
 	tests := []struct {
 		name       string
@@ -112,12 +110,12 @@ func TestRouting(t *testing.T) {
 		wantStatus int
 		wantBody   *string // nil skips the body check
 	}{
-		{"unclean path is not redirected", http.MethodGet, "/bkt/a//b", "", http.StatusNotImplemented, nil},
-		{"dot segment is not redirected", http.MethodGet, "/bkt/../x", "", http.StatusNotImplemented, nil},
+		{"unclean path is not redirected", http.MethodGet, "/bkt/a//b", "", http.StatusNotFound, nil},
+		{"dot segment is not redirected", http.MethodGet, "/bkt/../x", "", http.StatusNotFound, nil},
 		{"health", http.MethodGet, "/_pail/health", "", http.StatusOK, new("ok\n")},
 		{"health head", http.MethodHead, "/_pail/health", "", http.StatusOK, new("")},
-		{"virtual-hosted _pail is a key", http.MethodGet, "/_pail/health", "bkt.localhost", http.StatusNotImplemented, nil},
-		{"domain with port still matches", http.MethodGet, "/_pail/health", "bkt.localhost:9000", http.StatusNotImplemented, nil},
+		{"virtual-hosted _pail is a key", http.MethodGet, "/_pail/health", "bkt.localhost", http.StatusNotFound, nil},
+		{"domain with port still matches", http.MethodGet, "/_pail/health", "bkt.localhost:9000", http.StatusNotFound, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -38,6 +38,15 @@ var (
 	errInvalidArgument           = apiError{"InvalidArgument", http.StatusBadRequest, "Invalid Argument"}
 	errIllegalLocationConstraint = apiError{"IllegalLocationConstraintException", http.StatusBadRequest, "The specified location-constraint is not valid for this endpoint."}
 	errMaxMessageLength          = apiError{"MaxMessageLengthExceeded", http.StatusBadRequest, "Your request was too big."}
+	errNoSuchKey                 = apiError{"NoSuchKey", http.StatusNotFound, "The specified key does not exist."}
+	errPreconditionFailed        = apiError{"PreconditionFailed", http.StatusPreconditionFailed, "At least one of the pre-conditions you specified did not hold"}
+	errBadDigest                 = apiError{"BadDigest", http.StatusBadRequest, "The Content-MD5 you specified did not match what we received."}
+	errInvalidDigest             = apiError{"InvalidDigest", http.StatusBadRequest, "The Content-MD5 you specified was invalid."}
+	errInvalidRange              = apiError{"InvalidRange", http.StatusRequestedRangeNotSatisfiable, "The requested range is not satisfiable"}
+	errKeyTooLong                = apiError{"KeyTooLongError", http.StatusBadRequest, "Your key is too long"}
+	errEntityTooLarge            = apiError{"EntityTooLarge", http.StatusBadRequest, "Your proposed upload exceeds the maximum allowed size"}
+	errMetadataTooLarge          = apiError{"MetadataTooLarge", http.StatusBadRequest, "Your metadata headers exceed the maximum allowed metadata size."}
+	errMissingContentLength      = apiError{"MissingContentLength", http.StatusLengthRequired, "You must provide the Content-Length HTTP header."}
 )
 
 // apiErrors maps the errors handlers check with errors.Is to S3 errors.
@@ -58,6 +67,9 @@ var apiErrors = []struct {
 	{store.ErrNoSuchBucket, errNoSuchBucket},
 	{store.ErrBucketExists, errBucketAlreadyOwnedByYou},
 	{store.ErrBucketNotEmpty, errBucketNotEmpty},
+	{store.ErrNoSuchKey, errNoSuchKey},
+	{store.ErrPreconditionFailed, errPreconditionFailed},
+	{store.ErrBadDigest, errBadDigest},
 }
 
 // toAPIError maps err to an S3 error. An unknown error is InternalError: its

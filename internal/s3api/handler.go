@@ -51,6 +51,10 @@ func (h *handler) routes() {
 		opHeadBucket:        h.handleHeadBucket,
 		opDeleteBucket:      h.handleDeleteBucket,
 		opGetBucketLocation: h.handleGetBucketLocation,
+		opPutObject:         h.handlePutObject,
+		opGetObject:         h.handleGetObject,
+		opHeadObject:        h.handleHeadObject,
+		opDeleteObject:      h.handleDeleteObject,
 	}
 	h.internal.HandleFunc("GET /_pail/health", handleHealth)
 }

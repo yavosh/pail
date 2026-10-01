@@ -55,7 +55,7 @@ func TestValidBucketName(t *testing.T) {
 }
 
 // storeServer serves the S3 API on a real store in a temp directory.
-func storeServer(t *testing.T) (*httptest.Server, *store.Store) {
+func storeServer(t *testing.T, domain string) (*httptest.Server, *store.Store) {
 	t.Helper()
 	fsys, err := localdisk.Open(t.TempDir())
 	if err != nil {
@@ -66,7 +66,7 @@ func storeServer(t *testing.T) (*httptest.Server, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := testOptions("")
+	opts := testOptions(domain)
 	opts.Region, opts.Store = "us-east-1", st
 	srv := httptest.NewServer(New(opts))
 	t.Cleanup(srv.Close)
@@ -82,6 +82,18 @@ func doBody(t *testing.T, srv *httptest.Server, method, path, body string) (int,
 		t.Fatal(err)
 	}
 	signPayload(t, req, time.Now(), body)
+	return sendRaw(t, req)
+}
+
+// send sends a signed request and returns the status and the S3 error code.
+func send(t *testing.T, req *http.Request) (int, string) {
+	t.Helper()
+	status, code, _ := sendRaw(t, req)
+	return status, code
+}
+
+func sendRaw(t *testing.T, req *http.Request) (int, string, []byte) {
+	t.Helper()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +106,7 @@ func doBody(t *testing.T, srv *httptest.Server, method, path, body string) (int,
 }
 
 func TestBucketErrors(t *testing.T) {
-	srv, st := storeServer(t)
+	srv, st := storeServer(t, "")
 	ctx := context.Background()
 	if err := st.CreateBucket(ctx, "full"); err != nil {
 		t.Fatal(err)
@@ -139,7 +151,7 @@ func TestBucketErrors(t *testing.T) {
 }
 
 func TestListBucketsParameters(t *testing.T) {
-	srv, st := storeServer(t)
+	srv, st := storeServer(t, "")
 	for _, b := range []string{"aaa", "bbb", "bbc", "ccc"} {
 		if err := st.CreateBucket(context.Background(), b); err != nil {
 			t.Fatal(err)

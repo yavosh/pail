@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/vfs"
 )
 
 // Store is the storage the S3 handlers need. *store.Store implements it.
@@ -23,6 +24,10 @@ type Store interface {
 	HeadBucket(ctx context.Context, name string) (store.BucketInfo, error)
 	ListBuckets(ctx context.Context) ([]store.BucketInfo, error)
 	DeleteBucket(ctx context.Context, name string) error
+	PutObject(ctx context.Context, bucket, key string, body io.Reader, opts store.PutOptions) (store.ObjectInfo, error)
+	GetObject(ctx context.Context, bucket, key string) (vfs.File, store.ObjectInfo, error)
+	HeadObject(ctx context.Context, bucket, key string) (store.ObjectInfo, error)
+	DeleteObject(ctx context.Context, bucket, key string) error
 }
 
 const s3Namespace = "http://s3.amazonaws.com/doc/2006-03-01/"
