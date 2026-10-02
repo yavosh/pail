@@ -169,6 +169,9 @@ func presignedScenario() scenario {
 		{name: "get-tampered", method: http.MethodGet, key: key, auth: authPresignedTampered},
 		{name: "get-expires-too-long", method: http.MethodGet, key: key, auth: authPresigned, query: "X-Amz-Expires=604801"},
 		{name: "get-expires-zero", method: http.MethodGet, key: key, auth: authPresigned, query: "X-Amz-Expires=0"},
+		{name: "get-future", method: http.MethodGet, key: key, auth: authPresignedFuture},
+		{name: "get-bad-credential", method: http.MethodGet, key: key, auth: authPresignedBadCredential},
+		{name: "get-missing-param", method: http.MethodGet, key: key, auth: authPresignedMissingParam},
 		{name: "delete", method: http.MethodDelete, key: key, auth: authPresigned},
 		deleteBucket(),
 	}}

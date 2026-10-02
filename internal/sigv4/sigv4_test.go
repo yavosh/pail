@@ -379,14 +379,14 @@ func TestVerifyPresignedRejectsTampering(t *testing.T) {
 			setQuery(r, func(q url.Values) {
 				q.Set("X-Amz-Credential", strings.Replace(q.Get("X-Amz-Credential"), "/s3/", "/ec2/", 1))
 			})
-		}, ErrMalformedAuth},
+		}, ErrMalformedPresign},
 		{"date does not match scope", func(r *http.Request) {
 			setQuery(r, func(q url.Values) { q.Set("X-Amz-Date", time.Now().Add(48*time.Hour).UTC().Format(timeFormat)) })
-		}, ErrMalformedAuth},
-		{"bad date", func(r *http.Request) { setQuery(r, func(q url.Values) { q.Set("X-Amz-Date", "yesterday") }) }, ErrMalformedAuth},
+		}, ErrMalformedPresign},
+		{"bad date", func(r *http.Request) { setQuery(r, func(q url.Values) { q.Set("X-Amz-Date", "yesterday") }) }, ErrMalformedPresign},
 		{"no host signed", func(r *http.Request) {
 			setQuery(r, func(q url.Values) { q.Set("X-Amz-SignedHeaders", "x-amz-meta-a") })
-		}, ErrMalformedAuth},
+		}, ErrMalformedPresign},
 		{"algorithm", func(r *http.Request) {
 			setQuery(r, func(q url.Values) { q.Set("X-Amz-Algorithm", "AWS4-HMAC-SHA512") })
 		}, ErrMalformedPresign},

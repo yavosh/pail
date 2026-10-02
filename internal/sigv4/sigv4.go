@@ -67,7 +67,7 @@ func (v *Verifier) Verify(r *http.Request) error {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
 		if q := r.URL.Query(); q.Has("X-Amz-Algorithm") || q.Has("X-Amz-Signature") {
-			return v.verifyPresigned(r)
+			return v.verifyPresigned(r, q)
 		}
 		return ErrMissingAuth
 	}
@@ -254,8 +254,7 @@ var presignParams = []string{"X-Amz-Algorithm", "X-Amz-Credential", "X-Amz-Date"
 
 // verifyPresigned checks the query-string signature of r. The payload is
 // never signed, so r.Body stays as it is.
-func (v *Verifier) verifyPresigned(r *http.Request) error {
-	q := r.URL.Query()
+func (v *Verifier) verifyPresigned(r *http.Request, q url.Values) error {
 	p := map[string]string{}
 	for _, name := range presignParams {
 		vals := q[name]
@@ -272,9 +271,11 @@ func (v *Verifier) verifyPresigned(r *http.Request) error {
 	if err != nil || strings.Trim(p["X-Amz-Expires"], "0123456789") != "" || expires < 1 || expires > maxExpires {
 		return fmt.Errorf("x-amz-expires %q: %w", p["X-Amz-Expires"], ErrMalformedPresign)
 	}
+	// The shared checks fail with ErrMalformedAuth, which names a header
+	// that a presigned URL does not have.
 	a, err := newAuthorization(p["X-Amz-Credential"], p["X-Amz-SignedHeaders"], p["X-Amz-Signature"])
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", err.Error(), ErrMalformedPresign)
 	}
 	secret, ok := v.secrets[a.accessKeyID]
 	if !ok {
@@ -286,7 +287,7 @@ func (v *Verifier) verifyPresigned(r *http.Request) error {
 	amzDate := p["X-Amz-Date"]
 	signedAt, err := parseSigningTime(amzDate, a.date)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", err.Error(), ErrMalformedPresign)
 	}
 	now := time.Now()
 	if signedAt.Sub(now) > maxSkew {
@@ -311,7 +312,7 @@ func sign(key []byte, amzDate, scope, creq string) string {
 	return hex.EncodeToString(hmacSHA256(key, stringToSign))
 }
 
-// dropQueryParam removes every name=value pair from a raw query string.
+// dropQueryParam removes the pairs named name from a raw query string.
 func dropQueryParam(raw, name string) string {
 	var kept []string
 	for part := range strings.SplitSeq(raw, "&") {
