@@ -124,12 +124,5 @@ func (h *handler) handleDeleteObjects(w http.ResponseWriter, r *http.Request, t 
 			resp.Deleted = append(resp.Deleted, deleted{Key: o.Key})
 		}
 	}
-	if req.Quiet {
-		w.Header()["Content-Type"] = nil // AWS sends a quiet result untyped; nil stops sniffing
-		w.WriteHeader(http.StatusOK)
-		body, _ := xml.Marshal(resp) // marshals plain strings, so it cannot fail
-		_, _ = w.Write(append([]byte(xml.Header), body...))
-		return
-	}
 	writeXML(w, r, http.StatusOK, resp)
 }
