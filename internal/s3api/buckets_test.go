@@ -220,3 +220,23 @@ func TestCreateExistingOutsideUSEast1(t *testing.T) {
 		t.Errorf("PUT existing bucket in eu-west-1 = %d %q, want 409 BucketAlreadyOwnedByYou", status, code)
 	}
 }
+
+func TestDecodeXMLDocumentDepth(t *testing.T) {
+	nested := func(n int) string { return strings.Repeat("<a>", n) + strings.Repeat("</a>", n) }
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{"at the limit", nested(maxXMLDepth), false},
+		{"past the limit", nested(maxXMLDepth + 1), true},
+		{"siblings are not nesting", "<a>" + strings.Repeat("<b/>", 100) + "</a>", false},
+		{"unclosed past the limit", strings.Repeat("<a>", maxXMLDepth+1), true},
+	}
+	for _, tt := range tests {
+		var v struct{ XMLName xml.Name }
+		if err := decodeXMLDocument([]byte(tt.body), &v); (err != nil) != tt.wantErr {
+			t.Errorf("%s: decodeXMLDocument(%.30q...) error = %v, want error = %v", tt.name, tt.body, err, tt.wantErr)
+		}
+	}
+}

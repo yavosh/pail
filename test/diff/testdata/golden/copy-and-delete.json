@@ -1,0 +1,356 @@
+{
+  "scenario": "copy-and-delete",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-src",
+      "request": "PUT /src",
+      "fingerprint": "d62c19bc33e7c98f",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "X-Amz-Checksum-Crc64nvme": "jSnVw/bqjr4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "copy",
+      "request": "PUT /dst",
+      "fingerprint": "2d3418da72caa554",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5eb63bbbe01eeed093cb22bb8f5acdc3\"\n  ChecksumCRC64NVME: jSnVw/bqjr4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-copy",
+      "request": "HEAD /dst",
+      "fingerprint": "057d43b2d28780c4",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "11",
+        "Content-Type": "text/plain",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "copy-replace",
+      "request": "PUT /dst-replace",
+      "fingerprint": "c02afe83570cebc3",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5eb63bbbe01eeed093cb22bb8f5acdc3\"\n  ChecksumCRC64NVME: jSnVw/bqjr4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-copy-replace",
+      "request": "HEAD /dst-replace",
+      "fingerprint": "0de9c565ff327639",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "11",
+        "Content-Type": "application/json",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "red",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "copy-onto-itself",
+      "request": "PUT /src",
+      "fingerprint": "102a4328aa261c0f",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "copy-onto-itself-replace",
+      "request": "PUT /src",
+      "fingerprint": "c786d68688bf27b3",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5eb63bbbe01eeed093cb22bb8f5acdc3\"\n  ChecksumCRC64NVME: jSnVw/bqjr4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "copy-if-match-fails",
+      "request": "PUT /cond",
+      "fingerprint": "b049c628cb70505e",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "copy-if-none-match-fails",
+      "request": "PUT /cond",
+      "fingerprint": "8faf0e8a11296d34",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "copy-if-modified-since-future",
+      "request": "PUT /cond",
+      "fingerprint": "73fb62b38e37983d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5eb63bbbe01eeed093cb22bb8f5acdc3\"\n  ChecksumCRC64NVME: jSnVw/bqjr4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "copy-if-unmodified-since-past",
+      "request": "PUT /cond",
+      "fingerprint": "266f76bf5e0d14c8",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "copy-if-match-passes",
+      "request": "PUT /cond",
+      "fingerprint": "f9f419ba6c532e74",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5eb63bbbe01eeed093cb22bb8f5acdc3\"\n  ChecksumCRC64NVME: jSnVw/bqjr4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "copy-missing-source",
+      "request": "PUT /cond2",
+      "fingerprint": "88a0a6e07251c24d",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "copy-bad-source",
+      "request": "PUT /cond2",
+      "fingerprint": "e2f0cfc87d8910f4",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "copy-unknown-directive",
+      "request": "PUT /cond2",
+      "fingerprint": "3395d022e0b43590",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "put-space-key",
+      "request": "PUT /a b",
+      "fingerprint": "972d9b58bb8982f5",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "X-Amz-Checksum-Crc64nvme": "jSnVw/bqjr4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "copy-space-key",
+      "request": "PUT /space-copy",
+      "fingerprint": "93a37b0eb983ce71",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5eb63bbbe01eeed093cb22bb8f5acdc3\"\n  ChecksumCRC64NVME: jSnVw/bqjr4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "put-plus-key",
+      "request": "PUT /a+b",
+      "fingerprint": "059087958eb9e90d",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "X-Amz-Checksum-Crc64nvme": "jSnVw/bqjr4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "copy-plus-key",
+      "request": "PUT /plus-copy",
+      "fingerprint": "0b96833a6fd32796",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5eb63bbbe01eeed093cb22bb8f5acdc3\"\n  ChecksumCRC64NVME: jSnVw/bqjr4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-plus-copy",
+      "request": "HEAD /plus-copy",
+      "fingerprint": "a858201c44262195",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "11",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"5eb63bbbe01eeed093cb22bb8f5acdc3\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-objects",
+      "request": "POST /?delete",
+      "fingerprint": "a65cfcb76f555de8",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Deleted\n    Key: dst\n  Deleted\n    Key: missing\n  Deleted\n    Key: src\n"
+    },
+    {
+      "step": "delete-objects-quiet",
+      "request": "POST /?delete",
+      "fingerprint": "95e520302219b945",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult: \n"
+    },
+    {
+      "step": "delete-objects-crc32",
+      "request": "POST /?delete",
+      "fingerprint": "4e3d890cd010b985",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Deleted\n    Key: cond\n  Deleted\n    Key: plus-copy\n  Deleted\n    Key: space-copy\n"
+    },
+    {
+      "step": "delete-objects-no-checksum",
+      "request": "POST /?delete",
+      "fingerprint": "d634612542605e39",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "delete-objects-bad-md5",
+      "request": "POST /?delete",
+      "fingerprint": "399b6bef88b53d91",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadDigest\n"
+    },
+    {
+      "step": "delete-objects-1001",
+      "request": "POST /?delete",
+      "fingerprint": "809e6743af46311c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: MalformedXML\n"
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

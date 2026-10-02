@@ -246,10 +246,36 @@ func isDottedQuad(name string) bool {
 	return true
 }
 
+// maxXMLDepth bounds element nesting in request documents, which are at most
+// four levels deep. encoding/xml keeps a stack entry per open element.
+const maxXMLDepth = 16
+
+var errXMLTooDeep = errors.New("xml nested too deeply")
+
+// depthLimit fails the token stream of dec once elements nest past maxXMLDepth.
+type depthLimit struct {
+	dec   *xml.Decoder
+	depth int
+}
+
+func (d *depthLimit) Token() (xml.Token, error) {
+	tok, err := d.dec.Token()
+	switch tok.(type) {
+	case xml.StartElement:
+		if d.depth++; d.depth > maxXMLDepth {
+			return nil, errXMLTooDeep
+		}
+	case xml.EndElement:
+		d.depth--
+	}
+	return tok, err
+}
+
 // decodeXMLDocument decodes body into v and rejects anything around the root
-// element except whitespace, comments, and the XML declaration before it.
+// element except whitespace, comments, and the XML declaration before it. It
+// also rejects elements nested deeper than maxXMLDepth.
 func decodeXMLDocument(body []byte, v any) error {
-	dec := xml.NewDecoder(bytes.NewReader(body))
+	dec := xml.NewTokenDecoder(&depthLimit{dec: xml.NewDecoder(bytes.NewReader(body))})
 	for {
 		tok, err := dec.Token()
 		if err != nil {

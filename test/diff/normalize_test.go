@@ -177,9 +177,19 @@ func canonicalXML(body string) (string, bool, error) {
 		}
 		return "Error\n  Code: " + code + "\n", true, nil
 	}
+	// AWS lists DeleteObjects results in no fixed order.
+	if root.name == "DeleteResult" {
+		slices.SortStableFunc(root.children, func(a, b *xmlNode) int { return strings.Compare(nodeText(a), nodeText(b)) })
+	}
 	var b strings.Builder
 	writeNode(&b, root, 0)
 	return b.String(), false, nil
+}
+
+func nodeText(n *xmlNode) string {
+	var b strings.Builder
+	writeNode(&b, n, 0)
+	return b.String()
 }
 
 func writeNode(b *strings.Builder, n *xmlNode, depth int) {

@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"hash/crc32"
+	"maps"
 	"net/http"
 	"strings"
 )
@@ -39,10 +41,21 @@ func etagOf(body string) string {
 	return `"` + hex.EncodeToString(sum[:]) + `"`
 }
 
+// crc32Base64 is the CRC32 checksum value of body, as S3 sends it.
+func crc32Base64(body string) string {
+	sum := binary.BigEndian.AppendUint32(nil, crc32.ChecksumIEEE([]byte(body)))
+	return base64.StdEncoding.EncodeToString(sum)
+}
+
 // crc32Trailer is the CRC32 trailer line of body.
 func crc32Trailer(body string) string {
-	sum := binary.BigEndian.AppendUint32(nil, crc32.ChecksumIEEE([]byte(body)))
-	return "x-amz-checksum-crc32:" + base64.StdEncoding.EncodeToString(sum)
+	return "x-amz-checksum-crc32:" + crc32Base64(body)
+}
+
+// md5Base64 is the Content-MD5 value of body.
+func md5Base64(body string) string {
+	sum := md5.Sum([]byte(body))
+	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
 func createBucket() step { return step{name: "create-bucket", method: http.MethodPut} }
@@ -118,7 +131,7 @@ func scenarios() []scenario {
 		keys.steps = append(keys.steps, step{name: "delete-" + k.name, method: http.MethodDelete, key: k.key})
 	}
 	keys.steps = append(keys.steps, deleteBucket())
-	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario())
+	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario(), copyAndDeleteScenario())
 }
 
 // streamingScenario records aws-chunked uploads in each signing mode, and
@@ -217,4 +230,76 @@ func listingScenario() scenario {
 	}
 	sc.steps = append(sc.steps, deleteBucket())
 	return sc
+}
+
+// deleteXML is a DeleteObjects body for keys, which need no XML escaping.
+func deleteXML(quiet bool, keys ...string) string {
+	var b strings.Builder
+	b.WriteString("<Delete>")
+	if quiet {
+		b.WriteString("<Quiet>true</Quiet>")
+	}
+	for _, k := range keys {
+		b.WriteString("<Object><Key>" + k + "</Key></Object>")
+	}
+	b.WriteString("</Delete>")
+	return b.String()
+}
+
+// copyAndDeleteScenario records CopyObject with each metadata directive and
+// condition, its errors, and DeleteObjects with its checksum rules and limits.
+func copyAndDeleteScenario() scenario {
+	const body = "hello world"
+	copyFrom := func(source string, extra map[string]string) map[string]string {
+		h := map[string]string{"x-amz-copy-source": source}
+		maps.Copy(h, extra)
+		return h
+	}
+	src := "{bucket}/src"
+	meta := map[string]string{"Content-Type": "text/plain", "X-Amz-Meta-Color": "blue"}
+	manyKeys := make([]string, 1001)
+	for i := range manyKeys {
+		manyKeys[i] = fmt.Sprintf("k%04d", i)
+	}
+	del := func(name, body string, header map[string]string) step {
+		return step{name: name, method: http.MethodPost, query: "delete", body: body, header: header}
+	}
+	md5Of := func(body string) map[string]string { return map[string]string{"Content-MD5": md5Base64(body)} }
+	d1 := deleteXML(false, "src", "dst", "missing")
+	d2 := deleteXML(true, "dst-replace", "a b", "a+b")
+	d3 := deleteXML(false, "space-copy", "plus-copy", "cond")
+	d4 := deleteXML(false, "src")
+	d5 := deleteXML(false, manyKeys...)
+	return scenario{name: "copy-and-delete", steps: []step{
+		createBucket(),
+		{name: "put-src", method: http.MethodPut, key: "src", body: body, header: meta},
+		{name: "copy", method: http.MethodPut, key: "dst", header: copyFrom(src, nil)},
+		{name: "head-copy", method: http.MethodHead, key: "dst"},
+		{name: "copy-replace", method: http.MethodPut, key: "dst-replace", header: copyFrom(src, map[string]string{
+			"x-amz-metadata-directive": "REPLACE", "Content-Type": "application/json", "X-Amz-Meta-Color": "red"})},
+		{name: "head-copy-replace", method: http.MethodHead, key: "dst-replace"},
+		{name: "copy-onto-itself", method: http.MethodPut, key: "src", header: copyFrom(src, nil)},
+		{name: "copy-onto-itself-replace", method: http.MethodPut, key: "src", header: copyFrom(src, map[string]string{
+			"x-amz-metadata-directive": "REPLACE", "Content-Type": "text/plain", "X-Amz-Meta-Color": "blue"})},
+		{name: "copy-if-match-fails", method: http.MethodPut, key: "cond", header: copyFrom(src, map[string]string{"x-amz-copy-source-if-match": `"nope"`})},
+		{name: "copy-if-none-match-fails", method: http.MethodPut, key: "cond", header: copyFrom(src, map[string]string{"x-amz-copy-source-if-none-match": etagOf(body)})},
+		{name: "copy-if-modified-since-future", method: http.MethodPut, key: "cond", header: copyFrom(src, map[string]string{"x-amz-copy-source-if-modified-since": "Fri, 01 Jan 2100 00:00:00 GMT"})},
+		{name: "copy-if-unmodified-since-past", method: http.MethodPut, key: "cond", header: copyFrom(src, map[string]string{"x-amz-copy-source-if-unmodified-since": "Thu, 01 Jan 2015 00:00:00 GMT"})},
+		{name: "copy-if-match-passes", method: http.MethodPut, key: "cond", header: copyFrom(src, map[string]string{"x-amz-copy-source-if-match": etagOf(body)})},
+		{name: "copy-missing-source", method: http.MethodPut, key: "cond2", header: copyFrom("{bucket}/missing", nil)},
+		{name: "copy-bad-source", method: http.MethodPut, key: "cond2", header: copyFrom("{bucket}", nil)},
+		{name: "copy-unknown-directive", method: http.MethodPut, key: "cond2", header: copyFrom(src, map[string]string{"x-amz-metadata-directive": "MERGE"})},
+		{name: "put-space-key", method: http.MethodPut, key: "a b", body: body},
+		{name: "copy-space-key", method: http.MethodPut, key: "space-copy", header: copyFrom("{bucket}/a%20b", nil)},
+		{name: "put-plus-key", method: http.MethodPut, key: "a+b", body: body},
+		{name: "copy-plus-key", method: http.MethodPut, key: "plus-copy", header: copyFrom("{bucket}/a+b", nil)},
+		{name: "head-plus-copy", method: http.MethodHead, key: "plus-copy"},
+		del("delete-objects", d1, md5Of(d1)),
+		del("delete-objects-quiet", d2, md5Of(d2)),
+		del("delete-objects-crc32", d3, map[string]string{"x-amz-checksum-crc32": crc32Base64(d3)}),
+		del("delete-objects-no-checksum", d4, nil),
+		del("delete-objects-bad-md5", d4, map[string]string{"Content-MD5": md5Base64("other")}),
+		del("delete-objects-1001", d5, md5Of(d5)),
+		deleteBucket(),
+	}}
 }
