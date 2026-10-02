@@ -1,0 +1,183 @@
+{
+  "scenario": "presigned",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put",
+      "request": "PUT /dir/a b.txt",
+      "fingerprint": "23fcf8b8728614cb",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"78420a1a7a7ff05ba0bfad6afb807f77\"",
+        "X-Amz-Checksum-Crc64nvme": "SaxW5pGsiDA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get",
+      "request": "GET /dir/a b.txt",
+      "fingerprint": "f6f2f209f8b1cbda",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "15",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"78420a1a7a7ff05ba0bfad6afb807f77\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "hello presigned"
+    },
+    {
+      "step": "get-content-disposition",
+      "request": "GET /dir/a b.txt?response-content-disposition=attachment%3B%20filename%3D%22a.txt%22",
+      "fingerprint": "bb378126554bd839",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": "attachment; filename=\"a.txt\"",
+        "Content-Length": "15",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"78420a1a7a7ff05ba0bfad6afb807f77\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "hello presigned"
+    },
+    {
+      "step": "head",
+      "request": "HEAD /dir/a b.txt",
+      "fingerprint": "d64da7d10af6155f",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "15",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"78420a1a7a7ff05ba0bfad6afb807f77\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-expired",
+      "request": "GET /dir/a b.txt",
+      "fingerprint": "a0f1e73974da6c6c",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "get-tampered",
+      "request": "GET /dir/a b.txt",
+      "fingerprint": "e5aa1d8da5ba52ad",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: SignatureDoesNotMatch\n"
+    },
+    {
+      "step": "get-expires-too-long",
+      "request": "GET /dir/a b.txt?X-Amz-Expires=604801",
+      "fingerprint": "2178e2a9a8cdc9a7",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AuthorizationQueryParametersError\n"
+    },
+    {
+      "step": "get-expires-zero",
+      "request": "GET /dir/a b.txt?X-Amz-Expires=0",
+      "fingerprint": "b0ab6ccd4cfedff9",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "get-future",
+      "request": "GET /dir/a b.txt",
+      "fingerprint": "888e22e10387b7df",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "get-bad-credential",
+      "request": "GET /dir/a b.txt",
+      "fingerprint": "e551571e9c13f884",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AuthorizationQueryParametersError\n"
+    },
+    {
+      "step": "get-missing-param",
+      "request": "GET /dir/a b.txt",
+      "fingerprint": "0650bbf2cda73fb8",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AuthorizationQueryParametersError\n"
+    },
+    {
+      "step": "delete",
+      "request": "DELETE /dir/a b.txt",
+      "fingerprint": "d10f7fa32b6c53b8",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

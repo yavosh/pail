@@ -37,7 +37,7 @@ A captured signed request can be replayed for up to 15 minutes, as on AWS. Keep 
 
 Streaming uploads (`aws-chunked`) work in the three SigV4 modes: signed chunks, unsigned chunks with a trailer, and signed chunks with a signed trailer. The AWS CLI and the SDKs send them by default over HTTPS. pail checks each chunk signature and the decoded length as it reads the body. It stores the object under its `x-amz-decoded-content-length`. As on AWS, a signed chunk other than the last must hold at least 8 KiB. It removes `aws-chunked` from the stored `Content-Encoding`.
 
-Presigned URLs (query-string SigV4) work for any operation. `X-Amz-Expires` must be 1 to 604800 seconds. The payload is not signed. An expired URL gets `403 AccessDenied`.
+Presigned URLs (query-string SigV4) work for any operation. `X-Amz-Expires` must be 0 to 604800 seconds. The payload is not signed. As on AWS, an expired URL, or one dated more than 15 minutes ahead, gets `403 AccessDenied`.
 
 ## Configuration
 

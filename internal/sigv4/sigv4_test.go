@@ -401,7 +401,7 @@ func TestVerifyPresignedRejectsTampering(t *testing.T) {
 			want   error
 		}{"no " + name, func(r *http.Request) { setQuery(r, func(q url.Values) { q.Del(name) }) }, ErrMalformedPresign})
 	}
-	for _, expires := range []string{"0", "604801", "-5", "+5", "1e3", "9999999999999999999999", " 5", ""} {
+	for _, expires := range []string{"604801", "-5", "+5", "1e3", "9999999999999999999999", " 5", ""} {
 		tests = append(tests, struct {
 			name   string
 			tamper func(*http.Request)
@@ -457,6 +457,21 @@ func TestVerifyPresignedExpiry(t *testing.T) {
 	})
 }
 
+// As on AWS, X-Amz-Expires=0 is valid, and expires as soon as time moves on.
+func TestVerifyPresignedExpiresZero(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		v := New(testKey, testSecret)
+		r := presign(t, http.MethodGet, "http://bkt.localhost/k", 0, time.Now()) // the bubble starts on a whole second
+		if err := v.Verify(r); err != nil {
+			t.Errorf("X-Amz-Expires=0 at the signing time: Verify() error = %v, want nil", err)
+		}
+		time.Sleep(time.Nanosecond)
+		if err := v.Verify(r); !errors.Is(err, ErrRequestExpired) {
+			t.Errorf("X-Amz-Expires=0, 1ns later: Verify() error = %v, want ErrRequestExpired", err)
+		}
+	})
+}
+
 func TestVerifyPresignedClockSkew(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		v := New(testKey, testSecret)
@@ -465,7 +480,7 @@ func TestVerifyPresignedClockSkew(t *testing.T) {
 			want   error
 		}{
 			{14 * time.Minute, nil},
-			{16 * time.Minute, ErrRequestTimeTooSkewed},
+			{16 * time.Minute, ErrRequestNotYetValid},
 		}
 		for _, tt := range tests {
 			r := presign(t, http.MethodGet, "http://bkt.localhost/k", 900, time.Now().Add(tt.offset))

@@ -22,6 +22,7 @@ var (
 	ErrMissingAuth           = errors.New("request is not signed")
 	ErrMalformedPresign      = errors.New("malformed presigned URL")
 	ErrRequestExpired        = errors.New("presigned URL has expired")
+	ErrRequestNotYetValid    = errors.New("presigned URL is not valid yet")
 	ErrUnsupportedAuth       = errors.New("unsupported authorization mechanism")
 	ErrMalformedAuth         = errors.New("malformed authorization header")
 	ErrUnsignedHeader        = errors.New("x-amz header present but not signed")
@@ -268,7 +269,7 @@ func (v *Verifier) verifyPresigned(r *http.Request, q url.Values) error {
 	}
 	// Digits only: ParseInt would also take a sign.
 	expires, err := strconv.Atoi(p["X-Amz-Expires"])
-	if err != nil || strings.Trim(p["X-Amz-Expires"], "0123456789") != "" || expires < 1 || expires > maxExpires {
+	if err != nil || strings.Trim(p["X-Amz-Expires"], "0123456789") != "" || expires > maxExpires {
 		return fmt.Errorf("x-amz-expires %q: %w", p["X-Amz-Expires"], ErrMalformedPresign)
 	}
 	// The shared checks fail with ErrMalformedAuth, which names a header
@@ -291,7 +292,7 @@ func (v *Verifier) verifyPresigned(r *http.Request, q url.Values) error {
 	}
 	now := time.Now()
 	if signedAt.Sub(now) > maxSkew {
-		return ErrRequestTimeTooSkewed
+		return ErrRequestNotYetValid
 	}
 	if now.After(signedAt.Add(time.Duration(expires) * time.Second)) {
 		return ErrRequestExpired
