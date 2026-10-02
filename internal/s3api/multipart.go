@@ -316,7 +316,7 @@ func (h *handler) handleListParts(w http.ResponseWriter, r *http.Request, t targ
 		Bucket               string   `xml:"Bucket"`
 		Key                  string   `xml:"Key"`
 		UploadID             string   `xml:"UploadId"`
-		PartNumberMarker     int64    `xml:"PartNumberMarker"`
+		PartNumberMarker     int      `xml:"PartNumberMarker"`
 		NextPartNumberMarker int      `xml:"NextPartNumberMarker"`
 		MaxParts             int      `xml:"MaxParts"`
 		IsTruncated          bool     `xml:"IsTruncated"`
@@ -333,9 +333,11 @@ func (h *handler) handleListParts(w http.ResponseWriter, r *http.Request, t targ
 	}
 	q := r.URL.Query()
 	requested, limit, ok := pageSize(q.Get("max-parts"))
-	marker := int64(0)
+	marker := 0
 	if s := q.Get("part-number-marker"); ok && s != "" {
-		marker, ok = parseDigits(s)
+		var n int64
+		n, ok = parseDigits(s)
+		marker = int(min(n, math.MaxInt32))
 	}
 	if !ok {
 		writeError(w, r, errInvalidArgument)
@@ -354,7 +356,7 @@ func (h *handler) handleListParts(w http.ResponseWriter, r *http.Request, t targ
 		ChecksumAlgorithm: up.ChecksumAlgorithm, ChecksumType: up.ChecksumType,
 	}
 	for _, p := range parts {
-		if int64(p.PartNumber) <= marker {
+		if p.PartNumber <= marker {
 			continue
 		}
 		if len(resp.Parts) == limit {

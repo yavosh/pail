@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/yavosh/pail/internal/checksum"
 )
@@ -477,24 +479,28 @@ func TestAbortUpload(t *testing.T) {
 }
 
 func TestListUploadsOrder(t *testing.T) {
-	ctx := context.Background()
-	s, _ := newStore(t)
-	mustCreate(t, s, "b")
-	var created []UploadInfo
-	for _, key := range []string{"b", "a", "b", "a/x", "a"} {
-		created = append(created, mustUpload(t, s, "b", key, UploadOptions{}))
-	}
-	got, err := s.ListUploads(ctx, "b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// By key, then by start time. The uploads were created in this order.
-	want := []UploadInfo{created[1], created[4], created[3], created[0], created[2]}
-	for i := range want {
-		if i >= len(got) || got[i].ID != want[i].ID {
-			t.Fatalf("ListUploads order = %v, want %v", ids(got), ids(want))
+	// The bubble's clock moves only on Sleep, so each upload starts at a distinct time.
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		s, _ := newStore(t)
+		mustCreate(t, s, "b")
+		var created []UploadInfo
+		for _, key := range []string{"b", "a", "b", "a/x", "a"} {
+			created = append(created, mustUpload(t, s, "b", key, UploadOptions{}))
+			time.Sleep(time.Millisecond)
 		}
-	}
+		got, err := s.ListUploads(ctx, "b")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// By key, then by start time. The uploads were created in this order.
+		want := []UploadInfo{created[1], created[4], created[3], created[0], created[2]}
+		for i := range want {
+			if i >= len(got) || got[i].ID != want[i].ID {
+				t.Fatalf("ListUploads order = %v, want %v", ids(got), ids(want))
+			}
+		}
+	})
 }
 
 func ids(uploads []UploadInfo) []string {
@@ -611,5 +617,18 @@ func TestConcurrentUploadOperations(t *testing.T) {
 	}
 	if n := dirLen(t, fsys, "tmp"); n != 0 {
 		t.Errorf("temp directory has %d entries, want 0", n)
+	}
+}
+
+// A missing bucket must not leave an entry in the lock map.
+func TestCreateUploadInMissingBucketAddsNoLock(t *testing.T) {
+	s, _ := newStore(t)
+	if _, err := s.CreateUpload(context.Background(), "nope", "k", UploadOptions{}); !errors.Is(err, ErrNoSuchBucket) {
+		t.Fatalf("CreateUpload in a missing bucket error = %v, want ErrNoSuchBucket", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.buckets["nope"]; ok {
+		t.Errorf("s.buckets has an entry for the missing bucket, want none")
 	}
 }

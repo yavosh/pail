@@ -382,7 +382,6 @@ func TestListMultipartUploads(t *testing.T) {
 	var order []string
 	for _, key := range []string{"b", "docs/x", "a", "docs/y", "a"} {
 		order = append(order, key+":"+startUpload(t, srv, key, nil))
-		time.Sleep(2 * time.Millisecond) // start times, which order uploads of one key, have millisecond precision
 	}
 	type listing struct {
 		KeyMarker          string `xml:"KeyMarker"`
@@ -420,8 +419,13 @@ func TestListMultipartUploads(t *testing.T) {
 		}
 		return out
 	}
-	// By key, then start time: a (first), a (second), b, docs/x, docs/y.
-	byKey := []string{order[2], order[4], order[0], order[1], order[3]}
+	// By key. Uploads of one key list by start time, which can tie, so the
+	// order of the two "a" uploads comes from the server.
+	as := keys(list("&prefix=a"))
+	if !slices.Equal(slices.Sorted(slices.Values(as)), slices.Sorted(slices.Values([]string{order[2], order[4]}))) {
+		t.Fatalf("ListMultipartUploads with prefix a = %v, want %v and %v", as, order[2], order[4])
+	}
+	byKey := []string{as[0], as[1], order[0], order[1], order[3]}
 	tests := []struct {
 		query        string
 		want         []string
@@ -433,7 +437,7 @@ func TestListMultipartUploads(t *testing.T) {
 		{"&delimiter=/", []string{order[2], order[4], order[0]}, []string{"docs/"}, ""},
 		{"&prefix=docs/&delimiter=/", []string{order[1], order[3]}, nil, ""},
 		{"&max-uploads=2", byKey[:2], nil, byKey[1]},
-		{"&max-uploads=2&key-marker=a&upload-id-marker=" + id(order[2]), byKey[1:3], nil, byKey[2]},
+		{"&max-uploads=2&key-marker=a&upload-id-marker=" + id(byKey[0]), byKey[1:3], nil, byKey[2]},
 		{"&max-uploads=2&key-marker=b", byKey[3:], nil, ""},
 		{"&key-marker=a", byKey[2:], nil, ""},
 		{"&delimiter=/&max-uploads=3", byKey[:3], nil, byKey[2]},

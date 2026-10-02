@@ -165,6 +165,9 @@ func (s *Store) CreateUpload(ctx context.Context, bucket, key string, opts Uploa
 	if err := checkKey(key); err != nil {
 		return UploadInfo{}, err
 	}
+	if _, err := s.HeadBucket(ctx, bucket); err != nil {
+		return UploadInfo{}, err // checked before bucketLock, so a missing bucket adds no lock entry
+	}
 	l := s.bucketLock(bucket)
 	l.RLock()
 	defer l.RUnlock()
@@ -473,7 +476,8 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 		_ = s.fs.Remove(path.Join(blobsDir(bucket), blob))
 		return ObjectInfo{}, err
 	}
-	// The object exists now. Leftover files are harmless and removed on the next Open.
+	// The object exists now. If this fails, or the process dies first, the upload
+	// stays listed until it is aborted, and completing it again rewrites the object.
 	_ = s.removeUpload(bucket, uploadID)
 	return info, nil
 }
@@ -542,7 +546,7 @@ func (s *Store) copyPart(dst io.Writer, bucket, id string, r partRecord) (int64,
 
 // removeOrphanUploadFiles removes upload directories without upload.json and
 // part files that no part record names, which a crash can leave behind.
-func (s *Store) removeOrphanUploadFiles(bucket string) error {
+func (s *Store) removeOrphanUploadFiles(ctx context.Context, bucket string) error {
 	dirs, err := s.fs.ReadDir(uploadsDir(bucket))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -551,13 +555,18 @@ func (s *Store) removeOrphanUploadFiles(bucket string) error {
 		return err
 	}
 	for _, d := range dirs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		id := d.Name()
-		if _, err := s.fs.Stat(uploadFile(bucket, id)); errors.Is(err, fs.ErrNotExist) {
+		_, err := s.fs.Stat(uploadFile(bucket, id))
+		if errors.Is(err, fs.ErrNotExist) {
 			if err := s.fs.RemoveAll(uploadDir(bucket, id)); err != nil {
 				return err
 			}
 			continue
-		} else if err != nil {
+		}
+		if err != nil {
 			return err
 		}
 		records, err := s.readParts(bucket, id)

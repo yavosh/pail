@@ -55,6 +55,7 @@ type Store struct {
 	keys [256]sync.Mutex
 	// uploads serializes the operations that change one multipart upload. A
 	// goroutine takes an upload lock before a key lock, never the reverse.
+	// CompleteUpload holds the bucket lock shared while it copies, so DeleteBucket and then new writes wait.
 	uploads [256]sync.Mutex
 }
 
@@ -79,7 +80,7 @@ func Open(ctx context.Context, fsys vfs.FS) (*Store, error) {
 		if err := s.removeOrphanBlobs(ctx, b.Name); err != nil {
 			return nil, fmt.Errorf("recover bucket %s: %w", b.Name, err)
 		}
-		if err := s.removeOrphanUploadFiles(b.Name); err != nil {
+		if err := s.removeOrphanUploadFiles(ctx, b.Name); err != nil {
 			return nil, fmt.Errorf("recover uploads in %s: %w", b.Name, err)
 		}
 	}
