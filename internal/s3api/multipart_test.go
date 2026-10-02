@@ -196,7 +196,6 @@ func TestMultipartErrors(t *testing.T) {
 		{"abort an unknown upload", http.MethodDelete, "/bkt/k?uploadId=" + unknown, "", nil, 404, "NoSuchUpload"},
 		{"abort under another key", http.MethodDelete, "/bkt/other?uploadId=" + id, "", nil, 404, "NoSuchUpload"},
 		{"abort in a missing bucket", http.MethodDelete, "/nope/k?uploadId=" + id, "", nil, 404, "NoSuchBucket"},
-		{"delete bucket with an upload", http.MethodDelete, "/bkt", "", nil, 409, "BucketNotEmpty"},
 		{"abort", http.MethodDelete, "/bkt/k?uploadId=" + id, "", nil, 204, ""},
 		{"abort again", http.MethodDelete, "/bkt/k?uploadId=" + id, "", nil, 404, "NoSuchUpload"},
 		{"part after abort", http.MethodPut, "/bkt/k?partNumber=1&uploadId=" + id, "x", nil, 404, "NoSuchUpload"},
@@ -507,5 +506,17 @@ func TestPageUploads(t *testing.T) {
 			t.Errorf("%s: pageUploads = %v, %v, truncated %v, last %s:%s; want %v, %v, %v, %s",
 				tt.name, got, p.prefixes, p.truncated, p.lastKey, p.lastID, tt.want, tt.wantPrefixes, tt.wantTruncated, tt.wantLast)
 		}
+	}
+}
+
+// As on AWS, deleting a bucket discards its pending uploads.
+func TestDeleteBucketDiscardsUploads(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	id := startUpload(t, srv, "k", nil)
+	if status, code, _ := sendWith(t, srv, http.MethodDelete, "/bkt", "", nil); status != http.StatusNoContent {
+		t.Fatalf("DELETE /bkt with an upload = %d %q, want 204", status, code)
+	}
+	if status, code, _ := sendWith(t, srv, http.MethodGet, "/bkt/k?uploadId="+id, "", nil); status != http.StatusNotFound || code != "NoSuchBucket" {
+		t.Errorf("ListParts after DeleteBucket = %d %q, want 404 NoSuchBucket", status, code)
 	}
 }

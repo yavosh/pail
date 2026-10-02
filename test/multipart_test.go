@@ -309,11 +309,6 @@ func TestMultipartErrors(t *testing.T) {
 			}
 		}
 
-		// A bucket with a pending upload is not empty.
-		if _, err := c.DeleteBucket(ctx, &s3.DeleteBucketInput{Bucket: bucket}); errorCode(err) != "BucketNotEmpty" {
-			t.Errorf("DeleteBucket with an upload error = %v, want BucketNotEmpty", err)
-		}
-
 		if _, err := c.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{Bucket: bucket, Key: aws.String("k"), UploadId: id}); err != nil {
 			t.Fatalf("AbortMultipartUpload error = %v", err)
 		}
@@ -324,8 +319,12 @@ func TestMultipartErrors(t *testing.T) {
 		if err := complete("k", id, parts[0]); errorCode(err) != "NoSuchUpload" {
 			t.Errorf("complete after abort error = %v, want NoSuchUpload", err)
 		}
+		// As on AWS, a pending upload does not keep the bucket.
+		if _, err := c.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{Bucket: bucket, Key: aws.String("left")}); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := c.DeleteBucket(ctx, &s3.DeleteBucketInput{Bucket: bucket}); err != nil {
-			t.Errorf("DeleteBucket after abort error = %v, want nil", err)
+			t.Errorf("DeleteBucket with a pending upload error = %v, want nil", err)
 		}
 	})
 }

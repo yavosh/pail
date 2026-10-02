@@ -516,14 +516,11 @@ func TestDeleteBucketWithUpload(t *testing.T) {
 	s, _ := newStore(t)
 	mustCreate(t, s, "b")
 	up := mustUpload(t, s, "b", "k", UploadOptions{})
-	if err := s.DeleteBucket(ctx, "b"); !errors.Is(err, ErrBucketNotEmpty) {
-		t.Errorf("DeleteBucket with an upload error = %v, want ErrBucketNotEmpty", err)
-	}
-	if err := s.AbortUpload(ctx, "b", "k", up.ID); err != nil {
-		t.Fatal(err)
-	}
 	if err := s.DeleteBucket(ctx, "b"); err != nil {
-		t.Errorf("DeleteBucket after abort error = %v, want nil", err)
+		t.Fatalf("DeleteBucket with an upload error = %v, want nil, as on AWS", err)
+	}
+	if err := s.AbortUpload(ctx, "b", "k", up.ID); !errors.Is(err, ErrNoSuchBucket) {
+		t.Errorf("AbortUpload after DeleteBucket error = %v, want ErrNoSuchBucket", err)
 	}
 	mustCreate(t, s, "b")
 	if uploads, err := s.ListUploads(ctx, "b"); err != nil || len(uploads) != 0 {
