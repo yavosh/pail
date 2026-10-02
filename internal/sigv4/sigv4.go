@@ -20,6 +20,8 @@ import (
 // Errors callers map to S3 error codes with errors.Is.
 var (
 	ErrMissingAuth           = errors.New("request is not signed")
+	ErrMalformedPresign      = errors.New("malformed presigned URL")
+	ErrRequestExpired        = errors.New("presigned URL has expired")
 	ErrUnsupportedAuth       = errors.New("unsupported authorization mechanism")
 	ErrMalformedAuth         = errors.New("malformed authorization header")
 	ErrUnsignedHeader        = errors.New("x-amz header present but not signed")
@@ -41,6 +43,7 @@ const (
 	maxSkew       = 15 * time.Minute
 	unsignedHash  = "UNSIGNED-PAYLOAD"
 	streamingMode = "STREAMING-"
+	maxExpires    = 7 * 24 * 60 * 60 // seconds, the longest a presigned URL may live
 
 	streamingSigned          = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD"
 	streamingUnsignedTrailer = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
@@ -57,14 +60,14 @@ func New(accessKeyID, secretAccessKey string) *Verifier {
 	return &Verifier{secrets: map[string]string{accessKeyID: secretAccessKey}}
 }
 
-// Verify checks the Authorization header of r. For a SHA-256 payload hash or
-// an aws-chunked body it wraps r.Body, so a bad body fails a read by EOF and
-// the caller must not commit before then. aws-chunked fills r.Trailer at EOF.
+// Verify checks the Authorization header of r, or a presigned query. For a
+// SHA-256 payload hash or an aws-chunked body it wraps r.Body, so a bad body
+// fails a read by EOF; do not commit before then. aws-chunked fills r.Trailer.
 func (v *Verifier) Verify(r *http.Request) error {
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
-		if r.URL.Query().Has("X-Amz-Signature") {
-			return fmt.Errorf("presigned URLs: %w", ErrNotImplemented)
+		if q := r.URL.Query(); q.Has("X-Amz-Algorithm") || q.Has("X-Amz-Signature") {
+			return v.verifyPresigned(r)
 		}
 		return ErrMissingAuth
 	}
@@ -81,21 +84,14 @@ func (v *Verifier) Verify(r *http.Request) error {
 		return ErrInvalidAccessKeyID
 	}
 
-	// A replayed request must not gain headers, such as x-amz-copy-source,
-	// that change what it does. The SDKs sign every x-amz header they send.
-	for name := range r.Header {
-		if lower := strings.ToLower(name); strings.HasPrefix(lower, "x-amz-") && !slices.Contains(a.signedHeaders, lower) {
-			return fmt.Errorf("%s: %w", lower, ErrUnsignedHeader)
-		}
+	if err := checkSignedHeaders(r, a.signedHeaders); err != nil {
+		return err
 	}
 
 	amzDate := r.Header.Get("X-Amz-Date")
-	signedAt, err := time.Parse(timeFormat, amzDate)
+	signedAt, err := parseSigningTime(amzDate, a.date)
 	if err != nil {
-		return fmt.Errorf("x-amz-date %q: %w", amzDate, ErrMalformedAuth)
-	}
-	if day := signedAt.Format("20060102"); day != a.date {
-		return fmt.Errorf("credential date %s does not match request date %s: %w", a.date, day, ErrMalformedAuth)
+		return err
 	}
 	if skew := time.Since(signedAt); skew > maxSkew || skew < -maxSkew {
 		return ErrRequestTimeTooSkewed
@@ -114,12 +110,9 @@ func (v *Verifier) Verify(r *http.Request) error {
 	}
 
 	scope := strings.Join([]string{a.date, a.region, "s3", "aws4_request"}, "/")
-	creq := canonicalRequest(r, a.signedHeaders, payloadHash)
-	sum := sha256.Sum256([]byte(creq))
-	stringToSign := algorithm + "\n" + amzDate + "\n" + scope + "\n" + hex.EncodeToString(sum[:])
+	creq := canonicalRequest(r, r.URL.RawQuery, a.signedHeaders, payloadHash)
 	key := signingKey(secret, a.date, a.region)
-	want := hex.EncodeToString(hmacSHA256(key, stringToSign))
-	if !hmac.Equal([]byte(want), []byte(a.signature)) {
+	if want := sign(key, amzDate, scope, creq); !hmac.Equal([]byte(want), []byte(a.signature)) {
 		return ErrSignatureMismatch
 	}
 
@@ -205,14 +198,20 @@ func parseAuthorization(s string) (authorization, error) {
 		}
 		fields[k] = v
 	}
-	cred := strings.Split(fields["Credential"], "/")
+	return newAuthorization(fields["Credential"], fields["SignedHeaders"], fields["Signature"])
+}
+
+// newAuthorization validates the three fields that the header and the query
+// string of a presigned URL both carry.
+func newAuthorization(credential, signedHeaders, signature string) (authorization, error) {
+	cred := strings.Split(credential, "/")
 	if len(cred) != 5 || cred[0] == "" || cred[3] != "s3" || cred[4] != "aws4_request" {
-		return authorization{}, fmt.Errorf("credential %q: %w", fields["Credential"], ErrMalformedAuth)
+		return authorization{}, fmt.Errorf("credential %q: %w", credential, ErrMalformedAuth)
 	}
-	if fields["SignedHeaders"] == "" || fields["Signature"] == "" {
+	if signedHeaders == "" || signature == "" {
 		return authorization{}, ErrMalformedAuth
 	}
-	headers := strings.Split(fields["SignedHeaders"], ";")
+	headers := strings.Split(signedHeaders, ";")
 	if !slices.Contains(headers, "host") {
 		return authorization{}, fmt.Errorf("host is not signed: %w", ErrMalformedAuth)
 	}
@@ -221,13 +220,115 @@ func parseAuthorization(s string) (authorization, error) {
 		date:          cred[1],
 		region:        cred[2],
 		signedHeaders: headers,
-		signature:     fields["Signature"],
+		signature:     signature,
 	}, nil
 }
 
+// checkSignedHeaders fails on an x-amz header that the signature does not
+// cover. A replayed request must not gain headers, such as x-amz-copy-source,
+// that change what it does. The SDKs sign every x-amz header they send.
+func checkSignedHeaders(r *http.Request, signedHeaders []string) error {
+	for name := range r.Header {
+		if lower := strings.ToLower(name); strings.HasPrefix(lower, "x-amz-") && !slices.Contains(signedHeaders, lower) {
+			return fmt.Errorf("%s: %w", lower, ErrUnsignedHeader)
+		}
+	}
+	return nil
+}
+
+// parseSigningTime parses an X-Amz-Date value and checks it against the
+// credential scope date.
+func parseSigningTime(amzDate, scopeDate string) (time.Time, error) {
+	signedAt, err := time.Parse(timeFormat, amzDate)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("x-amz-date %q: %w", amzDate, ErrMalformedAuth)
+	}
+	if day := signedAt.Format("20060102"); day != scopeDate {
+		return time.Time{}, fmt.Errorf("credential date %s does not match request date %s: %w", scopeDate, day, ErrMalformedAuth)
+	}
+	return signedAt, nil
+}
+
+// presignParams are the query parameters every presigned URL carries.
+var presignParams = []string{"X-Amz-Algorithm", "X-Amz-Credential", "X-Amz-Date", "X-Amz-Expires", "X-Amz-SignedHeaders", "X-Amz-Signature"}
+
+// verifyPresigned checks the query-string signature of r. The payload is
+// never signed, so r.Body stays as it is.
+func (v *Verifier) verifyPresigned(r *http.Request) error {
+	q := r.URL.Query()
+	p := map[string]string{}
+	for _, name := range presignParams {
+		vals := q[name]
+		if len(vals) != 1 || vals[0] == "" {
+			return fmt.Errorf("%s: %w", name, ErrMalformedPresign)
+		}
+		p[name] = vals[0]
+	}
+	if p["X-Amz-Algorithm"] != algorithm {
+		return fmt.Errorf("x-amz-algorithm %q: %w", p["X-Amz-Algorithm"], ErrMalformedPresign)
+	}
+	// Digits only: ParseInt would also take a sign.
+	expires, err := strconv.Atoi(p["X-Amz-Expires"])
+	if err != nil || strings.Trim(p["X-Amz-Expires"], "0123456789") != "" || expires < 1 || expires > maxExpires {
+		return fmt.Errorf("x-amz-expires %q: %w", p["X-Amz-Expires"], ErrMalformedPresign)
+	}
+	a, err := newAuthorization(p["X-Amz-Credential"], p["X-Amz-SignedHeaders"], p["X-Amz-Signature"])
+	if err != nil {
+		return err
+	}
+	secret, ok := v.secrets[a.accessKeyID]
+	if !ok {
+		return ErrInvalidAccessKeyID
+	}
+	if err := checkSignedHeaders(r, a.signedHeaders); err != nil {
+		return err
+	}
+	amzDate := p["X-Amz-Date"]
+	signedAt, err := parseSigningTime(amzDate, a.date)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	if signedAt.Sub(now) > maxSkew {
+		return ErrRequestTimeTooSkewed
+	}
+	if now.After(signedAt.Add(time.Duration(expires) * time.Second)) {
+		return ErrRequestExpired
+	}
+
+	scope := strings.Join([]string{a.date, a.region, "s3", "aws4_request"}, "/")
+	creq := canonicalRequest(r, dropQueryParam(r.URL.RawQuery, "X-Amz-Signature"), a.signedHeaders, unsignedHash)
+	if want := sign(signingKey(secret, a.date, a.region), amzDate, scope, creq); !hmac.Equal([]byte(want), []byte(a.signature)) {
+		return ErrSignatureMismatch
+	}
+	return nil
+}
+
+// sign returns the hex signature of a canonical request.
+func sign(key []byte, amzDate, scope, creq string) string {
+	sum := sha256.Sum256([]byte(creq))
+	stringToSign := algorithm + "\n" + amzDate + "\n" + scope + "\n" + hex.EncodeToString(sum[:])
+	return hex.EncodeToString(hmacSHA256(key, stringToSign))
+}
+
+// dropQueryParam removes every name=value pair from a raw query string.
+func dropQueryParam(raw, name string) string {
+	var kept []string
+	for part := range strings.SplitSeq(raw, "&") {
+		k, _, _ := strings.Cut(part, "=")
+		if dk, err := url.QueryUnescape(k); err == nil {
+			k = dk
+		}
+		if k != name {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, "&")
+}
+
 // canonicalRequest builds the SigV4 canonical request with the S3 rules: the
-// path is encoded once and never normalized.
-func canonicalRequest(r *http.Request, signedHeaders []string, payloadHash string) string {
+// path is encoded once and never normalized. rawQuery is the query to sign.
+func canonicalRequest(r *http.Request, rawQuery string, signedHeaders []string, payloadHash string) string {
 	var b strings.Builder
 	b.WriteString(r.Method + "\n")
 	path := r.URL.Path
@@ -235,7 +336,7 @@ func canonicalRequest(r *http.Request, signedHeaders []string, payloadHash strin
 		path = "/"
 	}
 	b.WriteString(uriEncode(path, false) + "\n")
-	b.WriteString(canonicalQuery(r.URL.RawQuery) + "\n")
+	b.WriteString(canonicalQuery(rawQuery) + "\n")
 	for _, name := range signedHeaders {
 		b.WriteString(name + ":" + headerValue(r, name) + "\n")
 	}

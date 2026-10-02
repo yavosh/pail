@@ -118,7 +118,7 @@ func scenarios() []scenario {
 		keys.steps = append(keys.steps, step{name: "delete-" + k.name, method: http.MethodDelete, key: k.key})
 	}
 	keys.steps = append(keys.steps, deleteBucket())
-	return append(all, keys, listingScenario(), streamingScenario())
+	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario())
 }
 
 // streamingScenario records aws-chunked uploads in each signing mode, and
@@ -152,6 +152,26 @@ func streamingScenario() scenario {
 	}
 	sc.steps = append(sc.steps, deleteBucket())
 	return sc
+}
+
+// presignedScenario records how AWS answers query-string authentication:
+// each operation, an expired and a tampered URL, and out-of-range lifetimes.
+func presignedScenario() scenario {
+	const key = "dir/a b.txt"
+	return scenario{name: "presigned", steps: []step{
+		createBucket(),
+		{name: "put", method: http.MethodPut, key: key, body: "hello presigned", auth: authPresigned},
+		{name: "get", method: http.MethodGet, key: key, auth: authPresigned},
+		{name: "get-content-disposition", method: http.MethodGet, key: key, auth: authPresigned,
+			query: "response-content-disposition=attachment%3B%20filename%3D%22a.txt%22"},
+		{name: "head", method: http.MethodHead, key: key, auth: authPresigned},
+		{name: "get-expired", method: http.MethodGet, key: key, auth: authPresignedExpired},
+		{name: "get-tampered", method: http.MethodGet, key: key, auth: authPresignedTampered},
+		{name: "get-expires-too-long", method: http.MethodGet, key: key, auth: authPresigned, query: "X-Amz-Expires=604801"},
+		{name: "get-expires-zero", method: http.MethodGet, key: key, auth: authPresigned, query: "X-Amz-Expires=0"},
+		{name: "delete", method: http.MethodDelete, key: key, auth: authPresigned},
+		deleteBucket(),
+	}}
 }
 
 // listingKeys exercise delimiters, nesting, and characters that encoding-type=url changes.

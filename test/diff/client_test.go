@@ -30,6 +30,9 @@ const (
 	authUnknownKey
 	authBadSignature
 	authSkewed
+	authPresigned         // a query-string signature, valid for 15 minutes unless the step sets X-Amz-Expires
+	authPresignedExpired  // signed two hours ago, valid for one hour
+	authPresignedTampered // a valid signature, then a query parameter it does not cover
 )
 
 // target is one S3 implementation the suite talks to over HTTP.
@@ -79,7 +82,11 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		payloadHash = st.stream
 		setStreamHeaders(req, st)
 	}
-	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	// A presigned request has no x-amz-content-sha256: it would be an unsigned x-amz header.
+	presigned := st.auth == authPresigned || st.auth == authPresignedExpired || st.auth == authPresignedTampered
+	if !presigned {
+		req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	}
 
 	creds, signTime := tg.creds, time.Now()
 	switch st.auth {
@@ -94,6 +101,8 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		err = newSigner().SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
 	case authSkewed:
 		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
+	case authPresigned, authPresignedExpired, authPresignedTampered:
+		err = tg.presign(ctx, req, st.auth, signTime)
 	default:
 		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
 	}
@@ -118,6 +127,28 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		return response{}, err
 	}
 	return response{status: resp.StatusCode, header: resp.Header, body: body}, nil
+}
+
+// presign replaces req.URL with a presigned URL. The payload is unsigned.
+func (tg *target) presign(ctx context.Context, req *http.Request, auth authMode, signTime time.Time) error {
+	expires := "900"
+	if auth == authPresignedExpired {
+		signTime, expires = signTime.Add(-2*time.Hour), "3600"
+	}
+	q := req.URL.Query()
+	if !q.Has("X-Amz-Expires") {
+		q.Set("X-Amz-Expires", expires)
+	}
+	req.URL.RawQuery = q.Encode()
+	signedURL, _, err := signer.PresignHTTP(ctx, tg.creds, req, "UNSIGNED-PAYLOAD", "s3", tg.region, signTime)
+	if err != nil {
+		return err
+	}
+	if auth == authPresignedTampered {
+		signedURL += "&x-id=Tampered"
+	}
+	req.URL, err = url.Parse(signedURL)
+	return err
 }
 
 const (
