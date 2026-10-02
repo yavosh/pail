@@ -50,6 +50,7 @@ var (
 	errMissingContentLength      = apiError{"MissingContentLength", http.StatusLengthRequired, "You must provide the Content-Length HTTP header."}
 	errIncompleteBody            = apiError{"IncompleteBody", http.StatusBadRequest, "You did not provide the number of bytes specified by the Content-Length HTTP header."}
 	errChecksumMismatch          = apiError{"BadDigest", http.StatusBadRequest, "The checksum you specified did not match the calculated checksum."}
+	errInvalidChunkSize          = apiError{"InvalidChunkSizeError", http.StatusForbidden, "Only the last chunk is allowed to have a size less than 8192 bytes"}
 	errInvalidChecksum           = apiError{"InvalidRequest", http.StatusBadRequest, "The x-amz-checksum header or algorithm you specified is invalid."}
 )
 
@@ -69,6 +70,7 @@ var apiErrors = []struct {
 	{sigv4.ErrContentSHA256Mismatch, errContentSHAMismatch},
 	{sigv4.ErrMissingDecodedLength, errMissingContentLength},
 	{sigv4.ErrMalformedChunk, errIncompleteBody},
+	{sigv4.ErrChunkTooSmall, errInvalidChunkSize},
 	{errBadTrailerChecksum, errInvalidChecksum},
 	{sigv4.ErrNotImplemented, errNotImplemented},
 	{store.ErrNoSuchBucket, errNoSuchBucket},

@@ -30,6 +30,7 @@ var (
 	ErrContentSHA256Mismatch = errors.New("x-amz-content-sha256 does not match the body")
 	ErrMissingDecodedLength  = errors.New("missing or invalid x-amz-decoded-content-length")
 	ErrMalformedChunk        = errors.New("malformed aws-chunked body")
+	ErrChunkTooSmall         = errors.New("aws-chunked chunk too small")
 	// ErrNotImplemented marks valid requests pail cannot verify yet.
 	ErrNotImplemented = errors.New("signing mode not implemented")
 )

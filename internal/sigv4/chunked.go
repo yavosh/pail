@@ -17,6 +17,9 @@ import (
 // maxChunkLine bounds a chunk header line and a trailer line.
 const maxChunkLine = 4096
 
+// minChunkSize is the smallest signed chunk AWS accepts, except the last one.
+const minChunkSize = 8 << 10
+
 const (
 	chunkSignaturePrefix = "chunk-signature="
 	trailerSignature     = "x-amz-trailer-signature"
@@ -47,6 +50,7 @@ type chunkedReader struct {
 	chunkSig  string
 	chunkHash hash.Hash
 	remaining int64 // data bytes left in the current chunk
+	short     bool  // the previous data chunk was under minChunkSize
 	decoded   int64
 	seen      map[string]bool // declared trailer name -> received
 	err       error           // sticky
@@ -116,7 +120,10 @@ func (c *chunkedReader) nextChunk() error {
 	}
 	c.chunkHash.Reset()
 	if size > 0 {
-		c.remaining, c.chunkSig = size, sig
+		if c.signed && c.short {
+			return fmt.Errorf("a chunk under %d bytes is not the last: %w", minChunkSize, ErrChunkTooSmall)
+		}
+		c.remaining, c.chunkSig, c.short = size, sig, size < minChunkSize
 		return nil
 	}
 	if c.signed {

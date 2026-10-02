@@ -2,6 +2,7 @@ package sigv4
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -102,6 +103,7 @@ func TestVerifyChunked(t *testing.T) {
 	tests := []struct {
 		name       string
 		mode, body string
+		size       int // chunk size; 0 means 8 KiB
 		trailers   [][2]string
 		mutate     func(*http.Request)
 		edit       func([]byte) []byte
@@ -115,6 +117,10 @@ func TestVerifyChunked(t *testing.T) {
 		{name: "unsigned, no trailer", mode: streamingUnsignedTrailer, body: body},
 		{name: "signed trailer", mode: streamingSignedTrailer, body: body, trailers: crc},
 		{name: "signed trailer, empty", mode: streamingSignedTrailer, trailers: crc},
+
+		{name: "unsigned, small chunks", mode: streamingUnsignedTrailer, body: body, size: 1 << 10, trailers: crc},
+		{name: "signed, small chunks", mode: streamingSigned, body: body, size: 1 << 10, wantRead: ErrChunkTooSmall},
+		{name: "signed trailer, small chunks", mode: streamingSignedTrailer, body: body, size: minChunkSize - 1, trailers: crc, wantRead: ErrChunkTooSmall},
 
 		{name: "corrupted chunk", mode: streamingSigned, body: body, edit: replace("01234", "x1234", 1000), wantRead: ErrSignatureMismatch},
 		{name: "bad chunk signature", mode: streamingSigned, body: body, edit: func(b []byte) []byte {
@@ -148,7 +154,7 @@ func TestVerifyChunked(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := chunkedRequest(t, tt.mode, tt.body, 8<<10, tt.trailers, tt.mutate, tt.edit)
+			r := chunkedRequest(t, tt.mode, tt.body, cmp.Or(tt.size, minChunkSize), tt.trailers, tt.mutate, tt.edit)
 			err := v.Verify(r)
 			if !errors.Is(err, tt.wantVerify) {
 				t.Fatalf("Verify() error = %v, want %v", err, tt.wantVerify)
