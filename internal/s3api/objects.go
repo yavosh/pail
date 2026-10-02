@@ -56,38 +56,12 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, errEntityTooLarge)
 		return
 	}
-	opts := store.PutOptions{Metadata: map[string]string{}}
-	for _, name := range storedHeaders {
-		if v := r.Header.Get(name); v != "" {
-			opts.Metadata[name] = v
-		}
-	}
-	// The SDKs append aws-chunked to any encoding the caller set.
-	if v, found := withoutAWSChunked(r.Header); streaming && found {
-		delete(opts.Metadata, "Content-Encoding")
-		if v != "" {
-			opts.Metadata["Content-Encoding"] = v
-		}
-	}
-	if opts.Metadata["Content-Type"] == "" {
-		opts.Metadata["Content-Type"] = defaultType
-	}
-	userSize := 0
-	for name, values := range r.Header {
-		if suffix, ok := strings.CutPrefix(name, userMetaPrefix); ok {
-			if suffix == "" {
-				writeError(w, r, errInvalidArgument)
-				return
-			}
-			v := strings.Join(values, ",")
-			opts.Metadata[name] = v
-			userSize += len(suffix) + len(v)
-		}
-	}
-	if userSize > maxUserMetadata {
-		writeError(w, r, errMetadataTooLarge)
+	metadata, apiErr, valid := requestMetadata(r.Header, streaming)
+	if !valid {
+		writeError(w, r, apiErr)
 		return
 	}
+	opts := store.PutOptions{Metadata: metadata}
 	// A present but empty Content-MD5 is invalid, not absent.
 	if values, ok := r.Header["Content-Md5"]; ok {
 		sum, err := base64.StdEncoding.DecodeString(values[0])
@@ -137,6 +111,42 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	w.Header().Set("ETag", quoteETag(info.ETag))
 	setChecksumHeaders(w.Header(), info)
 	w.WriteHeader(http.StatusOK)
+}
+
+// requestMetadata reads the metadata a write request stores with the object:
+// the system headers, a default Content-Type, and the x-amz-meta-* headers.
+func requestMetadata(h http.Header, streaming bool) (map[string]string, apiError, bool) {
+	metadata := map[string]string{}
+	for _, name := range storedHeaders {
+		if v := h.Get(name); v != "" {
+			metadata[name] = v
+		}
+	}
+	// The SDKs append aws-chunked to any encoding the caller set.
+	if v, found := withoutAWSChunked(h); streaming && found {
+		delete(metadata, "Content-Encoding")
+		if v != "" {
+			metadata["Content-Encoding"] = v
+		}
+	}
+	if metadata["Content-Type"] == "" {
+		metadata["Content-Type"] = defaultType
+	}
+	userSize := 0
+	for name, values := range h {
+		if suffix, ok := strings.CutPrefix(name, userMetaPrefix); ok {
+			if suffix == "" {
+				return nil, errInvalidArgument, false
+			}
+			v := strings.Join(values, ",")
+			metadata[name] = v
+			userSize += len(suffix) + len(v)
+		}
+	}
+	if userSize > maxUserMetadata {
+		return nil, errMetadataTooLarge, false
+	}
+	return metadata, apiError{}, true
 }
 
 // parseChecksum reads the flexible checksum of a write: one x-amz-checksum-*

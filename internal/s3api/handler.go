@@ -56,6 +56,8 @@ func (h *handler) routes() {
 		opGetObject:         h.handleGetObject,
 		opHeadObject:        h.handleHeadObject,
 		opDeleteObject:      h.handleDeleteObject,
+		opDeleteObjects:     h.handleDeleteObjects,
+		opCopyObject:        h.handleCopyObject,
 		opListObjects:       h.handleListObjects,
 		opListObjectsV2:     h.handleListObjectsV2,
 	}

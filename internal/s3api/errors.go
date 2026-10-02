@@ -55,6 +55,12 @@ var (
 	errChecksumMismatch          = apiError{"BadDigest", http.StatusBadRequest, "The checksum you specified did not match the calculated checksum."}
 	errInvalidChunkSize          = apiError{"InvalidChunkSizeError", http.StatusForbidden, "Only the last chunk is allowed to have a size less than 8192 bytes"}
 	errInvalidChecksum           = apiError{"InvalidRequest", http.StatusBadRequest, "The x-amz-checksum header or algorithm you specified is invalid."}
+	errInvalidCopySource         = apiError{"InvalidArgument", http.StatusBadRequest, "Copy Source must mention the source bucket and key: sourcebucket/sourcekey"}
+	errUnknownDirective          = apiError{"InvalidArgument", http.StatusBadRequest, "Unknown metadata directive."}
+	errCopyToSelf                = apiError{"InvalidRequest", http.StatusBadRequest, "This copy request is illegal because it is trying to copy an object to itself without changing the object's metadata, storage class, website redirect location or encryption attributes."}
+	errCopySourceTooLarge        = apiError{"InvalidRequest", http.StatusBadRequest, "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120"}
+	errMissingContentMD5         = apiError{"InvalidRequest", http.StatusBadRequest, "Missing required header for this request: Content-MD5"}
+	errNoSuchVersion             = apiError{"NoSuchVersion", http.StatusNotFound, "The specified version does not exist."}
 )
 
 // apiErrors maps the errors handlers check with errors.Is to S3 errors.
