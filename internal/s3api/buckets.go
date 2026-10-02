@@ -29,6 +29,12 @@ type Store interface {
 	HeadObject(ctx context.Context, bucket, key string) (store.ObjectInfo, error)
 	DeleteObject(ctx context.Context, bucket, key string) error
 	ListObjects(ctx context.Context, bucket, prefix, startAfter string) ([]store.ObjectInfo, error)
+	CreateUpload(ctx context.Context, bucket, key string, opts store.UploadOptions) (store.UploadInfo, error)
+	PutPart(ctx context.Context, bucket, key, uploadID string, partNumber int, body io.Reader, opts store.PartOptions) (store.PartInfo, error)
+	ListParts(ctx context.Context, bucket, key, uploadID string) (store.UploadInfo, []store.PartInfo, error)
+	ListUploads(ctx context.Context, bucket string) ([]store.UploadInfo, error)
+	AbortUpload(ctx context.Context, bucket, key, uploadID string) error
+	CompleteUpload(ctx context.Context, bucket, key, uploadID string, parts []store.CompletePart, opts store.CompleteOptions) (store.ObjectInfo, error)
 }
 
 const s3Namespace = "http://s3.amazonaws.com/doc/2006-03-01/"

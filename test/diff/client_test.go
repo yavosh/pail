@@ -57,6 +57,18 @@ type response struct {
 	body   []byte
 }
 
+// initiatedUploadID returns the upload ID in a CreateMultipartUpload response, or "".
+func initiatedUploadID(body []byte) string {
+	var r struct {
+		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
+		UploadID string   `xml:"UploadId"`
+	}
+	if xml.Unmarshal(body, &r) != nil {
+		return ""
+	}
+	return r.UploadID
+}
+
 // signer signs like the S3 SDKs: S3 paths are encoded once, never twice.
 var signer = newSigner()
 

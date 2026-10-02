@@ -51,7 +51,8 @@ var presenceHeaders = []string{"Last-Modified", "X-Amz-Id-2", "X-Amz-Request-Id"
 // volatileElements change on every run, so only their presence is kept.
 var volatileElements = map[string]bool{
 	"CreationDate": true, "DisplayName": true, "ID": true, "Initiated": true,
-	"LastModified": true, "ContinuationToken": true, "NextContinuationToken": true,
+	"LastModified": true, "Location": true, // Location is a URL on the server's own host
+	"ContinuationToken": true, "NextContinuationToken": true,
 	"NextUploadIdMarker": true, "UploadId": true, "UploadIdMarker": true,
 }
 

@@ -4,6 +4,7 @@
 package diff
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -128,11 +129,13 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 func runScenario(t *testing.T, tg *target, sc scenario, bucket string) golden {
 	t.Helper()
 	g := golden{Scenario: sc.name}
+	uploadID := ""
 	for _, st := range sc.steps {
-		resp, err := tg.do(t.Context(), st, bucket)
+		resp, err := tg.do(t.Context(), st.withUploadID(uploadID), bucket)
 		if err != nil {
 			t.Fatalf("step %s (%s): %v", st.name, describe(st), err)
 		}
+		uploadID = cmp.Or(initiatedUploadID(resp.body), uploadID)
 		g.Exchanges = append(g.Exchanges, normalize(st, bucket, resp))
 	}
 	return g
@@ -167,12 +170,13 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 		t.Fatalf("golden file has %d steps, scenario has %d: record it again", len(want.Exchanges), len(sc.steps))
 	}
 	bucket := newBucketName()
+	uploadID := ""
 	for i, st := range sc.steps {
 		w := want.Exchanges[i]
 		if w.Step != st.name || w.Request != describe(st) || w.Fingerprint != fingerprint(st) {
 			t.Fatalf("step %d %q (%s) changed since the golden file was recorded: record it again", i, st.name, describe(st))
 		}
-		resp, err := tg.do(t.Context(), st, bucket)
+		resp, err := tg.do(t.Context(), st.withUploadID(uploadID), bucket)
 		if err != nil {
 			// Earlier differences often explain a later failure, so keep them.
 			msg := fmt.Sprintf("step %s (%s): %v", st.name, describe(st), err)
@@ -181,6 +185,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 			}
 			t.Fatal(msg)
 		}
+		uploadID = cmp.Or(initiatedUploadID(resp.body), uploadID)
 		got := normalize(st, bucket, resp)
 		diffs := compare(w, got)
 		stepKey := sc.name + "/" + st.name

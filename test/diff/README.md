@@ -43,7 +43,7 @@ Check these steps by hand in a new recording:
 - The S3 error `Code`. The error `Message` and diagnostic fields are not compared.
 - A fixed list of headers, in `normalize_test.go`. `Last-Modified`, `x-amz-request-id`, and `x-amz-id-2` are compared for presence only.
 - `Content-Length` only for object data. XML formatting and error messages differ between servers.
-- The body. A body that is not valid UTF-8 is stored as base64. An XML body is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, and continuation tokens, are compared for presence only. Bucket names become `{bucket}`.
+- The body. A body that is not valid UTF-8 is stored as base64. An XML body is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, continuation tokens, and the `Location` URL of a completed upload, are compared for presence only. Bucket names become `{bucket}`.
 
 ## Known differences
 
@@ -69,7 +69,7 @@ Use `pending.txt` for behavior pail will implement, with the issue that implemen
 
 ## Add a scenario
 
-1. Add the scenario to `scenarios()`. Use a new bucket per scenario, and delete what you create.
+1. Add the scenario to `scenarios()`. Use a new bucket per scenario, and delete what you create. A step can write `{uploadId}` in its query, headers, or body. It stands for the ID that the latest `CreateMultipartUpload` step returned.
 2. Record it against AWS.
 3. Run replay. For each step that differs, fix pail, add the step to `pending.txt` with the issue that will implement it, or list the accepted difference in `known-diffs.txt`.
 4. Commit the golden file together with its `pending.txt` and `known-diffs.txt` lines, so CI stays green.

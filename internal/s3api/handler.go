@@ -60,6 +60,13 @@ func (h *handler) routes() {
 		opCopyObject:        h.handleCopyObject,
 		opListObjects:       h.handleListObjects,
 		opListObjectsV2:     h.handleListObjectsV2,
+
+		opCreateMultipartUpload:   h.handleCreateMultipartUpload,
+		opUploadPart:              h.handleUploadPart,
+		opCompleteMultipartUpload: h.handleCompleteMultipartUpload,
+		opAbortMultipartUpload:    h.handleAbortMultipartUpload,
+		opListParts:               h.handleListParts,
+		opListMultipartUploads:    h.handleListMultipartUploads,
 	}
 	h.internal.HandleFunc("GET /_pail/health", handleHealth)
 }
