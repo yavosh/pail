@@ -434,7 +434,7 @@ func TestListMultipartUploads(t *testing.T) {
 	}{
 		{"", byKey, nil, ""},
 		{"&prefix=docs/", []string{order[1], order[3]}, nil, ""},
-		{"&delimiter=/", []string{order[2], order[4], order[0]}, []string{"docs/"}, ""},
+		{"&delimiter=/", []string{as[0], as[1], order[0]}, []string{"docs/"}, ""},
 		{"&prefix=docs/&delimiter=/", []string{order[1], order[3]}, nil, ""},
 		{"&max-uploads=2", byKey[:2], nil, byKey[1]},
 		{"&max-uploads=2&key-marker=a&upload-id-marker=" + id(byKey[0]), byKey[1:3], nil, byKey[2]},
