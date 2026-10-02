@@ -30,6 +30,7 @@ const (
 	authUnknownKey
 	authBadSignature
 	authSkewed
+	// The presigned modes stay last: do treats every mode from authPresigned on as presigned.
 	authPresigned              // a query-string signature, valid for 15 minutes unless the step sets X-Amz-Expires
 	authPresignedExpired       // signed two hours ago, valid for one hour
 	authPresignedTampered      // a valid signature, then a query parameter it does not cover
