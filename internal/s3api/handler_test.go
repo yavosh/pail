@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -196,6 +197,61 @@ func TestAuthErrors(t *testing.T) {
 			}
 			if resp.StatusCode != tt.wantHTTP || e.Code != tt.wantCode {
 				t.Errorf("GET /bkt (%s) = %d %s, want %d %s", tt.name, resp.StatusCode, e.Code, tt.wantHTTP, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestPresignedAuthErrors(t *testing.T) {
+	srv, st := storeServer(t, "")
+	if err := st.CreateBucket(context.Background(), "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+	creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
+
+	tests := []struct {
+		name       string
+		signedAt   time.Duration // relative to now
+		expires    string
+		tamper     func(url.Values)
+		wantStatus int
+		wantCode   string
+	}{
+		{"valid, missing key", 0, "900", nil, http.StatusNotFound, "NoSuchKey"},
+		{"expired", -2 * time.Hour, "3600", nil, http.StatusForbidden, "AccessDenied"},
+		{"expires too long", 0, "604801", nil, http.StatusBadRequest, "AuthorizationQueryParametersError"},
+		{"missing date", 0, "900", func(q url.Values) { q.Del("X-Amz-Date") }, http.StatusBadRequest, "AuthorizationQueryParametersError"},
+		{"bad credential service", 0, "900", func(q url.Values) {
+			q.Set("X-Amz-Credential", strings.Replace(q.Get("X-Amz-Credential"), "/s3/", "/ec2/", 1))
+		}, http.StatusBadRequest, "AuthorizationQueryParametersError"},
+		{"tampered", 0, "900", func(q url.Values) { q.Set("x-id", "Tampered") }, http.StatusForbidden, "SignatureDoesNotMatch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/bkt/missing?X-Amz-Expires="+tt.expires, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			signedURL, _, err := signer.PresignHTTP(req.Context(), creds, req, "UNSIGNED-PAYLOAD", "s3", "us-east-1", time.Now().Add(tt.signedAt))
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := url.Parse(signedURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.tamper != nil {
+				q := u.Query()
+				tt.tamper(q)
+				u.RawQuery = q.Encode()
+			}
+			req, err = http.NewRequestWithContext(context.Background(), http.MethodGet, u.String(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status, code := send(t, req); status != tt.wantStatus || code != tt.wantCode {
+				t.Errorf("presigned GET (%s) = %d %s, want %d %s", tt.name, status, code, tt.wantStatus, tt.wantCode)
 			}
 		})
 	}

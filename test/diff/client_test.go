@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +31,13 @@ const (
 	authUnknownKey
 	authBadSignature
 	authSkewed
+	// The presigned modes stay last: do treats every mode from authPresigned on as presigned.
+	authPresigned              // a query-string signature, valid for 15 minutes unless the step sets X-Amz-Expires
+	authPresignedExpired       // signed two hours ago, valid for one hour
+	authPresignedTampered      // a valid signature, then a query parameter it does not cover
+	authPresignedFuture        // signed one hour from now
+	authPresignedBadCredential // credential scope names the ec2 service
+	authPresignedMissingParam  // X-Amz-Date removed after signing
 )
 
 // target is one S3 implementation the suite talks to over HTTP.
@@ -79,7 +87,11 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		payloadHash = st.stream
 		setStreamHeaders(req, st)
 	}
-	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	// A presigned request has no x-amz-content-sha256: it would be an unsigned x-amz header.
+	presigned := st.auth >= authPresigned
+	if !presigned {
+		req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	}
 
 	creds, signTime := tg.creds, time.Now()
 	switch st.auth {
@@ -94,6 +106,8 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		err = newSigner().SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
 	case authSkewed:
 		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
+	case authPresigned, authPresignedExpired, authPresignedTampered, authPresignedFuture, authPresignedBadCredential, authPresignedMissingParam:
+		err = tg.presign(ctx, req, st.auth, signTime)
 	default:
 		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
 	}
@@ -110,7 +124,12 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 
 	resp, err := tg.client.Do(req)
 	if err != nil {
-		return response{}, err
+		// A presigned query is a credential, and can hold a session token:
+		// keep it out of test logs.
+		if ue, ok := errors.AsType[*url.Error](err); ok {
+			err = ue.Err
+		}
+		return response{}, fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -118,6 +137,43 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		return response{}, err
 	}
 	return response{status: resp.StatusCode, header: resp.Header, body: body}, nil
+}
+
+// presign replaces req.URL with a presigned URL. The payload is unsigned.
+func (tg *target) presign(ctx context.Context, req *http.Request, auth authMode, signTime time.Time) error {
+	expires := "900"
+	switch auth {
+	case authPresignedExpired:
+		signTime, expires = signTime.Add(-2*time.Hour), "3600"
+	case authPresignedFuture:
+		signTime = signTime.Add(time.Hour)
+	}
+	q := req.URL.Query()
+	if !q.Has("X-Amz-Expires") {
+		q.Set("X-Amz-Expires", expires)
+	}
+	req.URL.RawQuery = q.Encode()
+	signedURL, _, err := signer.PresignHTTP(ctx, tg.creds, req, "UNSIGNED-PAYLOAD", "s3", tg.region, signTime)
+	if err != nil {
+		return err
+	}
+	req.URL, err = url.Parse(signedURL)
+	if err != nil {
+		return err
+	}
+	switch auth {
+	case authPresignedTampered:
+		req.URL.RawQuery += "&x-id=Tampered"
+	case authPresignedBadCredential:
+		q := req.URL.Query()
+		q.Set("X-Amz-Credential", strings.Replace(q.Get("X-Amz-Credential"), "/s3/aws4_request", "/ec2/aws4_request", 1))
+		req.URL.RawQuery = q.Encode()
+	case authPresignedMissingParam:
+		q := req.URL.Query()
+		q.Del("X-Amz-Date")
+		req.URL.RawQuery = q.Encode()
+	}
+	return nil
 }
 
 const (

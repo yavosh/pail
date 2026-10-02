@@ -29,6 +29,9 @@ var (
 	errMalformedAuth             = apiError{"AuthorizationHeaderMalformed", http.StatusBadRequest, "The authorization header is malformed."}
 	errInvalidAccessKeyID        = apiError{"InvalidAccessKeyId", http.StatusForbidden, "The AWS Access Key Id you provided does not exist in our records."}
 	errSignatureMismatch         = apiError{"SignatureDoesNotMatch", http.StatusForbidden, "The request signature we calculated does not match the signature you provided. Check your key and signing method."}
+	errRequestExpired            = apiError{"AccessDenied", http.StatusForbidden, "Request has expired"}
+	errRequestNotYetValid        = apiError{"AccessDenied", http.StatusForbidden, "Request is not valid yet"}
+	errMalformedPresign          = apiError{"AuthorizationQueryParametersError", http.StatusBadRequest, "Query-string authentication version 4 requires the X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-Date, X-Amz-SignedHeaders, and X-Amz-Expires parameters."}
 	errTimeTooSkewed             = apiError{"RequestTimeTooSkewed", http.StatusForbidden, "The difference between the request time and the current time is too large."}
 	errContentSHAMismatch        = apiError{"XAmzContentSHA256Mismatch", http.StatusBadRequest, "The provided 'x-amz-content-sha256' header does not match what was computed."}
 	errNoSuchBucket              = apiError{"NoSuchBucket", http.StatusNotFound, "The specified bucket does not exist"}
@@ -67,6 +70,9 @@ var apiErrors = []struct {
 	{sigv4.ErrInvalidAccessKeyID, errInvalidAccessKeyID},
 	{sigv4.ErrSignatureMismatch, errSignatureMismatch},
 	{sigv4.ErrRequestTimeTooSkewed, errTimeTooSkewed},
+	{sigv4.ErrRequestExpired, errRequestExpired},
+	{sigv4.ErrRequestNotYetValid, errRequestNotYetValid},
+	{sigv4.ErrMalformedPresign, errMalformedPresign},
 	{sigv4.ErrContentSHA256Mismatch, errContentSHAMismatch},
 	{sigv4.ErrMissingDecodedLength, errMissingContentLength},
 	{sigv4.ErrMalformedChunk, errIncompleteBody},
