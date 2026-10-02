@@ -204,3 +204,18 @@ func TestDeleteObjectsStreaming(t *testing.T) {
 		}
 	}
 }
+
+// TestDeleteObjectsDeepXML sends a body that nests elements far past any
+// valid request, which would otherwise hold one decoder stack entry each.
+func TestDeleteObjectsDeepXML(t *testing.T) {
+	srv, st := storeServer(t, "")
+	if err := st.CreateBucket(context.Background(), "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	// Well-formed, so only the depth limit rejects it.
+	body := "<Delete><Object><Key>a</Key></Object>" + strings.Repeat("<a>", 1<<16) + strings.Repeat("</a>", 1<<16) + "</Delete>"
+	status, code, _ := sendWith(t, srv, http.MethodPost, "/bkt?delete", body, md5Header(body))
+	if status != http.StatusBadRequest || code != "MalformedXML" {
+		t.Errorf("POST with %d nested elements = %d %q, want 400 MalformedXML", 1<<16, status, code)
+	}
+}

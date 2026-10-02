@@ -43,6 +43,8 @@ func TestParseCopySource(t *testing.T) {
 		{"bkt/a%3Fb", target{bucket: "bkt", key: "a?b"}, 0, ""},
 		{"bkt/key?versionId=null", target{bucket: "bkt", key: "key"}, 0, ""},
 		{"bkt/key?versionId=v1", target{}, http.StatusNotImplemented, "NotImplemented"},
+		{"bkt/key?versionId=null&versionId=v1", target{}, http.StatusNotImplemented, "NotImplemented"},
+		{"bkt/key?versionId=null&versionId=null", target{bucket: "bkt", key: "key"}, 0, ""},
 		{"bkt/key?other=1", target{}, http.StatusBadRequest, "InvalidArgument"},
 		{"bkt/key?%zz", target{}, http.StatusBadRequest, "InvalidArgument"},
 		{"bkt", target{}, http.StatusBadRequest, "InvalidArgument"},

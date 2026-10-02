@@ -266,8 +266,8 @@ func copyAndDeleteScenario() scenario {
 	}
 	md5Of := func(body string) map[string]string { return map[string]string{"Content-MD5": md5Base64(body)} }
 	d1 := deleteXML(false, "src", "dst", "missing")
-	d2 := deleteXML(true, "dst-replace", "a b")
-	d3 := deleteXML(false, "space-copy", "cond")
+	d2 := deleteXML(true, "dst-replace", "a b", "a+b")
+	d3 := deleteXML(false, "space-copy", "plus-copy", "cond")
 	d4 := deleteXML(false, "src")
 	d5 := deleteXML(false, manyKeys...)
 	return scenario{name: "copy-and-delete", steps: []step{
@@ -291,6 +291,9 @@ func copyAndDeleteScenario() scenario {
 		{name: "copy-unknown-directive", method: http.MethodPut, key: "cond2", header: copyFrom(src, map[string]string{"x-amz-metadata-directive": "MERGE"})},
 		{name: "put-space-key", method: http.MethodPut, key: "a b", body: body},
 		{name: "copy-space-key", method: http.MethodPut, key: "space-copy", header: copyFrom("{bucket}/a%20b", nil)},
+		{name: "put-plus-key", method: http.MethodPut, key: "a+b", body: body},
+		{name: "copy-plus-key", method: http.MethodPut, key: "plus-copy", header: copyFrom("{bucket}/a+b", nil)},
+		{name: "head-plus-copy", method: http.MethodHead, key: "plus-copy"},
 		del("delete-objects", d1, md5Of(d1)),
 		del("delete-objects-quiet", d2, md5Of(d2)),
 		del("delete-objects-crc32", d3, map[string]string{"x-amz-checksum-crc32": crc32Base64(d3)}),

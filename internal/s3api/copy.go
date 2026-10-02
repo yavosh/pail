@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -127,7 +128,7 @@ func parseCopySource(raw string) (target, apiError, bool) {
 			switch {
 			case name != "versionId":
 				return target{}, errInvalidArgument, false
-			case values[0] != "null":
+			case slices.ContainsFunc(values, func(v string) bool { return v != "null" }):
 				return target{}, errNotImplemented, false // pail has no versioning
 			}
 		}
