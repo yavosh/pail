@@ -197,7 +197,7 @@ func TestMultipartErrors(t *testing.T) {
 		{"abort under another key", http.MethodDelete, "/bkt/other?uploadId=" + id, "", nil, 404, "NoSuchUpload"},
 		{"abort in a missing bucket", http.MethodDelete, "/nope/k?uploadId=" + id, "", nil, 404, "NoSuchBucket"},
 		{"abort", http.MethodDelete, "/bkt/k?uploadId=" + id, "", nil, 204, ""},
-		{"abort again", http.MethodDelete, "/bkt/k?uploadId=" + id, "", nil, 404, "NoSuchUpload"},
+		{"abort again", http.MethodDelete, "/bkt/k?uploadId=" + id, "", nil, 204, ""},
 		{"part after abort", http.MethodPut, "/bkt/k?partNumber=1&uploadId=" + id, "x", nil, 404, "NoSuchUpload"},
 		{"complete after abort", http.MethodPost, "/bkt/k?uploadId=" + id, complete(part(2, p2)), nil, 404, "NoSuchUpload"},
 	}
@@ -309,6 +309,9 @@ func TestCreateMultipartUploadHeaders(t *testing.T) {
 	_ = call(t, srv, http.MethodPut, "/bkt", "", nil)
 	for _, tt := range tests {
 		r := call(t, srv, http.MethodPost, "/bkt/k?uploads", "", tt.headers)
+		if ct, ok := r.header["Content-Type"]; ok {
+			t.Errorf("%s: create sent Content-Type %q, want none, as AWS", tt.name, ct)
+		}
 		if r.status != http.StatusOK || r.header.Get("x-amz-checksum-algorithm") != tt.wantAlg || r.header.Get("x-amz-checksum-type") != tt.typ {
 			t.Errorf("%s: create = %d, algorithm %q, type %q, want 200, %q, %q", tt.name, r.status, r.header.Get("x-amz-checksum-algorithm"), r.header.Get("x-amz-checksum-type"), tt.wantAlg, tt.typ)
 		}
@@ -425,32 +428,31 @@ func TestListMultipartUploads(t *testing.T) {
 		t.Fatalf("ListMultipartUploads with prefix a = %v, want %v and %v", as, order[2], order[4])
 	}
 	byKey := []string{as[0], as[1], order[0], order[1], order[3]}
+	// wantNext is the last entry on the page, which AWS sends even when the page is not truncated.
 	tests := []struct {
-		query        string
-		want         []string
-		wantPrefixes []string
-		wantNext     string
+		query         string
+		want          []string
+		wantPrefixes  []string
+		wantNext      string
+		wantTruncated bool
 	}{
-		{"", byKey, nil, ""},
-		{"&prefix=docs/", []string{order[1], order[3]}, nil, ""},
-		{"&delimiter=/", []string{as[0], as[1], order[0]}, []string{"docs/"}, ""},
-		{"&prefix=docs/&delimiter=/", []string{order[1], order[3]}, nil, ""},
-		{"&max-uploads=2", byKey[:2], nil, byKey[1]},
-		{"&max-uploads=2&key-marker=a&upload-id-marker=" + id(byKey[0]), byKey[1:3], nil, byKey[2]},
-		{"&max-uploads=2&key-marker=b", byKey[3:], nil, ""},
-		{"&key-marker=a", byKey[2:], nil, ""},
-		{"&delimiter=/&max-uploads=3", byKey[:3], nil, byKey[2]},
-		{"&delimiter=/&key-marker=docs/", nil, nil, ""},
-		{"&max-uploads=0", nil, nil, ""},
+		{"", byKey, nil, byKey[4], false},
+		{"&prefix=docs/", []string{order[1], order[3]}, nil, order[3], false},
+		{"&delimiter=/", []string{as[0], as[1], order[0]}, []string{"docs/"}, "docs/:", false},
+		{"&prefix=docs/&delimiter=/", []string{order[1], order[3]}, nil, order[3], false},
+		{"&max-uploads=2", byKey[:2], nil, byKey[1], true},
+		{"&max-uploads=2&key-marker=a&upload-id-marker=" + id(byKey[0]), byKey[1:3], nil, byKey[2], true},
+		{"&max-uploads=2&key-marker=b", byKey[3:], nil, byKey[4], false},
+		{"&key-marker=a", byKey[2:], nil, byKey[4], false},
+		{"&delimiter=/&max-uploads=3", byKey[:3], nil, byKey[2], true},
+		{"&delimiter=/&key-marker=docs/", nil, nil, ":", false},
+		{"&max-uploads=0", nil, nil, ":", false},
 	}
 	for _, tt := range tests {
 		l := list(tt.query)
-		next := ""
-		if l.NextKeyMarker != "" {
-			next = l.NextKeyMarker + ":" + l.NextUploadIDMarker
-		}
-		if !slices.Equal(keys(l), tt.want) || !slices.Equal(l.Prefixes, tt.wantPrefixes) || next != tt.wantNext || l.IsTruncated != (tt.wantNext != "") {
-			t.Errorf("ListMultipartUploads%s = %v, prefixes %v, next %q, truncated %v; want %v, %v, %q", tt.query, keys(l), l.Prefixes, next, l.IsTruncated, tt.want, tt.wantPrefixes, tt.wantNext)
+		next := l.NextKeyMarker + ":" + l.NextUploadIDMarker
+		if !slices.Equal(keys(l), tt.want) || !slices.Equal(l.Prefixes, tt.wantPrefixes) || next != tt.wantNext || l.IsTruncated != tt.wantTruncated {
+			t.Errorf("ListMultipartUploads%s = %v, prefixes %v, next %q, truncated %v; want %v, %v, %q, %v", tt.query, keys(l), l.Prefixes, next, l.IsTruncated, tt.want, tt.wantPrefixes, tt.wantNext, tt.wantTruncated)
 		}
 	}
 	l := list("&max-uploads=2000&prefix=a&delimiter=%2F&key-marker=")

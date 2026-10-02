@@ -111,6 +111,8 @@ func uploadsDir(bucket string) string { return path.Join("buckets", bucket, "upl
 func uploadDir(bucket, id string) string {
 	return path.Join(uploadsDir(bucket), id)
 }
+func endedDir(bucket string) string       { return path.Join("buckets", bucket, "ended-uploads") }
+func endedFile(bucket, id string) string  { return path.Join(endedDir(bucket), id) }
 func uploadFile(bucket, id string) string { return path.Join(uploadDir(bucket, id), uploadFileName) }
 func partFile(bucket, id string, n int) string {
 	return path.Join(uploadDir(bucket, id), "part-"+strconv.Itoa(n)+".json")
@@ -349,9 +351,10 @@ func (s *Store) ListUploads(ctx context.Context, bucket string) ([]UploadInfo, e
 	return out, nil
 }
 
-// AbortUpload discards an upload and its parts.
+// AbortUpload discards an upload and its parts. As on AWS, aborting an upload
+// that was already completed or aborted succeeds.
 func (s *Store) AbortUpload(ctx context.Context, bucket, key, uploadID string) error {
-	if _, err := s.readUpload(ctx, bucket, key, uploadID); err != nil {
+	if _, err := s.readUpload(ctx, bucket, key, uploadID); err != nil && !errors.Is(err, ErrNoSuchUpload) {
 		return err
 	}
 	l := s.bucketLock(bucket)
@@ -360,10 +363,52 @@ func (s *Store) AbortUpload(ctx context.Context, bucket, key, uploadID string) e
 	ul := s.uploadLock(bucket, uploadID)
 	ul.Lock()
 	defer ul.Unlock()
-	if _, err := s.readUpload(ctx, bucket, key, uploadID); err != nil {
+	_, err := s.readUpload(ctx, bucket, key, uploadID)
+	if errors.Is(err, ErrNoSuchUpload) {
+		// The tombstone does not know the key, so any key matches an ended ID.
+		if ended, endedErr := s.isEnded(bucket, uploadID); endedErr != nil || ended {
+			return endedErr
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if err := s.markEnded(bucket, uploadID); err != nil {
 		return err
 	}
 	return s.removeUpload(bucket, uploadID)
+}
+
+// markEnded writes the empty tombstone that makes a repeated abort succeed.
+// Tombstones are never pruned: unlike AWS, pail keeps them until the bucket is deleted.
+func (s *Store) markEnded(bucket, id string) error {
+	if err := s.fs.MkdirAll(endedDir(bucket)); err != nil {
+		return fmt.Errorf("create ended uploads directory: %w", err)
+	}
+	tf, err := s.fs.CreateTemp()
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	defer func() { _ = tf.Abort() }()
+	if err := tf.Commit(endedFile(bucket, id)); err != nil {
+		return fmt.Errorf("mark upload %s ended: %w", id, err)
+	}
+	return nil
+}
+
+// isEnded reports whether the upload was completed or aborted.
+func (s *Store) isEnded(bucket, id string) (bool, error) {
+	if !validUploadID(id) {
+		return false, nil
+	}
+	_, err := s.fs.Stat(endedFile(bucket, id))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("stat ended upload %s: %w", id, err)
+	}
+	return true, nil
 }
 
 // removeUpload removes upload.json first, so a partial removal leaves no upload.
@@ -478,7 +523,9 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 	}
 	// The object exists now. If this fails, or the process dies first, the upload
 	// stays listed until it is aborted, and completing it again rewrites the object.
-	_ = s.removeUpload(bucket, uploadID)
+	if err := s.markEnded(bucket, uploadID); err == nil {
+		_ = s.removeUpload(bucket, uploadID)
+	}
 	return info, nil
 }
 

@@ -8,6 +8,7 @@
 //	buckets/<bucket>/uploads/<id>/upload.json     a multipart upload; removed on complete or abort
 //	buckets/<bucket>/uploads/<id>/part-<n>.json   one uploaded part, naming its data file
 //	buckets/<bucket>/uploads/<id>/part-<n>-<id>   part bytes
+//	buckets/<bucket>/ended-uploads/<id>           empty tombstone of a completed or aborted upload
 package store
 
 import (

@@ -124,7 +124,14 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 		w.Header().Set("x-amz-checksum-algorithm", algorithm)
 		w.Header().Set("x-amz-checksum-type", typ)
 	}
-	writeXML(w, r, http.StatusOK, response{Xmlns: s3Namespace, Bucket: t.bucket, Key: t.key, UploadID: up.ID})
+	body, err := xml.Marshal(response{Xmlns: s3Namespace, Bucket: t.bucket, Key: t.key, UploadID: up.ID})
+	if err != nil {
+		writeError(w, r, toAPIError(err))
+		return
+	}
+	// AWS sends no Content-Type here; a nil value stops net/http from sniffing one.
+	w.Header()["Content-Type"] = nil
+	_, _ = w.Write(append([]byte(xml.Header), body...))
 }
 
 func (h *handler) handleUploadPart(w http.ResponseWriter, r *http.Request, t target) {
@@ -287,6 +294,17 @@ func (h *handler) handleAbortMultipartUpload(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// initiator is the owner element with the DisplayName that AWS still sends for it.
+type initiator struct {
+	ID          string `xml:"ID"`
+	DisplayName string `xml:"DisplayName"`
+}
+
+func (h *handler) bucketInitiator() initiator {
+	id := h.bucketOwner().ID
+	return initiator{ID: id, DisplayName: id}
+}
+
 // pageSize reads a max-parts or max-uploads value: the count as sent, and the
 // page limit it allows.
 func pageSize(s string) (requested, limit int, ok bool) {
@@ -311,21 +329,22 @@ func (h *handler) handleListParts(w http.ResponseWriter, r *http.Request, t targ
 	}
 	// Fields follow the element order AWS returns.
 	type response struct {
-		XMLName              xml.Name `xml:"ListPartsResult"`
-		Xmlns                string   `xml:"xmlns,attr"`
-		Bucket               string   `xml:"Bucket"`
-		Key                  string   `xml:"Key"`
-		UploadID             string   `xml:"UploadId"`
-		PartNumberMarker     int      `xml:"PartNumberMarker"`
-		NextPartNumberMarker int      `xml:"NextPartNumberMarker"`
-		MaxParts             int      `xml:"MaxParts"`
-		IsTruncated          bool     `xml:"IsTruncated"`
-		Parts                []part   `xml:"Part"`
-		Initiator            owner    `xml:"Initiator"`
-		Owner                owner    `xml:"Owner"`
-		StorageClass         string   `xml:"StorageClass"`
-		ChecksumAlgorithm    string   `xml:"ChecksumAlgorithm,omitempty"`
-		ChecksumType         string   `xml:"ChecksumType,omitempty"`
+		XMLName      xml.Name  `xml:"ListPartsResult"`
+		Xmlns        string    `xml:"xmlns,attr"`
+		Bucket       string    `xml:"Bucket"`
+		Key          string    `xml:"Key"`
+		UploadID     string    `xml:"UploadId"`
+		Initiator    initiator `xml:"Initiator"`
+		Owner        owner     `xml:"Owner"`
+		StorageClass string    `xml:"StorageClass"`
+		// The recording has no checksum upload, so the place of these two is unverified.
+		ChecksumAlgorithm    string `xml:"ChecksumAlgorithm,omitempty"`
+		ChecksumType         string `xml:"ChecksumType,omitempty"`
+		PartNumberMarker     int    `xml:"PartNumberMarker"`
+		NextPartNumberMarker int    `xml:"NextPartNumberMarker"`
+		MaxParts             int    `xml:"MaxParts"`
+		IsTruncated          bool   `xml:"IsTruncated"`
+		Parts                []part `xml:"Part"`
 	}
 	if apiErr, ok := checkObjectTarget(t); !ok {
 		writeError(w, r, apiErr)
@@ -349,10 +368,9 @@ func (h *handler) handleListParts(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, toAPIError(err))
 		return
 	}
-	own := h.bucketOwner()
 	resp := response{
 		Xmlns: s3Namespace, Bucket: t.bucket, Key: t.key, UploadID: uploadID, PartNumberMarker: marker, MaxParts: requested,
-		Parts: []part{}, Initiator: own, Owner: own, StorageClass: "STANDARD",
+		Parts: []part{}, Initiator: h.bucketInitiator(), Owner: h.bucketOwner(), StorageClass: "STANDARD",
 		ChecksumAlgorithm: up.ChecksumAlgorithm, ChecksumType: up.ChecksumType,
 	}
 	for _, p := range parts {
@@ -426,14 +444,14 @@ func pageUploads(uploads []store.UploadInfo, prefix, delimiter, keyMarker, idMar
 
 func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Request, t target) {
 	type upload struct {
-		Key               string `xml:"Key"`
-		UploadID          string `xml:"UploadId"`
-		Initiator         owner  `xml:"Initiator"`
-		Owner             owner  `xml:"Owner"`
-		StorageClass      string `xml:"StorageClass"`
-		Initiated         string `xml:"Initiated"`
-		ChecksumAlgorithm string `xml:"ChecksumAlgorithm,omitempty"`
-		ChecksumType      string `xml:"ChecksumType,omitempty"`
+		Key               string    `xml:"Key"`
+		UploadID          string    `xml:"UploadId"`
+		Initiator         initiator `xml:"Initiator"`
+		Owner             owner     `xml:"Owner"`
+		StorageClass      string    `xml:"StorageClass"`
+		Initiated         string    `xml:"Initiated"`
+		ChecksumAlgorithm string    `xml:"ChecksumAlgorithm,omitempty"`
+		ChecksumType      string    `xml:"ChecksumType,omitempty"`
 	}
 	// Fields follow the element order AWS returns.
 	type response struct {
@@ -442,10 +460,10 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 		Bucket             string         `xml:"Bucket"`
 		KeyMarker          string         `xml:"KeyMarker"`
 		UploadIDMarker     string         `xml:"UploadIdMarker"`
-		NextKeyMarker      string         `xml:"NextKeyMarker,omitempty"`
-		Prefix             string         `xml:"Prefix"`
-		Delimiter          string         `xml:"Delimiter,omitempty"`
-		NextUploadIDMarker string         `xml:"NextUploadIdMarker,omitempty"`
+		NextKeyMarker      string         `xml:"NextKeyMarker"`
+		NextUploadIDMarker string         `xml:"NextUploadIdMarker"`
+		Prefix             string         `xml:"Prefix,omitempty"`
+		Delimiter          string         `xml:"Delimiter,omitempty"` // with CommonPrefixes, unverified: the recording has neither
 		MaxUploads         int            `xml:"MaxUploads"`
 		IsTruncated        bool           `xml:"IsTruncated"`
 		Uploads            []upload       `xml:"Upload"`
@@ -471,21 +489,21 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 	page := pageUploads(uploads, prefix, delimiter, keyMarker, idMarker, limit)
 
 	own := h.bucketOwner()
+	starter := h.bucketInitiator()
 	resp := response{
 		Xmlns: s3Namespace, Bucket: t.bucket, KeyMarker: keyMarker, UploadIDMarker: idMarker, Prefix: prefix, Delimiter: delimiter,
 		MaxUploads: requested, IsTruncated: page.truncated, Uploads: []upload{}, CommonPrefixes: []commonPrefix{},
 	}
 	for _, u := range page.uploads {
 		resp.Uploads = append(resp.Uploads, upload{
-			Key: u.Key, UploadID: u.ID, Initiator: own, Owner: own, StorageClass: "STANDARD", Initiated: u.Initiated.UTC().Format(timeFormat),
+			Key: u.Key, UploadID: u.ID, Initiator: starter, Owner: own, StorageClass: "STANDARD", Initiated: u.Initiated.UTC().Format(timeFormat),
 			ChecksumAlgorithm: u.ChecksumAlgorithm, ChecksumType: u.ChecksumType,
 		})
 	}
 	for _, p := range page.prefixes {
 		resp.CommonPrefixes = append(resp.CommonPrefixes, commonPrefix{Prefix: p})
 	}
-	if page.truncated {
-		resp.NextKeyMarker, resp.NextUploadIDMarker = page.lastKey, page.lastID
-	}
+	// AWS always sends the last entry's markers, even on a page that is not truncated.
+	resp.NextKeyMarker, resp.NextUploadIDMarker = page.lastKey, page.lastID
 	writeXML(w, r, http.StatusOK, resp)
 }

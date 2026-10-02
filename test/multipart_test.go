@@ -312,9 +312,9 @@ func TestMultipartErrors(t *testing.T) {
 		if _, err := c.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{Bucket: bucket, Key: aws.String("k"), UploadId: id}); err != nil {
 			t.Fatalf("AbortMultipartUpload error = %v", err)
 		}
-		_, err = c.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{Bucket: bucket, Key: aws.String("k"), UploadId: id})
-		if code := errorCode(err); code != "NoSuchUpload" {
-			t.Errorf("second AbortMultipartUpload error = %v, want NoSuchUpload", err)
+		// As on AWS, aborting again succeeds.
+		if _, err = c.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{Bucket: bucket, Key: aws.String("k"), UploadId: id}); err != nil {
+			t.Errorf("second AbortMultipartUpload error = %v, want nil", err)
 		}
 		if err := complete("k", id, parts[0]); errorCode(err) != "NoSuchUpload" {
 			t.Errorf("complete after abort error = %v, want NoSuchUpload", err)
