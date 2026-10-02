@@ -30,10 +30,10 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 	type response struct {
 		XMLName      xml.Name         `xml:"CopyObjectResult"`
 		Xmlns        string           `xml:"xmlns,attr"`
+		LastModified string           `xml:"LastModified"` // AWS's element order
 		ETag         string           `xml:"ETag"`
-		LastModified string           `xml:"LastModified"`
-		ChecksumType string           `xml:"ChecksumType,omitempty"`
 		Checksum     *checksumElement `xml:",omitempty"`
+		ChecksumType string           `xml:"ChecksumType,omitempty"`
 	}
 	if apiErr, ok := checkObjectTarget(t); !ok {
 		writeError(w, r, apiErr)
@@ -82,6 +82,10 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		if v := r.Header.Get(name); v != "" {
 			cond.Set(as, v)
 		}
+	}
+	// AWS ignores a future if-modified-since on a copy; RFC 7232 calls it invalid.
+	if t, err := http.ParseTime(cond.Get("If-Modified-Since")); err == nil && t.After(time.Now()) {
+		cond.Del("If-Modified-Since")
 	}
 	if checkConditions(cond, quoteETag(info.ETag), info.LastModified.UTC().Truncate(time.Second)) != 0 {
 		writeError(w, r, errPreconditionFailed)

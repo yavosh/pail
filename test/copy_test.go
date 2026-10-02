@@ -129,7 +129,8 @@ func TestCopyObjectConditions(t *testing.T) {
 			{"if-none-match hit", func(in *s3.CopyObjectInput) { in.CopySourceIfNoneMatch = aws.String(etag) }, "PreconditionFailed"},
 			{"if-none-match miss", func(in *s3.CopyObjectInput) { in.CopySourceIfNoneMatch = aws.String(`"nope"`) }, ""},
 			{"if-modified-since past", func(in *s3.CopyObjectInput) { in.CopySourceIfModifiedSince = past }, ""},
-			{"if-modified-since future", func(in *s3.CopyObjectInput) { in.CopySourceIfModifiedSince = future }, "PreconditionFailed"},
+			{"if-modified-since future is ignored", func(in *s3.CopyObjectInput) { in.CopySourceIfModifiedSince = future }, ""},
+			{"if-modified-since now", func(in *s3.CopyObjectInput) { in.CopySourceIfModifiedSince = aws.Time(time.Now()) }, "PreconditionFailed"},
 			{"if-unmodified-since future", func(in *s3.CopyObjectInput) { in.CopySourceIfUnmodifiedSince = future }, ""},
 			{"if-unmodified-since past", func(in *s3.CopyObjectInput) { in.CopySourceIfUnmodifiedSince = past }, "PreconditionFailed"},
 		}
