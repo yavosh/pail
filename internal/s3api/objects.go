@@ -1,8 +1,10 @@
 package s3api
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
+	"hash"
 	"io"
 	"net/http"
 	"strconv"
@@ -11,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yavosh/pail/internal/checksum"
+	"github.com/yavosh/pail/internal/sigv4"
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs"
 )
@@ -41,11 +44,15 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, apiErr)
 		return
 	}
+	size, streaming := r.ContentLength, sigv4.IsStreaming(r.Header)
+	if streaming {
+		size, _ = sigv4.DecodedLength(r.Header) // Verify checked it
+	}
 	if r.ContentLength < 0 {
 		writeError(w, r, errMissingContentLength)
 		return
 	}
-	if r.ContentLength > maxObjectSize {
+	if size > maxObjectSize {
 		writeError(w, r, errEntityTooLarge)
 		return
 	}
@@ -53,6 +60,13 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	for _, name := range storedHeaders {
 		if v := r.Header.Get(name); v != "" {
 			opts.Metadata[name] = v
+		}
+	}
+	// The SDKs append aws-chunked to any encoding the caller set.
+	if v, found := withoutAWSChunked(r.Header); streaming && found {
+		delete(opts.Metadata, "Content-Encoding")
+		if v != "" {
+			opts.Metadata["Content-Encoding"] = v
 		}
 	}
 	if opts.Metadata["Content-Type"] == "" {
@@ -92,15 +106,24 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		return
 	}
 	opts.IfMatch = r.Header.Get("If-Match")
-	var ok bool
-	if opts.ChecksumAlgorithm, opts.Checksum, ok = parseChecksum(r.Header); !ok {
+	var (
+		inTrailer bool
+		ok        bool
+	)
+	// Only an aws-chunked body has trailers; fail before reading the body.
+	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
 		writeError(w, r, errInvalidChecksum)
 		return
+	}
+	var body io.Reader = r.Body
+	if inTrailer {
+		sum, _ := checksum.New(opts.ChecksumAlgorithm)
+		body = &trailerChecksum{r: r, h: sum, algorithm: opts.ChecksumAlgorithm}
 	}
 
 	// The store reads the body to EOF before it commits, which completes the
 	// SigV4 payload check; nothing is written to w until it returns.
-	info, err := h.opts.Store.PutObject(r.Context(), t.bucket, t.key, r.Body, opts)
+	info, err := h.opts.Store.PutObject(r.Context(), t.bucket, t.key, body, opts)
 	if errors.Is(err, store.ErrChecksumMismatch) {
 		e := errChecksumMismatch
 		e.Message = "The " + opts.ChecksumAlgorithm + " you specified did not match the calculated checksum."
@@ -116,17 +139,17 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	w.WriteHeader(http.StatusOK)
 }
 
-// parseChecksum reads the flexible checksum of a write: at most one
-// x-amz-checksum-* header with one value, optionally named by
+// parseChecksum reads the flexible checksum of a write: one x-amz-checksum-*
+// header or x-amz-trailer naming one (inTrailer), optionally named by
 // x-amz-sdk-checksum-algorithm. No checksum means the default algorithm.
-func parseChecksum(h http.Header) (algorithm string, value []byte, ok bool) {
+func parseChecksum(h http.Header) (algorithm string, value []byte, inTrailer, ok bool) {
 	named := ""
 	if v := h.Values("x-amz-sdk-checksum-algorithm"); len(v) > 0 {
 		if len(v) > 1 {
-			return "", nil, false
+			return "", nil, false, false
 		}
 		if named = checksum.Canonical(v[0]); named == "" {
-			return "", nil, false
+			return "", nil, false, false
 		}
 	}
 	found, raw := "", ""
@@ -137,20 +160,75 @@ func parseChecksum(h http.Header) (algorithm string, value []byte, ok bool) {
 			continue
 		}
 		if found != "" || len(values) != 1 {
-			return "", nil, false // AWS takes a single checksum per request
+			return "", nil, false, false // AWS takes a single checksum per request
 		}
 		found, raw = a, values[0]
 	}
+	if values, present := h["X-Amz-Trailer"]; present {
+		if found != "" || len(values) != 1 {
+			return "", nil, false, false
+		}
+		name, isChecksum := strings.CutPrefix(strings.ToLower(strings.TrimSpace(values[0])), "x-amz-checksum-")
+		found = checksum.Canonical(name)
+		if !isChecksum || found == "" || named != "" && named != found {
+			return "", nil, false, false
+		}
+		return found, nil, true, true
+	}
 	if found == "" {
-		// AWS needs the value with a named algorithm, in a header or, with
-		// aws-chunked uploads, a trailer.
-		return "", nil, named == ""
+		// AWS needs the value with a named algorithm, in a header or a trailer.
+		return "", nil, false, named == ""
 	}
 	if named != "" && named != found {
-		return "", nil, false
+		return "", nil, false, false
 	}
 	value, ok = checksum.Decode(found, raw)
-	return found, value, ok
+	return found, value, false, ok
+}
+
+// errBadTrailerChecksum is a checksum trailer that is missing or not valid base64.
+var errBadTrailerChecksum = errors.New("invalid checksum trailer")
+
+// trailerChecksum hashes the body and, at EOF, checks the hash against the
+// checksum trailer that sigv4 put in r.Trailer.
+type trailerChecksum struct {
+	r         *http.Request
+	h         hash.Hash
+	algorithm string
+}
+
+func (t *trailerChecksum) Read(p []byte) (int, error) {
+	n, err := t.r.Body.Read(p)
+	t.h.Write(p[:n])
+	if !errors.Is(err, io.EOF) {
+		return n, err
+	}
+	want, ok := checksum.Decode(t.algorithm, t.r.Trailer.Get(checksum.Header(t.algorithm)))
+	if !ok {
+		return n, errBadTrailerChecksum
+	}
+	if !bytes.Equal(t.h.Sum(nil), want) {
+		return n, store.ErrChecksumMismatch
+	}
+	return n, err
+}
+
+// withoutAWSChunked returns Content-Encoding without the aws-chunked coding,
+// and whether it had one.
+func withoutAWSChunked(h http.Header) (string, bool) {
+	var codings []string
+	found := false
+	for _, v := range h.Values("Content-Encoding") {
+		for c := range strings.SplitSeq(v, ",") {
+			switch c = strings.TrimSpace(c); {
+			case strings.EqualFold(c, "aws-chunked"):
+				found = true
+			case c != "":
+				codings = append(codings, c)
+			}
+		}
+	}
+	return strings.Join(codings, ","), found
 }
 
 // setChecksumHeaders names the object's checksum, when it has one.

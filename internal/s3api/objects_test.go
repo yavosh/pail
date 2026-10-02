@@ -320,6 +320,7 @@ func TestPutObjectChecksumHeaders(t *testing.T) {
 		{"two values", map[string]string{"x-amz-checksum-crc32": "DUoRhQ==", "x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"algorithm disagrees with value", map[string]string{"x-amz-sdk-checksum-algorithm": "SHA1", "x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"unknown algorithm", map[string]string{"x-amz-sdk-checksum-algorithm": "MD5"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"trailer without aws-chunked", map[string]string{"x-amz-trailer": "x-amz-checksum-crc32"}, http.StatusBadRequest, "InvalidRequest", ""},
 	}
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader("hello world"))
@@ -348,5 +349,103 @@ func TestPutObjectChecksumHeaders(t *testing.T) {
 				t.Errorf("%s: PUT response = type %q, %s %q; want FULL_OBJECT and a value", tt.name, resp.Header.Get("x-amz-checksum-type"), header, resp.Header.Get(header))
 			}
 		}
+	}
+}
+
+func TestPutObjectStreaming(t *testing.T) {
+	srv, st := storeServer(t, "")
+	ctx := context.Background()
+	if err := st.CreateBucket(ctx, "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	const crc32 = "x-amz-checksum-crc32" // "DUoRhQ==" is the CRC32 of "hello world"
+	tests := []struct {
+		name       string
+		header     http.Header
+		trailer    string // a trailer line, without CRLF
+		wantStatus int
+		wantCode   string
+		wantAlg    string
+		wantEnc    string
+	}{
+		{"checksum trailer", http.Header{"X-Amz-Trailer": {crc32}}, crc32 + ":DUoRhQ==", http.StatusOK, "", "CRC32", ""},
+		{"no trailer", nil, "", http.StatusOK, "", "CRC64NVME", ""},
+		{"gzip under aws-chunked", http.Header{"Content-Encoding": {"gzip", "aws-chunked"}}, "", http.StatusOK, "", "CRC64NVME", "gzip"},
+		{"one list value", http.Header{"Content-Encoding": {"gzip, aws-chunked"}}, "", http.StatusOK, "", "CRC64NVME", "gzip"},
+		{"named algorithm", http.Header{"X-Amz-Trailer": {crc32}, "X-Amz-Sdk-Checksum-Algorithm": {"CRC32"}}, crc32 + ":DUoRhQ==", http.StatusOK, "", "CRC32", ""},
+		{"wrong trailer value", http.Header{"X-Amz-Trailer": {crc32}}, crc32 + ":AAAAAA==", http.StatusBadRequest, "BadDigest", "", ""},
+		{"bad trailer base64", http.Header{"X-Amz-Trailer": {crc32}}, crc32 + ":nope!", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"trailer is not a checksum", http.Header{"X-Amz-Trailer": {"x-amz-meta-color"}}, "x-amz-meta-color:blue", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"two trailers", http.Header{"X-Amz-Trailer": {crc32 + ",x-amz-checksum-sha1"}}, crc32 + ":DUoRhQ==", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"header and trailer", http.Header{"X-Amz-Trailer": {crc32}, "X-Amz-Checksum-Crc32": {"DUoRhQ=="}}, crc32 + ":DUoRhQ==", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"algorithm disagrees with trailer", http.Header{"X-Amz-Trailer": {crc32}, "X-Amz-Sdk-Checksum-Algorithm": {"SHA1"}}, crc32 + ":DUoRhQ==", http.StatusBadRequest, "InvalidRequest", "", ""},
+		{"missing decoded length", http.Header{"X-Amz-Decoded-Content-Length": nil}, "", http.StatusLengthRequired, "MissingContentLength", "", ""},
+		{"decoded length over 5 GiB", http.Header{"X-Amz-Decoded-Content-Length": {"5368709121"}}, "", http.StatusBadRequest, "EntityTooLarge", "", ""},
+		{"decoded length mismatch", http.Header{"X-Amz-Decoded-Content-Length": {"12"}}, "", http.StatusBadRequest, "IncompleteBody", "", ""},
+	}
+	for _, tt := range tests {
+		const body = "hello world"
+		enc := "6\r\nhello \r\n5\r\nworld\r\n0\r\n"
+		if tt.trailer != "" {
+			enc += tt.trailer + "\r\n"
+		}
+		enc += "\r\n"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader(enc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Encoding", "aws-chunked")
+		req.Header.Set("X-Amz-Decoded-Content-Length", "11")
+		for k, v := range tt.header {
+			req.Header[k] = v
+			if v == nil {
+				req.Header.Del(k)
+			}
+		}
+		req.Header.Set("X-Amz-Content-Sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER")
+		signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+		creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
+		if err := signer.SignHTTP(ctx, creds, req, "STREAMING-UNSIGNED-PAYLOAD-TRAILER", "s3", "us-east-1", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		_ = st.DeleteObject(ctx, "bkt", "k")
+		status, code := send(t, req)
+		if status != tt.wantStatus || code != tt.wantCode {
+			t.Errorf("%s: PUT = %d %q, want %d %q", tt.name, status, code, tt.wantStatus, tt.wantCode)
+			continue
+		}
+		info, err := st.HeadObject(ctx, "bkt", "k")
+		if tt.wantStatus != http.StatusOK {
+			if !errors.Is(err, store.ErrNoSuchKey) {
+				t.Errorf("%s: a failed PUT stored the object: HeadObject error = %v", tt.name, err)
+			}
+			continue
+		}
+		if err != nil || info.Size != int64(len(body)) || info.ChecksumAlgorithm != tt.wantAlg || info.Metadata["Content-Encoding"] != tt.wantEnc {
+			t.Errorf("%s: stored size %d, checksum %q, Content-Encoding %q, %v; want %d, %q, %q",
+				tt.name, info.Size, info.ChecksumAlgorithm, info.Metadata["Content-Encoding"], err, len(body), tt.wantAlg, tt.wantEnc)
+		}
+	}
+}
+
+// Only an aws-chunked upload loses the aws-chunked coding; others store it as sent.
+func TestPlainPutKeepsContentEncoding(t *testing.T) {
+	srv, st := storeServer(t, "")
+	ctx := context.Background()
+	if err := st.CreateBucket(ctx, "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Encoding", "gzip, aws-chunked")
+	signPayload(t, req, time.Now(), "x")
+	if status, code := send(t, req); status != http.StatusOK {
+		t.Fatalf("PUT = %d %q, want 200", status, code)
+	}
+	info, err := st.HeadObject(ctx, "bkt", "k")
+	if got := info.Metadata["Content-Encoding"]; err != nil || got != "gzip, aws-chunked" {
+		t.Errorf("stored Content-Encoding = %q, %v, want %q", got, err, "gzip, aws-chunked")
 	}
 }

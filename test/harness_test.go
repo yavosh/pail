@@ -6,6 +6,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -14,7 +15,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/yavosh/pail/internal/config"
+	"github.com/yavosh/pail/internal/s3api"
 	"github.com/yavosh/pail/internal/server"
+	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/vfs/localdisk"
 )
 
 const (
@@ -25,8 +29,9 @@ const (
 
 // pail is one running server for a test.
 type pail struct {
-	port    string
-	dataDir string // the server's data directory, for tests that inspect storage
+	port     string
+	endpoint string // the SDK's BaseEndpoint
+	dataDir  string // the server's data directory, for tests that inspect storage
 	// httpClient sends every host, including <bucket>.localhost, to the
 	// server, so virtual-hosted and presigned URLs need no DNS or proxy.
 	httpClient *http.Client
@@ -74,7 +79,51 @@ func startPail(t *testing.T) *pail {
 	t.Cleanup(transport.CloseIdleConnections)
 	return &pail{
 		port:       port,
+		endpoint:   "http://localhost:" + port,
 		dataDir:    cfg.DataDir,
+		httpClient: &http.Client{Timeout: 30 * time.Second, Transport: transport},
+	}
+}
+
+// startPailTLS is startPail over HTTPS, which the SDK needs before it sends
+// aws-chunked uploads. httptest's certificate covers example.com and its
+// subdomains, so both addressing styles verify.
+func startPailTLS(t *testing.T) *pail {
+	t.Helper()
+	dataDir := t.TempDir()
+	fsys, err := localdisk.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fsys.Close() })
+	st, err := store.Open(context.Background(), fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewUnstartedServer(s3api.New(s3api.Options{
+		Domain:          "example.com",
+		AccessKeyID:     testKey,
+		SecretAccessKey: testSecret,
+		Region:          testRegion,
+		Store:           st,
+	}))
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	addr := srv.Listener.Addr().String()
+	_, port, _ := net.SplitHostPort(addr)
+	base, _ := srv.Client().Transport.(*http.Transport)
+	transport := base.Clone() // keeps the test certificate's root
+	dialer := &net.Dialer{}
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, network, addr)
+	}
+	transport.ExpectContinueTimeout = awshttp.DefaultHTTPTransportExpectContinueTimeout
+	t.Cleanup(transport.CloseIdleConnections)
+	return &pail{
+		port:       port,
+		endpoint:   "https://example.com:" + port,
+		dataDir:    dataDir,
 		httpClient: &http.Client{Timeout: 30 * time.Second, Transport: transport},
 	}
 }
@@ -99,7 +148,7 @@ func (p *pail) clientWith(st style, wrap func(http.RoundTripper) http.RoundTripp
 		httpClient = &http.Client{Timeout: p.httpClient.Timeout, Transport: wrap(p.httpClient.Transport)}
 	}
 	return s3.New(s3.Options{
-		BaseEndpoint: aws.String("http://localhost:" + p.port),
+		BaseEndpoint: aws.String(p.endpoint),
 		UsePathStyle: st.pathStyle,
 		Region:       testRegion,
 		Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {

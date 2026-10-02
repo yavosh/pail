@@ -1,0 +1,271 @@
+{
+  "scenario": "streaming",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-unsigned-trailer",
+      "request": "PUT /unsigned-trailer",
+      "fingerprint": "fe51c68848c87952",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "X-Amz-Checksum-Crc32": "LkQOkw==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-unsigned-trailer",
+      "request": "HEAD /unsigned-trailer",
+      "fingerprint": "970a454fcacba27a",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "20480",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Checksum-Crc32": "LkQOkw==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-signed",
+      "request": "PUT /signed",
+      "fingerprint": "20f3bc414d01c6f9",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "X-Amz-Checksum-Crc64nvme": "cZOH9988DAo=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-signed",
+      "request": "HEAD /signed",
+      "fingerprint": "55b00b2cab65fc81",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "20480",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Checksum-Crc64nvme": "cZOH9988DAo=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-signed-trailer",
+      "request": "PUT /signed-trailer",
+      "fingerprint": "b545ca0baf64cf37",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "X-Amz-Checksum-Crc32": "LkQOkw==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-signed-trailer",
+      "request": "HEAD /signed-trailer",
+      "fingerprint": "db94971766e93999",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "20480",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Checksum-Crc32": "LkQOkw==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-gzip",
+      "request": "PUT /gzip",
+      "fingerprint": "9a7a91ecbf5b3cc6",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "X-Amz-Checksum-Crc32": "LkQOkw==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-gzip",
+      "request": "HEAD /gzip",
+      "fingerprint": "75c12bc65b23081c",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Encoding": "gzip",
+        "Content-Length": "20480",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"c77f1b31635a8223d524e94da44affe1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-small-chunks",
+      "request": "PUT /small-chunks",
+      "fingerprint": "eae2203d4e5e4f00",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidChunkSizeError\n"
+    },
+    {
+      "step": "put-bad-chunk-signature",
+      "request": "PUT /bad",
+      "fingerprint": "00decc362f922df2",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: SignatureDoesNotMatch\n"
+    },
+    {
+      "step": "put-trailer-checksum-mismatch",
+      "request": "PUT /bad",
+      "fingerprint": "f0836503af489e5f",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadDigest\n"
+    },
+    {
+      "step": "put-decoded-length-mismatch",
+      "request": "PUT /bad",
+      "fingerprint": "c99919cff00df780",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: IncompleteBody\n"
+    },
+    {
+      "step": "put-missing-decoded-length",
+      "request": "PUT /bad",
+      "fingerprint": "068f9a1b9c8623a4",
+      "status": 411,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: MissingContentLength\n"
+    },
+    {
+      "step": "head-bad",
+      "request": "HEAD /bad",
+      "fingerprint": "8d01fa51ded227d6",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-unsigned-trailer",
+      "request": "DELETE /unsigned-trailer",
+      "fingerprint": "b1ee9cecc12f2c81",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-signed",
+      "request": "DELETE /signed",
+      "fingerprint": "063bba3e0d37f760",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-signed-trailer",
+      "request": "DELETE /signed-trailer",
+      "fingerprint": "1fc20b1a0dc08f07",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-gzip",
+      "request": "DELETE /gzip",
+      "fingerprint": "3a677a18fe9e7040",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-small-chunks",
+      "request": "DELETE /small-chunks",
+      "fingerprint": "150816537f2572f7",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}
