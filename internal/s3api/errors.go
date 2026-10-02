@@ -60,6 +60,12 @@ var (
 	errCopyToSelf                = apiError{"InvalidRequest", http.StatusBadRequest, "This copy request is illegal because it is trying to copy an object to itself without changing the object's metadata, storage class, website redirect location or encryption attributes."}
 	errCopySourceTooLarge        = apiError{"InvalidRequest", http.StatusBadRequest, "The specified copy source is larger than the maximum allowable size for a copy source: 5368709120"}
 	errMissingContentMD5         = apiError{"InvalidRequest", http.StatusBadRequest, "Missing required header for this request: Content-MD5"}
+	errNoSuchUpload              = apiError{"NoSuchUpload", http.StatusNotFound, "The specified upload does not exist. The upload ID may be invalid, or the upload may have been aborted or completed."}
+	errInvalidPart               = apiError{"InvalidPart", http.StatusBadRequest, "One or more of the specified parts could not be found. The part may not have been uploaded, or the specified entity tag may not match the part's entity tag."}
+	errInvalidPartOrder          = apiError{"InvalidPartOrder", http.StatusBadRequest, "The list of parts was not in ascending order. Parts must be ordered by part number."}
+	errEntityTooSmall            = apiError{"EntityTooSmall", http.StatusBadRequest, "Your proposed upload is smaller than the minimum allowed object size."}
+	errInvalidPartNumber         = apiError{"InvalidArgument", http.StatusBadRequest, "Part number must be an integer between 1 and 10000, inclusive"}
+	errChecksumAlgorithmMismatch = apiError{"InvalidRequest", http.StatusBadRequest, "The checksum algorithm you specified does not match the one the multipart upload was created with."}
 	errNoSuchVersion             = apiError{"NoSuchVersion", http.StatusNotFound, "The specified version does not exist."}
 )
 
@@ -92,6 +98,12 @@ var apiErrors = []struct {
 	{store.ErrPreconditionFailed, errPreconditionFailed},
 	{store.ErrBadDigest, errBadDigest},
 	{store.ErrChecksumMismatch, errChecksumMismatch},
+	{store.ErrNoSuchUpload, errNoSuchUpload},
+	{store.ErrInvalidPart, errInvalidPart},
+	{store.ErrInvalidPartOrder, errInvalidPartOrder},
+	{store.ErrEntityTooSmall, errEntityTooSmall},
+	{store.ErrEntityTooLarge, errEntityTooLarge},
+	{store.ErrChecksumAlgorithmMismatch, errChecksumAlgorithmMismatch},
 	// A body shorter than its Content-Length: the client's fault, not ours.
 	{io.ErrUnexpectedEOF, errIncompleteBody},
 }

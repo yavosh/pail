@@ -22,8 +22,12 @@ const (
 	Default   = CRC64NVME
 )
 
-// FullObject is the only checksum type a single PUT produces.
-const FullObject = "FULL_OBJECT"
+// Checksum types. A single PUT produces only FullObject; a multipart upload
+// produces either.
+const (
+	FullObject = "FULL_OBJECT"
+	Composite  = "COMPOSITE"
+)
 
 // nvme is CRC-64/NVME: polynomial 0xAD93D23594C93659, here bit-reversed
 // because hash/crc64 works on reflected input, as NVMe CRC-64 does.

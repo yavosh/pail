@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -117,7 +118,7 @@ func TestCopyObject(t *testing.T) {
 		{"if-none-match miss", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-none-match": `"nope"`}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"if-modified-since past", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-modified-since": past}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"if-modified-since future is ignored", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-modified-since": future}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
-		{"if-modified-since now", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-modified-since": time.Now().UTC().Format(http.TimeFormat)}, 412, "PreconditionFailed", "", "", "", ""},
+		{"if-modified-since now", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-modified-since": "{now}"}, 412, "PreconditionFailed", "", "", "", ""},
 		{"if-unmodified-since future", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-unmodified-since": future}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"if-unmodified-since past", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-unmodified-since": past}, 412, "PreconditionFailed", "", "", "", ""},
 		{"destination if-match is not a copy condition", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "If-Match": `"nope"`}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
@@ -137,7 +138,12 @@ func TestCopyObject(t *testing.T) {
 		put("bkt", "src") // the onto-itself REPLACE case overwrites it
 		_ = st.DeleteObject(ctx, "bkt", "dst")
 		_ = st.DeleteObject(ctx, "other", "dst")
-		status, code, body := sendWith(t, srv, http.MethodPut, "/"+tt.dst, "", tt.header)
+		// {now} is read after the put above, so it is never before the source's Last-Modified.
+		header := maps.Clone(tt.header)
+		for k, v := range header {
+			header[k] = strings.ReplaceAll(v, "{now}", time.Now().UTC().Format(http.TimeFormat))
+		}
+		status, code, body := sendWith(t, srv, http.MethodPut, "/"+tt.dst, "", header)
 		if status != tt.wantStatus || code != tt.wantCode {
 			t.Errorf("%s: PUT /%s = %d %q, want %d %q", tt.name, tt.dst, status, code, tt.wantStatus, tt.wantCode)
 			continue

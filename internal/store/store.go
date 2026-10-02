@@ -5,6 +5,9 @@
 //	buckets/<bucket>/bucket.json
 //	buckets/<bucket>/objects/<sha256(key)>.json   metadata; renaming it in commits a write
 //	buckets/<bucket>/blobs/<id>                   object bytes, immutable once committed
+//	buckets/<bucket>/uploads/<id>/upload.json     a multipart upload; removed on complete or abort
+//	buckets/<bucket>/uploads/<id>/part-<n>.json   one uploaded part, naming its data file
+//	buckets/<bucket>/uploads/<id>/part-<n>-<id>   part bytes
 package store
 
 import (
@@ -50,6 +53,10 @@ type Store struct {
 	// keys serializes writers per key, so a conditional check and its commit
 	// are atomic. Striping bounds memory; unrelated keys rarely share a lock.
 	keys [256]sync.Mutex
+	// uploads serializes the operations that change one multipart upload. A
+	// goroutine takes an upload lock before a key lock, never the reverse.
+	// CompleteUpload holds the bucket lock shared while it copies, so DeleteBucket and then new writes wait.
+	uploads [256]sync.Mutex
 }
 
 // BucketInfo describes a bucket.
@@ -72,6 +79,9 @@ func Open(ctx context.Context, fsys vfs.FS) (*Store, error) {
 	for _, b := range buckets {
 		if err := s.removeOrphanBlobs(ctx, b.Name); err != nil {
 			return nil, fmt.Errorf("recover bucket %s: %w", b.Name, err)
+		}
+		if err := s.removeOrphanUploadFiles(ctx, b.Name); err != nil {
+			return nil, fmt.Errorf("recover uploads in %s: %w", b.Name, err)
 		}
 	}
 	return s, nil
@@ -177,6 +187,15 @@ func (s *Store) DeleteBucket(ctx context.Context, name string) error {
 		return fmt.Errorf("list objects in %s: %w", name, err)
 	}
 	if len(entries) > 0 {
+		return ErrBucketNotEmpty
+	}
+	// Provisional: a bucket with a pending upload counts as not empty, until
+	// the AWS recording shows what S3 does.
+	uploads, err := s.fs.ReadDir(uploadsDir(name))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("list uploads in %s: %w", name, err)
+	}
+	if len(uploads) > 0 {
 		return ErrBucketNotEmpty
 	}
 	// Remove bucket.json first: if RemoveAll fails partway, the rest is not a bucket.

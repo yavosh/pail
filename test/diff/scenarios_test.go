@@ -14,6 +14,8 @@ import (
 
 // step is one raw S3 request. key empty addresses the bucket. query is
 // already encoded. "{bucket}" in query and header values becomes the bucket.
+// "{uploadId}" in the query, header values, and body becomes the ID that the
+// latest CreateMultipartUpload in the scenario returned.
 type step struct {
 	name   string
 	method string
@@ -56,6 +58,22 @@ func crc32Trailer(body string) string {
 func md5Base64(body string) string {
 	sum := md5.Sum([]byte(body))
 	return base64.StdEncoding.EncodeToString(sum[:])
+}
+
+// withUploadID returns st with "{uploadId}" replaced by id. The recorded
+// request and fingerprint come from st itself, so they keep the placeholder.
+func (st step) withUploadID(id string) step {
+	const placeholder = "{uploadId}"
+	st.query = strings.ReplaceAll(st.query, placeholder, id)
+	st.body = strings.ReplaceAll(st.body, placeholder, id)
+	if st.header != nil {
+		header := make(map[string]string, len(st.header))
+		for k, v := range st.header {
+			header[k] = strings.ReplaceAll(v, placeholder, id)
+		}
+		st.header = header
+	}
+	return st
 }
 
 func createBucket() step { return step{name: "create-bucket", method: http.MethodPut} }
@@ -131,7 +149,7 @@ func scenarios() []scenario {
 		keys.steps = append(keys.steps, step{name: "delete-" + k.name, method: http.MethodDelete, key: k.key})
 	}
 	keys.steps = append(keys.steps, deleteBucket())
-	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario(), copyAndDeleteScenario())
+	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario(), copyAndDeleteScenario(), multipartScenario())
 }
 
 // streamingScenario records aws-chunked uploads in each signing mode, and
@@ -300,6 +318,114 @@ func copyAndDeleteScenario() scenario {
 		del("delete-objects-no-checksum", d4, nil),
 		del("delete-objects-bad-md5", d4, map[string]string{"Content-MD5": md5Base64("other")}),
 		del("delete-objects-1001", d5, md5Of(d5)),
+		deleteBucket(),
+	}}
+}
+
+// completeXML is a CompleteMultipartUpload body. Each part is the content of its Part element.
+func completeXML(parts ...string) string {
+	var b strings.Builder
+	b.WriteString("<CompleteMultipartUpload>")
+	for _, p := range parts {
+		b.WriteString("<Part>" + p + "</Part>")
+	}
+	b.WriteString("</CompleteMultipartUpload>")
+	return b.String()
+}
+
+// partXML is the content of a Part element for number n and its body.
+// checksum, if set, is the part's CRC32.
+func partXML(n int, body string, checksum bool) string {
+	s := fmt.Sprintf("<PartNumber>%d</PartNumber><ETag>%s</ETag>", n, etagOf(body))
+	if checksum {
+		s += "<ChecksumCRC32>" + crc32Base64(body) + "</ChecksumCRC32>"
+	}
+	return s
+}
+
+// multipartScenario records multipart uploads: listings, each completion
+// error, the 5 MiB minimum, part number limits, and the checksum rules.
+func multipartScenario() scenario {
+	big := strings.Repeat("a", 5<<20) // the smallest part that is not the last
+	tail := strings.Repeat("b", 1<<10)
+	const upload = "uploadId={uploadId}"
+	partQuery := func(n int) string { return fmt.Sprintf("partNumber=%d&%s", n, upload) }
+	crcHeader := func(body string) map[string]string {
+		return map[string]string{"x-amz-checksum-crc32": crc32Base64(body)}
+	}
+	createWith := func(name, key string, header map[string]string) step {
+		return step{name: name, method: http.MethodPost, key: key, query: "uploads", header: header}
+	}
+	put := func(name, key string, n int, body string, header map[string]string) step {
+		return step{name: name, method: http.MethodPut, key: key, query: partQuery(n), body: body, header: header}
+	}
+	complete := func(name, key, body string, header map[string]string) step {
+		return step{name: name, method: http.MethodPost, key: key, query: upload, body: body, header: header}
+	}
+	abort := func(name, key string) step {
+		return step{name: name, method: http.MethodDelete, key: key, query: upload}
+	}
+	checksumMode := map[string]string{"x-amz-checksum-mode": "ENABLED"}
+	crc32Algorithm := map[string]string{"x-amz-checksum-algorithm": "CRC32"}
+	fullObject := map[string]string{"x-amz-checksum-algorithm": "CRC32", "x-amz-checksum-type": "FULL_OBJECT"}
+	wrongETag := "<PartNumber>1</PartNumber><ETag>" + etagOf("other") + "</ETag>"
+	return scenario{name: "multipart", steps: []step{
+		createBucket(),
+		createWith("create-upload", "big", map[string]string{"Content-Type": "text/plain", "X-Amz-Meta-Color": "blue"}),
+		put("upload-part-1", "big", 1, big, nil),
+		put("upload-part-2", "big", 2, tail, nil),
+		{name: "list-parts", method: http.MethodGet, key: "big", query: upload},
+		{name: "list-parts-first-page", method: http.MethodGet, key: "big", query: upload + "&max-parts=1"},
+		{name: "list-parts-after-marker", method: http.MethodGet, key: "big", query: upload + "&part-number-marker=1"},
+		{name: "list-uploads", method: http.MethodGet, query: "uploads"},
+		{name: "list-uploads-other-prefix", method: http.MethodGet, query: "uploads&prefix=other"},
+		{name: "delete-bucket-with-upload", method: http.MethodDelete},
+		complete("complete-bad-order", "big", completeXML(partXML(2, tail, false), partXML(1, big, false)), nil),
+		complete("complete-bad-etag", "big", completeXML(wrongETag, partXML(2, tail, false)), nil),
+		complete("complete-missing-part", "big", completeXML(partXML(1, big, false), partXML(3, tail, false)), nil),
+		complete("complete-no-parts", "big", completeXML(), nil),
+		complete("complete", "big", completeXML(partXML(1, big, false), partXML(2, tail, false)), nil),
+		{name: "head-big", method: http.MethodHead, key: "big", header: checksumMode},
+		abort("abort-completed", "big"),
+		{name: "list-uploads-after-complete", method: http.MethodGet, query: "uploads"},
+
+		createWith("create-upload-small", "small", nil),
+		put("upload-small-1", "small", 1, tail, nil),
+		put("upload-small-2", "small", 2, tail, nil),
+		complete("complete-small", "small", completeXML(partXML(1, tail, false), partXML(2, tail, false)), nil),
+		abort("abort-small", "small"),
+		abort("abort-small-again", "small"),
+
+		createWith("create-upload-numbers", "numbers", nil),
+		put("upload-part-0", "numbers", 0, tail, nil),
+		put("upload-part-10001", "numbers", 10001, tail, nil),
+		put("upload-part-10000", "numbers", 10000, tail, nil),
+		abort("abort-numbers", "numbers"),
+
+		createWith("create-crc32", "crc32", crc32Algorithm),
+		put("upload-crc32-part-1", "crc32", 1, big, crcHeader(big)),
+		put("upload-crc32-part-2", "crc32", 2, tail, crcHeader(tail)),
+		put("upload-crc32-part-wrong-checksum", "crc32", 3, tail, crcHeader("other")),
+		put("upload-crc32-part-other-algorithm", "crc32", 3, tail, map[string]string{"x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}),
+		complete("complete-crc32-wrong-part-checksum", "crc32", completeXML(partXML(1, big, true), "<PartNumber>2</PartNumber><ETag>"+etagOf(tail)+"</ETag><ChecksumCRC32>"+crc32Base64("other")+"</ChecksumCRC32>"), nil),
+		complete("complete-crc32", "crc32", completeXML(partXML(1, big, true), partXML(2, tail, true)), nil),
+		{name: "head-crc32", method: http.MethodHead, key: "crc32", header: checksumMode},
+		createWith("create-crc64nvme-composite", "bad", map[string]string{"x-amz-checksum-algorithm": "CRC64NVME", "x-amz-checksum-type": "COMPOSITE"}),
+		createWith("create-sha256-full-object", "bad", map[string]string{"x-amz-checksum-algorithm": "SHA256", "x-amz-checksum-type": "FULL_OBJECT"}),
+		createWith("create-type-without-algorithm", "bad", map[string]string{"x-amz-checksum-type": "FULL_OBJECT"}),
+
+		createWith("create-crc32-full-object", "crc32-full", fullObject),
+		put("upload-full-part-1", "crc32-full", 1, big, crcHeader(big)),
+		put("upload-full-part-2", "crc32-full", 2, tail, crcHeader(tail)),
+		complete("complete-full-wrong-checksum", "crc32-full", completeXML(partXML(1, big, true), partXML(2, tail, true)),
+			map[string]string{"x-amz-checksum-crc32": crc32Base64("other"), "x-amz-checksum-type": "FULL_OBJECT"}),
+		complete("complete-full", "crc32-full", completeXML(partXML(1, big, true), partXML(2, tail, true)),
+			map[string]string{"x-amz-checksum-crc32": crc32Base64(big + tail), "x-amz-checksum-type": "FULL_OBJECT"}),
+		{name: "head-full", method: http.MethodHead, key: "crc32-full", header: checksumMode},
+
+		{name: "delete-big", method: http.MethodDelete, key: "big"},
+		{name: "delete-crc32", method: http.MethodDelete, key: "crc32"},
+		{name: "delete-crc32-full", method: http.MethodDelete, key: "crc32-full"},
 		deleteBucket(),
 	}}
 }
