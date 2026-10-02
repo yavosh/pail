@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -123,7 +124,12 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 
 	resp, err := tg.client.Do(req)
 	if err != nil {
-		return response{}, err
+		// A presigned query is a credential, and can hold a session token:
+		// keep it out of test logs.
+		if ue, ok := errors.AsType[*url.Error](err); ok {
+			err = ue.Err
+		}
+		return response{}, fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
