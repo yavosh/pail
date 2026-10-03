@@ -68,3 +68,32 @@ jobs:
         run: |
           # shellcheck disable=SC2086
           go test $RACE -count=1 ./...
+
+  # The AWS CLI and boto3 differ from aws-sdk-go-v2 in their defaults, so run
+  # both against a real pail process. The boto3 pin keeps the job reproducible.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: make build
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install boto3
+        run: pip install boto3==1.42.97
+
+      - name: Show the AWS CLI version
+        run: aws --version
+
+      - name: Smoke test
+        run: scripts/smoke.sh

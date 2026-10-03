@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint clean
+.PHONY: build test fmt lint smoke clean
 
 BINARY := pail
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -16,6 +16,9 @@ fmt:
 
 lint:
 	golangci-lint run ./...
+
+smoke: build
+	scripts/smoke.sh
 
 clean:
 	rm -f $(BINARY)
