@@ -82,6 +82,9 @@ func normalizeDomain(domain string) string {
 // resolve is pail's whole S3 operation table. It returns "" for anything
 // unsupported, so the caller answers NotImplemented.
 func resolve(method string, t target, q url.Values, h http.Header) operation {
+	if len(h.Values("x-amz-tagging")) > 0 || len(h.Values("x-amz-tagging-directive")) > 0 {
+		return ""
+	}
 	var sub []string
 	for k := range q {
 		if subresources[k] {

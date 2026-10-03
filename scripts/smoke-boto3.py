@@ -107,8 +107,10 @@ with Step("create_bucket"):
     s3.create_bucket(Bucket=bucket)
 
 with Step("put_object and get_object"):
-    s3.put_object(Bucket=bucket, Key="small.txt", Body=small)
-    got = s3.get_object(Bucket=bucket, Key="small.txt")["Body"].read()
+    s3.put_object(Bucket=bucket, Key="small.txt", Body=small, Metadata={"purpose": "smoke"})
+    response = s3.get_object(Bucket=bucket, Key="small.txt")
+    check(response["Metadata"] == {"purpose": "smoke"}, f"unexpected metadata: {response['Metadata']}")
+    got = response["Body"].read()
     check(got == small, "small object differs after round trip")
 
 big = os.path.join(tmp.name, "big.bin")
@@ -160,7 +162,9 @@ with Step("generate_presigned_url"):
         check(resp.read() == small, "presigned object differs")
 
 with Step("head_object"):
-    length = s3.head_object(Bucket=bucket, Key="small.txt")["ContentLength"]
+    head = s3.head_object(Bucket=bucket, Key="small.txt")
+    check(head["Metadata"] == {"purpose": "smoke"}, f"unexpected metadata: {head['Metadata']}")
+    length = head["ContentLength"]
     check(length == len(small), f"ContentLength is {length}, want {len(small)}")
 
 with Step("copy_object"):

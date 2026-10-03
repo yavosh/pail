@@ -273,3 +273,19 @@ func TestHealthNeedsNoCredentials(t *testing.T) {
 		t.Errorf("unsigned GET /_pail/health = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }
+
+func TestDotDotRequestIDs(t *testing.T) {
+	srv := httptest.NewServer(New(testOptions("")))
+	t.Cleanup(srv.Close)
+	for _, method := range []string{http.MethodGet, http.MethodDelete, http.MethodPut} {
+		status, header, body := do(t, srv, method, "/bkt/../x", "")
+		if status != http.StatusBadRequest || len(body) != 0 {
+			t.Errorf("%s dot-dot = %d %q, want empty 400", method, status, body)
+		}
+		for _, name := range []string{"x-amz-request-id", "x-amz-id-2"} {
+			if got, want := header.Get(name) != "", method != http.MethodPut; got != want {
+				t.Errorf("%s dot-dot %s present = %v, want %v", method, name, got, want)
+			}
+		}
+	}
+}

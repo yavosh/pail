@@ -104,6 +104,8 @@ var apiErrors = []struct {
 	{store.ErrEntityTooSmall, errEntityTooSmall},
 	{store.ErrEntityTooLarge, errEntityTooLarge},
 	{store.ErrChecksumAlgorithmMismatch, errChecksumAlgorithmMismatch},
+	{store.ErrChecksumTypeMismatch, errInvalidChecksum},
+	{store.ErrMissingPartChecksum, errInvalidChecksum},
 	// A body shorter than its Content-Length: the client's fault, not ours.
 	{io.ErrUnexpectedEOF, errIncompleteBody},
 }

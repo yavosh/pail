@@ -77,9 +77,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	t := parseTarget(r, h.opts.Domain)
 	var op operation
 	if slices.Contains(strings.Split(r.URL.EscapedPath(), "/"), "..") {
-		// AWS's front end answers a literal ".." segment with a bare 400 before
-		// S3 sees it, so no request ID. Percent-encoded dots are not checked.
+		// AWS rejects literal ".." segments with an empty 400 response.
+		// Return IDs on GET and DELETE; AWS front ends vary in sending them.
 		op, t = "", target{}
+		if r.Method == http.MethodGet || r.Method == http.MethodDelete {
+			setRequestIDs(rec)
+		}
 		rec.WriteHeader(http.StatusBadRequest)
 	} else if !t.virtualHost && strings.HasPrefix(r.URL.Path, "/_pail/") {
 		// "_" is not allowed in bucket names, so path-style /_pail/ is never a bucket.

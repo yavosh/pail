@@ -241,3 +241,45 @@ func TestReadPending(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeObjectDataIsExact(t *testing.T) {
+	for _, tt := range []struct {
+		name, contentType, want, changed string
+	}{
+		{"XML content", "application/xml", `<ID permission="read">original</ID>`, `<ID permission="write">changed</ID>`},
+		{"XML declaration", "text/plain", `<?xml version="1.0"?><ID>one</ID>`, `<?xml version="1.0"?><ID>two</ID>`},
+		{"invalid XML", "application/xml", "<", "<<"},
+		{"bucket name", "text/plain", "pail-test", "{bucket}"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			st := step{name: "get", method: http.MethodGet, key: "document"}
+			responseFor := func(body string) response {
+				return response{status: http.StatusOK, header: http.Header{"Content-Type": {tt.contentType}, "Content-Length": {"123"}}, body: []byte(body)}
+			}
+			want := normalize(st, "pail-test", responseFor(tt.want))
+			got := normalize(st, "pail-test", responseFor(tt.changed))
+			if want.Body != tt.want || want.Headers["Content-Length"] != "123" {
+				t.Errorf("normalize(%q) = %+v, want exact body and Content-Length", tt.want, want)
+			}
+			if _, ok := compare(want, got)["get body"]; !ok {
+				t.Errorf("compare(%q, %q) missed changed object data", tt.want, tt.changed)
+			}
+		})
+	}
+}
+
+func TestNormalizeDotDotRequestIDs(t *testing.T) {
+	for _, key := range []string{"../x", "a/../x", "ordinary"} {
+		st := step{name: "get", method: http.MethodGet, key: key}
+		without := response{status: http.StatusBadRequest, header: http.Header{}}
+		with := response{status: http.StatusBadRequest, header: http.Header{"X-Amz-Request-Id": {"id"}, "X-Amz-Id-2": {"host"}}}
+		got := len(compare(normalize(st, "bucket", without), normalize(st, "bucket", with)))
+		want := 0
+		if key == "ordinary" {
+			want = 2
+		}
+		if got != want {
+			t.Errorf("%q request ID differences = %d, want %d", key, got, want)
+		}
+	}
+}

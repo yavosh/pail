@@ -235,6 +235,7 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 		return
 	}
 	opts.IfMatch = r.Header.Get("If-Match")
+	opts.ChecksumType = r.Header.Get("x-amz-checksum-type")
 	// Here the header names the whole object's checksum, which only a FULL_OBJECT upload has.
 	algorithm, want, inTrailer, ok := parseChecksum(r.Header)
 	if !ok || inTrailer {

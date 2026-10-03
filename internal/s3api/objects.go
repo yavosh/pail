@@ -297,7 +297,7 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 		for name, v := range info.Metadata {
 			if name == "Cache-Control" || name == "Expires" || strings.HasPrefix(name, userMetaPrefix) {
-				hdr.Set(name, v)
+				setMetadataHeader(hdr, name, v)
 			}
 		}
 		w.WriteHeader(http.StatusNotModified)
@@ -346,7 +346,7 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 func setObjectHeaders(hdr http.Header, r *http.Request, info store.ObjectInfo) {
 	hdr.Set("Accept-Ranges", "bytes")
 	for name, v := range info.Metadata {
-		hdr.Set(name, v)
+		setMetadataHeader(hdr, name, v)
 	}
 	if hdr.Get("Content-Type") == "" {
 		hdr.Set("Content-Type", defaultType)
@@ -357,6 +357,16 @@ func setObjectHeaders(hdr http.Header, r *http.Request, info store.ObjectInfo) {
 			hdr.Set(name, v)
 		}
 	}
+}
+
+// setMetadataHeader keeps user metadata names lowercase on the wire.
+// boto3 preserves the suffix casing in its Metadata map.
+func setMetadataHeader(h http.Header, name, value string) {
+	if strings.HasPrefix(name, userMetaPrefix) {
+		h[strings.ToLower(name)] = []string{value}
+		return
+	}
+	h.Set(name, value)
 }
 
 func (h *handler) handleDeleteObject(w http.ResponseWriter, r *http.Request, t target) {

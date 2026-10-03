@@ -131,6 +131,9 @@ func scenarios() []scenario {
 			{name: "get-override", method: http.MethodGet, key: "docs/hello.txt", query: "response-content-type=application%2Fjson"},
 			{name: "put-if-none-match-star", method: http.MethodPut, key: "docs/hello.txt", body: "again", header: map[string]string{"If-None-Match": "*"}},
 			{name: "get-missing", method: http.MethodGet, key: "missing"},
+			{name: "put-xml", method: http.MethodPut, key: "document.xml", body: `<ID permission="read"> original </ID>`, header: map[string]string{"Content-Type": "application/xml"}},
+			{name: "get-xml", method: http.MethodGet, key: "document.xml"},
+			{name: "delete-xml", method: http.MethodDelete, key: "document.xml"},
 			{name: "delete", method: http.MethodDelete, key: "docs/hello.txt"},
 			{name: "delete-again", method: http.MethodDelete, key: "docs/hello.txt"},
 			deleteBucket(),
@@ -149,7 +152,7 @@ func scenarios() []scenario {
 		keys.steps = append(keys.steps, step{name: "delete-" + k.name, method: http.MethodDelete, key: k.key})
 	}
 	keys.steps = append(keys.steps, deleteBucket())
-	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario(), copyAndDeleteScenario(), multipartScenario())
+	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario(), copyAndDeleteScenario(), multipartScenario(), multipartValidationScenario())
 }
 
 // streamingScenario records aws-chunked uploads in each signing mode, and
@@ -428,5 +431,28 @@ func multipartScenario() scenario {
 		// Last, because AWS deletes a bucket that still has a pending upload.
 		createWith("create-leftover-upload", "leftover", nil),
 		{name: "delete-bucket-with-upload", method: http.MethodDelete},
+	}}
+}
+
+// multipartValidationScenario checks completion failures with one small part.
+func multipartValidationScenario() scenario {
+	const body = "checksum probe"
+	const upload = "uploadId={uploadId}"
+	return scenario{name: "multipart-validation", steps: []step{
+		createBucket(),
+		{name: "create-upload", method: http.MethodPost, key: "k", query: "uploads",
+			header: map[string]string{"x-amz-checksum-algorithm": "CRC32", "x-amz-checksum-type": "COMPOSITE"}},
+		{name: "upload-part-1", method: http.MethodPut, key: "k", query: "partNumber=1&" + upload, body: body,
+			header: map[string]string{"x-amz-checksum-crc32": crc32Base64(body)}},
+		{name: "upload-part-2", method: http.MethodPut, key: "k", query: "partNumber=2&" + upload, body: body,
+			header: map[string]string{"x-amz-checksum-crc32": crc32Base64(body)}},
+		{name: "complete-missing-checksum", method: http.MethodPost, key: "k", query: upload, body: completeXML(partXML(1, body, false))},
+		{name: "complete-nonconsecutive", method: http.MethodPost, key: "k", query: upload, body: completeXML(partXML(2, body, true))},
+		{name: "complete-wrong-type", method: http.MethodPost, key: "k", query: upload, body: completeXML(partXML(1, body, true)),
+			header: map[string]string{"x-amz-checksum-type": "FULL_OBJECT"}},
+		{name: "complete-corrected", method: http.MethodPost, key: "k", query: upload, body: completeXML(partXML(1, body, true))},
+		{name: "get", method: http.MethodGet, key: "k"},
+		{name: "delete", method: http.MethodDelete, key: "k"},
+		deleteBucket(),
 	}}
 }

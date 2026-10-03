@@ -186,6 +186,46 @@
       "body": "Error\n  Code: NoSuchKey\n"
     },
     {
+      "step": "put-xml",
+      "request": "PUT /document.xml",
+      "fingerprint": "ed65c412e1e87aab",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"08bdee8e1717cdf5de3af1ae384ca47b\"",
+        "X-Amz-Checksum-Crc64nvme": "N+Ig3UvdEGk=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-xml",
+      "request": "GET /document.xml",
+      "fingerprint": "d74034a1319fb0a1",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "37",
+        "Content-Type": "application/xml",
+        "Etag": "\"08bdee8e1717cdf5de3af1ae384ca47b\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "<ID permission=\"read\"> original </ID>"
+    },
+    {
+      "step": "delete-xml",
+      "request": "DELETE /document.xml",
+      "fingerprint": "159c513ff59ab98b",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
       "step": "delete",
       "request": "DELETE /docs/hello.txt",
       "fingerprint": "0291f23741e86c2c",

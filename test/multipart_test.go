@@ -407,3 +407,56 @@ func TestPresignedUploadPart(t *testing.T) {
 		}
 	})
 }
+
+func TestMultipartCompletionChecksumValidation(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		mustBucket(t, c, "checksums")
+		for _, tt := range []struct {
+			name         string
+			number       int32
+			omitChecksum bool
+			typ          types.ChecksumType
+			want         string
+		}{
+			{"nonconsecutive", 2, false, types.ChecksumTypeComposite, "InternalError"},
+			{"missing-checksum", 1, true, types.ChecksumTypeComposite, "InvalidRequest"},
+			{"wrong-type", 1, false, types.ChecksumTypeFullObject, "InvalidRequest"},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := t.Context()
+				bucket, key := aws.String("checksums"), aws.String(tt.name)
+				up := createUpload(t, c, &s3.CreateMultipartUploadInput{
+					Bucket: bucket, Key: key, ChecksumAlgorithm: types.ChecksumAlgorithmCrc32, ChecksumType: types.ChecksumTypeComposite,
+				})
+				p, err := c.UploadPart(ctx, &s3.UploadPartInput{
+					Bucket: bucket, Key: key, UploadId: up.UploadId, PartNumber: aws.Int32(tt.number), Body: strings.NewReader("checksum probe"),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				part := types.CompletedPart{PartNumber: aws.Int32(tt.number), ETag: p.ETag, ChecksumCRC32: p.ChecksumCRC32}
+				if tt.omitChecksum {
+					part.ChecksumCRC32 = nil
+				}
+				_, err = c.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+					Bucket: bucket, Key: key, UploadId: up.UploadId, ChecksumType: tt.typ,
+					MultipartUpload: &types.CompletedMultipartUpload{Parts: []types.CompletedPart{part}},
+				})
+				if got := errorCode(err); got != tt.want {
+					t.Fatalf("CompleteMultipartUpload(%s) code = %q, want %q", tt.name, got, tt.want)
+				}
+				if _, err := c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: bucket, Key: key}); errorCode(err) != "NotFound" {
+					t.Errorf("HeadObject after rejected completion = %v, want NotFound", err)
+				}
+				// Rejection must leave the upload usable for a corrected completion.
+				parts := uploadParts(t, c, "checksums", tt.name, aws.ToString(up.UploadId), []byte("corrected"))
+				if _, err := c.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+					Bucket: bucket, Key: key, UploadId: up.UploadId,
+					MultipartUpload: &types.CompletedMultipartUpload{Parts: parts},
+				}); err != nil {
+					t.Fatalf("corrected completion error = %v, want nil", err)
+				}
+			})
+		}
+	})
+}

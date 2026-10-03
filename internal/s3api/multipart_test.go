@@ -246,7 +246,7 @@ func TestMultipartFlow(t *testing.T) {
 		t.Fatalf("UploadPart without a checksum = %d, CRC32 %q, want 200 and the computed CRC32", r.status, r.header.Get("x-amz-checksum-crc32"))
 	}
 
-	body := fmt.Sprintf("<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>%s</ETag><ChecksumCRC32>%s</ChecksumCRC32></Part><Part><PartNumber>2</PartNumber><ETag>\"5eb63bbbe01eeed093cb22bb8f5acdc3\"</ETag></Part></CompleteMultipartUpload>",
+	body := fmt.Sprintf("<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>%s</ETag><ChecksumCRC32>%s</ChecksumCRC32></Part><Part><PartNumber>2</PartNumber><ETag>\"5eb63bbbe01eeed093cb22bb8f5acdc3\"</ETag><ChecksumCRC32>DUoRhQ==</ChecksumCRC32></Part></CompleteMultipartUpload>",
 		etag1, r.header.Get("x-amz-checksum-crc32"))
 	r = call(t, srv, http.MethodPost, "/bkt/dir/big%20file?uploadId="+id, body, nil)
 	var res struct {
