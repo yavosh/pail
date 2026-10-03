@@ -9,7 +9,7 @@ jobs:
   # this exact commit, and fail closed when it is missing, red, or too slow.
   verify-ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       actions: read
     steps:
@@ -17,7 +17,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          deadline=$((SECONDS + 300))
+          deadline=$((SECONDS + 1500))
           while true; do
             # Every CI run on the commit must be complete and green.
             verdict=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=100" \
@@ -33,7 +33,7 @@ jobs:
             esac
             # A missing run may only be queued, so wait for it like a running one.
             if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "CI is $verdict after 300 s; refusing to release"
+              echo "CI is $verdict after 1500 s; refusing to release"
               exit 1
             fi
             sleep 15
@@ -43,6 +43,8 @@ jobs:
     needs: verify-ci
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     strategy:
       matrix:
         goos: [linux, darwin]
@@ -101,9 +103,10 @@ jobs:
             pail-*.tar.gz
             sha256sums.txt
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   image:
-    needs: verify-ci
+    needs: [verify-ci, build]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -124,10 +127,10 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/yavosh/pail
+          # The default latest=auto adds latest for a non-prerelease semver tag.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

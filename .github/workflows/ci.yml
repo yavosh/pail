@@ -129,10 +129,11 @@ jobs:
             if [ "$status" = healthy ]; then
               exit 0
             fi
+            # An exited container never becomes healthy, so stop waiting.
+            [ "$(docker inspect -f '{{.State.Running}}' pail)" = true ] || break
             sleep 2
           done
           echo "container is not healthy; last status: $status"
-          docker logs pail
           exit 1
 
       - name: Show the AWS CLI version

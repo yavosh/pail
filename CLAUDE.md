@@ -65,6 +65,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 ## Release
 
 - A `v*` tag runs `.github/workflows/release.yml`. It refuses a commit without a green `ci.yml` run, attaches Linux and macOS binaries to a GitHub release, and pushes `ghcr.io/yavosh/pail`.
+- Before you tag, check that the CI run on the commit is not cancelled (`cancel-in-progress` cancels a superseded run). Re-run a cancelled run first.
 - The Dockerfile builds only `./cmd/pail` with `CGO_ENABLED=0` into a distroless static image. The image has no shell or `curl`, so its healthcheck is `pail --healthcheck`.
 - Pin every action and base image by SHA or digest, with the version in a comment.
 

@@ -24,7 +24,11 @@ Pick one of these.
     ghcr.io/yavosh/pail
   ```
 
-- Docker Compose. Set both keys in your shell or in a `.env` file next to `compose.yaml`, then start the service.
+  To change the listen address, set `PAIL_ADDR` with `-e`. Do not pass `--addr` after the image name. The container healthcheck reads `PAIL_ADDR`, so an `--addr` argument leaves the container unhealthy.
+
+  The container runs as a non-root user (uid 65532). A named volume works as is. A bind mount must be owned by that user, so run `chown 65532` on the host directory first.
+
+- Docker Compose. Run it from a source checkout, because `compose.yaml` builds the image with `build: .`. Set both keys in your shell or in a `.env` file next to `compose.yaml`, then start the service.
 
   ```bash
   export PAIL_ACCESS_KEY_ID=AKIAEXAMPLEKEY000000
@@ -42,7 +46,7 @@ The keys in these examples are for local use only. Choose your own.
 
 This quickstart needs the [AWS CLI](https://aws.amazon.com/cli/).
 
-1. Start pail. It listens on `127.0.0.1:9000` and writes objects to `./data`.
+1. Start pail. It listens on `127.0.0.1:9000` and writes objects to `./data`. Run `./pail` instead of `pail` after `make build`.
 
    ```bash
    export PAIL_ACCESS_KEY_ID=AKIAEXAMPLEKEY000000
@@ -136,12 +140,12 @@ s3 = boto3.client(
 
 ### Virtual-hosted style
 
-Clients use path-style requests with the settings above. To serve `http://<bucket>.localhost:9000/<key>`, start pail with `--domain localhost`. Your client must then resolve `<bucket>.localhost` to pail.
+Clients use path-style requests with the settings above. For virtual-hosted style, start pail with `--domain localhost`. pail then serves `http://<bucket>.localhost:9000/<key>`, and your client must resolve `<bucket>.localhost` to pail.
 
 ## Requests
 
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
-- Virtual-hosted-style requests work when `--domain` is set. For example, `--domain localhost` serves `http://<bucket>.localhost:9000/<key>`.
+- Virtual-hosted-style requests work when `--domain` is set. See [Virtual-hosted style](#virtual-hosted-style).
 - An operation that pail does not support returns `501 NotImplemented` with an S3 XML error.
 - `GET /_pail/health` returns 200 and needs no credentials. See [Health check](#health-check).
 
