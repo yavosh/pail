@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  # A tag can point at a commit that never passed CI. Look up the CI run for
+  # this exact commit, and fail closed when it is missing, red, or too slow.
+  verify-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+    steps:
+      - name: Require green CI on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deadline=$((SECONDS + 300))
+          while true; do
+            # Every CI run on the commit must be complete and green.
+            verdict=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=100" \
+              --jq '[.workflow_runs[] | select(.path == ".github/workflows/ci.yml")]
+                | if length == 0 then "missing"
+                  elif any(.status != "completed") then "running"
+                  elif all(.conclusion == "success") then "success"
+                  else "failed" end')
+            echo "CI verdict for ${{ github.sha }}: $verdict"
+            case "$verdict" in
+              success) exit 0 ;;
+              failed) echo "CI did not succeed on this commit"; exit 1 ;;
+            esac
+            # A missing run may only be queued, so wait for it like a running one.
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "CI is $verdict after 300 s; refusing to release"
+              exit 1
+            fi
+            sleep 15
+          done
+
+  build:
+    needs: verify-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.ref_name }}
+        run: >
+          go build -trimpath
+          -ldflags "-s -w -X github.com/yavosh/pail/internal/buildinfo.version=$VERSION"
+          -o pail ./cmd/pail
+
+      - name: Package
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          files=(pail README.md)
+          if [ -f LICENSE ]; then files+=(LICENSE); fi
+          tar czf "pail-$VERSION-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${files[@]}"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pail-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: pail-*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: pail-*
+          merge-multiple: true
+
+      - name: Write checksums
+        run: sha256sum pail-*.tar.gz > sha256sums.txt
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: |
+            pail-*.tar.gz
+            sha256sums.txt
+          generate_release_notes: true
+
+  image:
+    needs: verify-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/yavosh/pail
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

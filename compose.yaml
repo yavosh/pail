@@ -1,0 +1,21 @@
+# Set PAIL_ACCESS_KEY_ID and PAIL_SECRET_ACCESS_KEY in your shell or in a .env
+# file next to this file. Compose fails if either is empty.
+services:
+  pail:
+    build: .
+    ports:
+      - "9000:9000"
+    environment:
+      PAIL_ACCESS_KEY_ID: ${PAIL_ACCESS_KEY_ID:?set PAIL_ACCESS_KEY_ID}
+      PAIL_SECRET_ACCESS_KEY: ${PAIL_SECRET_ACCESS_KEY:?set PAIL_SECRET_ACCESS_KEY}
+    volumes:
+      - pail-data:/data
+    healthcheck:
+      test: ["CMD", "/pail", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  pail-data:

@@ -18,6 +18,7 @@ type Config struct {
 	Domain          string
 	LogLevel        slog.Level
 	Version         bool
+	Healthcheck     bool
 }
 
 // Parse reads args, then fills every setting a flag did not set from getenv.
@@ -35,6 +36,7 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 	fs.StringVar(&c.Domain, "domain", "", "base domain for virtual-hosted-style requests; empty turns it off (env PAIL_DOMAIN)")
 	fs.StringVar(&level, "log-level", "info", "log level: debug, info, warn, or error (env PAIL_LOG_LEVEL)")
 	fs.BoolVar(&c.Version, "version", false, "print the version and exit")
+	fs.BoolVar(&c.Healthcheck, "healthcheck", false, "check that a pail at --addr answers /_pail/health, then exit; needs no keys")
 
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err

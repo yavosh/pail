@@ -1,4 +1,4 @@
-.PHONY: build test fmt lint smoke clean
+.PHONY: build test fmt lint smoke docker clean
 
 BINARY := pail
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -19,6 +19,9 @@ lint:
 
 smoke: build
 	scripts/smoke.sh
+
+docker:
+	docker build -t pail:dev --build-arg VERSION=$(VERSION) .
 
 clean:
 	rm -f $(BINARY)
