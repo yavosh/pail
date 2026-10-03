@@ -467,14 +467,58 @@ func TestAbortUpload(t *testing.T) {
 	if err := s.AbortUpload(ctx, "b", "k", up.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AbortUpload(ctx, "b", "k", up.ID); !errors.Is(err, ErrNoSuchUpload) {
-		t.Errorf("second AbortUpload error = %v, want ErrNoSuchUpload", err)
+	if err := s.AbortUpload(ctx, "b", "k", up.ID); err != nil {
+		t.Errorf("second AbortUpload error = %v, want nil", err)
 	}
 	if _, err := s.PutPart(ctx, "b", "k", up.ID, 2, strings.NewReader("x"), PartOptions{}); !errors.Is(err, ErrNoSuchUpload) {
 		t.Errorf("PutPart after abort error = %v, want ErrNoSuchUpload", err)
 	}
 	if n := dirLen(t, fsys, "buckets/b/uploads"); n != 0 {
 		t.Errorf("uploads directory has %d entries after abort, want 0", n)
+	}
+}
+
+// Aborting an ended upload succeeds, as on AWS; an ID that was never issued does not.
+func TestAbortEndedUpload(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newStore(t)
+	mustCreate(t, s, "b")
+	up := mustUpload(t, s, "b", "k", UploadOptions{})
+	p := mustPart(t, s, "b", "k", up.ID, 1, []byte("x"), PartOptions{})
+	if _, err := s.CompleteUpload(ctx, "b", "k", up.ID, listed(p), CompleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, key, id string
+		want          error
+	}{
+		{"after complete", "k", up.ID, nil},
+		{"after complete, another key", "other", up.ID, nil},
+		{"never issued", "k", strings.Repeat("0", 32), ErrNoSuchUpload},
+		{"malformed ID", "k", "../" + up.ID[3:], ErrNoSuchUpload},
+	}
+	for _, tt := range tests {
+		if err := s.AbortUpload(ctx, "b", tt.key, tt.id); !errors.Is(err, tt.want) {
+			t.Errorf("%s: AbortUpload error = %v, want %v", tt.name, err, tt.want)
+		}
+	}
+	// An ended upload stays ended for every other operation.
+	if _, _, err := s.ListParts(ctx, "b", "k", up.ID); !errors.Is(err, ErrNoSuchUpload) {
+		t.Errorf("ListParts after complete error = %v, want ErrNoSuchUpload", err)
+	}
+	if uploads, err := s.ListUploads(ctx, "b"); err != nil || len(uploads) != 0 {
+		t.Errorf("ListUploads = %+v, %v, want none", uploads, err)
+	}
+	if err := s.DeleteObject(ctx, "b", "k"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteBucket(ctx, "b"); err != nil {
+		t.Fatal(err)
+	}
+	// The tombstone goes with its bucket.
+	mustCreate(t, s, "b")
+	if err := s.AbortUpload(ctx, "b", "k", up.ID); !errors.Is(err, ErrNoSuchUpload) {
+		t.Errorf("AbortUpload in a re-created bucket error = %v, want ErrNoSuchUpload", err)
 	}
 }
 
@@ -516,14 +560,11 @@ func TestDeleteBucketWithUpload(t *testing.T) {
 	s, _ := newStore(t)
 	mustCreate(t, s, "b")
 	up := mustUpload(t, s, "b", "k", UploadOptions{})
-	if err := s.DeleteBucket(ctx, "b"); !errors.Is(err, ErrBucketNotEmpty) {
-		t.Errorf("DeleteBucket with an upload error = %v, want ErrBucketNotEmpty", err)
-	}
-	if err := s.AbortUpload(ctx, "b", "k", up.ID); err != nil {
-		t.Fatal(err)
-	}
 	if err := s.DeleteBucket(ctx, "b"); err != nil {
-		t.Errorf("DeleteBucket after abort error = %v, want nil", err)
+		t.Fatalf("DeleteBucket with an upload error = %v, want nil, as on AWS", err)
+	}
+	if err := s.AbortUpload(ctx, "b", "k", up.ID); !errors.Is(err, ErrNoSuchBucket) {
+		t.Errorf("AbortUpload after DeleteBucket error = %v, want ErrNoSuchBucket", err)
 	}
 	mustCreate(t, s, "b")
 	if uploads, err := s.ListUploads(ctx, "b"); err != nil || len(uploads) != 0 {

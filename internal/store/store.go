@@ -8,6 +8,7 @@
 //	buckets/<bucket>/uploads/<id>/upload.json     a multipart upload; removed on complete or abort
 //	buckets/<bucket>/uploads/<id>/part-<n>.json   one uploaded part, naming its data file
 //	buckets/<bucket>/uploads/<id>/part-<n>-<id>   part bytes
+//	buckets/<bucket>/ended-uploads/<id>           empty tombstone of a completed or aborted upload
 package store
 
 import (
@@ -189,16 +190,8 @@ func (s *Store) DeleteBucket(ctx context.Context, name string) error {
 	if len(entries) > 0 {
 		return ErrBucketNotEmpty
 	}
-	// Provisional: a bucket with a pending upload counts as not empty, until
-	// the AWS recording shows what S3 does.
-	uploads, err := s.fs.ReadDir(uploadsDir(name))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("list uploads in %s: %w", name, err)
-	}
-	if len(uploads) > 0 {
-		return ErrBucketNotEmpty
-	}
-	// Remove bucket.json first: if RemoveAll fails partway, the rest is not a bucket.
+	// As on AWS, pending multipart uploads do not keep a bucket: RemoveAll
+	// discards them with it. Remove bucket.json first: if RemoveAll fails partway, the rest is not a bucket.
 	if err := s.fs.Remove(bucketFile(name)); err != nil {
 		return fmt.Errorf("delete bucket %s: %w", name, err)
 	}

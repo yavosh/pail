@@ -379,7 +379,6 @@ func multipartScenario() scenario {
 		{name: "list-parts-after-marker", method: http.MethodGet, key: "big", query: upload + "&part-number-marker=1"},
 		{name: "list-uploads", method: http.MethodGet, query: "uploads"},
 		{name: "list-uploads-other-prefix", method: http.MethodGet, query: "uploads&prefix=other"},
-		{name: "delete-bucket-with-upload", method: http.MethodDelete},
 		complete("complete-bad-order", "big", completeXML(partXML(2, tail, false), partXML(1, big, false)), nil),
 		complete("complete-bad-etag", "big", completeXML(wrongETag, partXML(2, tail, false)), nil),
 		complete("complete-missing-part", "big", completeXML(partXML(1, big, false), partXML(3, tail, false)), nil),
@@ -426,6 +425,8 @@ func multipartScenario() scenario {
 		{name: "delete-big", method: http.MethodDelete, key: "big"},
 		{name: "delete-crc32", method: http.MethodDelete, key: "crc32"},
 		{name: "delete-crc32-full", method: http.MethodDelete, key: "crc32-full"},
-		deleteBucket(),
+		// Last, because AWS deletes a bucket that still has a pending upload.
+		createWith("create-leftover-upload", "leftover", nil),
+		{name: "delete-bucket-with-upload", method: http.MethodDelete},
 	}}
 }
