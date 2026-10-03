@@ -11,6 +11,10 @@ PAIL_ACCESS_KEY_ID=... PAIL_SECRET_ACCESS_KEY=... ./pail
 
 pail stops cleanly on SIGINT or SIGTERM.
 
+## Test
+
+`go test ./...` runs the unit tests and the aws-sdk-go-v2 tests. `make smoke` starts a real pail and runs the AWS CLI and boto3 against it. It needs the AWS CLI and a Python with boto3 installed. CI runs it as the `smoke` job.
+
 ## Requests
 
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
