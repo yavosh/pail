@@ -1,26 +1,153 @@
 # pail
 
-pail is a small S3-compatible server written in pure Go. It targets local testing and personal projects. The goal is S3 API compatibility, not scale. pail is a work in progress.
+pail is a small S3-compatible server written in pure Go. It stores objects on local disk. It targets local testing and personal projects. The goal is S3 API compatibility, not scale. pail is a work in progress.
 
-## Run
+pail is not a production object store. It has no clustering, replication, or multi-tenant support. It serves one access key pair and one region. It has no versioning, ACLs, bucket policies, or lifecycle rules. An operation it does not support fails with `501 NotImplemented`.
+
+## Install
+
+Pick one of these.
+
+- Go. This needs Go 1.27 or later.
+
+  ```bash
+  go install github.com/yavosh/pail/cmd/pail@latest
+  ```
+
+- Docker. The image listens on port 9000 and keeps objects in the `/data` volume.
+
+  ```bash
+  docker run -p 9000:9000 \
+    -e PAIL_ACCESS_KEY_ID=AKIAEXAMPLEKEY000000 \
+    -e PAIL_SECRET_ACCESS_KEY=example-secret-key \
+    -v pail-data:/data \
+    ghcr.io/yavosh/pail
+  ```
+
+  To change the listen address, set `PAIL_ADDR` with `-e`. Do not pass `--addr` after the image name. The container healthcheck reads `PAIL_ADDR`, so an `--addr` argument leaves the container unhealthy.
+
+  The container runs as a non-root user (uid 65532). A named volume works as is. A bind mount must be owned by that user, for example `chown 65532 ./data`.
+
+- Docker Compose. Run it from a source checkout, because `compose.yaml` builds the image with `build: .`. Set both keys in your shell or in a `.env` file next to `compose.yaml`, then start the service.
+
+  ```bash
+  export PAIL_ACCESS_KEY_ID=AKIAEXAMPLEKEY000000
+  export PAIL_SECRET_ACCESS_KEY=example-secret-key
+  docker compose up -d
+  ```
+
+- Release binaries. Each [GitHub release](https://github.com/yavosh/pail/releases) has `tar.gz` files for Linux and macOS on amd64 and arm64, and a `sha256sums.txt` file.
+
+- Source. `make build` writes `./pail`. `make docker` builds the image as `pail:dev`.
+
+The keys in these examples are for local use only. Choose your own.
+
+## Quickstart
+
+This quickstart needs the [AWS CLI](https://aws.amazon.com/cli/).
+
+1. Start pail. It listens on `127.0.0.1:9000` and writes objects to `./data`. Run `./pail` instead of `pail` after `make build`.
+
+   ```bash
+   export PAIL_ACCESS_KEY_ID=AKIAEXAMPLEKEY000000
+   export PAIL_SECRET_ACCESS_KEY=example-secret-key
+   pail
+   ```
+
+   pail stops cleanly on SIGINT or SIGTERM.
+
+2. In a second terminal, give the AWS CLI the same keys. These variables override any profile you have set up. The CLI sends the requests to pail, so they never reach AWS.
+
+   ```bash
+   export AWS_ACCESS_KEY_ID=AKIAEXAMPLEKEY000000
+   export AWS_SECRET_ACCESS_KEY=example-secret-key
+   export AWS_DEFAULT_REGION=us-east-1
+   ```
+
+3. Create a bucket, upload a file, and list the bucket. Always pass `--endpoint-url`.
+
+   ```bash
+   echo "hello" > file.txt
+   aws --endpoint-url http://127.0.0.1:9000 s3 mb s3://demo
+   aws --endpoint-url http://127.0.0.1:9000 s3 cp file.txt s3://demo/
+   aws --endpoint-url http://127.0.0.1:9000 s3 ls s3://demo
+   ```
+
+   The last command prints a line for `file.txt`.
+
+## Client setup
+
+Every client needs the endpoint, the access key pair, and path-style addressing. pail accepts any region in the signature.
+
+### AWS CLI
+
+Pass `--endpoint-url` on each command, or set `AWS_ENDPOINT_URL` once.
 
 ```bash
-make build
-PAIL_ACCESS_KEY_ID=... PAIL_SECRET_ACCESS_KEY=... ./pail
+export AWS_ENDPOINT_URL=http://127.0.0.1:9000
+aws s3 ls
 ```
 
-pail stops cleanly on SIGINT or SIGTERM.
+### aws-sdk-go-v2
 
-## Test
+Set `BaseEndpoint` and `UsePathStyle` on the S3 client options.
 
-`go test ./...` runs the unit tests and the aws-sdk-go-v2 tests. `make smoke` starts a real pail and runs the AWS CLI and boto3 against it. It needs the AWS CLI and a Python with boto3 installed. CI runs it as the `smoke` job.
+```go
+cfg, err := config.LoadDefaultConfig(ctx,
+	config.WithRegion("us-east-1"),
+	config.WithCredentialsProvider(
+		credentials.NewStaticCredentialsProvider("AKIAEXAMPLEKEY000000", "example-secret-key", "")),
+)
+if err != nil {
+	return err
+}
+client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+	o.BaseEndpoint = aws.String("http://127.0.0.1:9000")
+	o.UsePathStyle = true
+})
+```
+
+### boto3
+
+Set `endpoint_url`.
+
+```python
+import boto3
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url="http://127.0.0.1:9000",
+    aws_access_key_id="AKIAEXAMPLEKEY000000",
+    aws_secret_access_key="example-secret-key",
+    region_name="us-east-1",
+)
+```
+
+boto3 signs presigned URLs for a custom endpoint with Signature Version 2 by default. pail does not support Signature Version 2. To presign, create the client with `Config`:
+
+```python
+from botocore.config import Config
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url="http://127.0.0.1:9000",
+    aws_access_key_id="AKIAEXAMPLEKEY000000",
+    aws_secret_access_key="example-secret-key",
+    region_name="us-east-1",
+    config=Config(signature_version="s3v4"),
+)
+```
+
+### Virtual-hosted style
+
+Clients use path-style requests with the settings above. For virtual-hosted style, start pail with `--domain localhost`. pail then serves `http://<bucket>.localhost:9000/<key>`, and your client must resolve `<bucket>.localhost` to pail.
 
 ## Requests
 
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
-- Virtual-hosted-style requests work when `--domain` is set. For example, `--domain localhost` serves `http://<bucket>.localhost:9000/<key>`.
+- Virtual-hosted-style requests work when `--domain` is set. See [Virtual-hosted style](#virtual-hosted-style).
 - An operation that pail does not support returns `501 NotImplemented` with an S3 XML error.
-- `GET /_pail/health` returns 200 and needs no credentials.
+- `GET /_pail/health` returns 200 and needs no credentials. See [Health check](#health-check).
 
 Supported operations:
 
@@ -47,6 +174,18 @@ Streaming uploads (`aws-chunked`) work in the three SigV4 modes: signed chunks, 
 
 Presigned URLs (query-string SigV4) work for any operation. `X-Amz-Expires` must be 0 to 604800 seconds. The payload is not signed. As on AWS, an expired URL, or one dated more than 15 minutes ahead, gets `403 AccessDenied`.
 
+## Health check
+
+`GET /_pail/health` returns 200 and needs no credentials.
+
+`pail --healthcheck` calls that endpoint on the `--addr` address and exits 0 when it answers 200. It exits 1 with an error otherwise. It needs no keys. The Docker image and `compose.yaml` use it as the container healthcheck, because the image has no `curl`.
+
+```bash
+PAIL_ADDR=127.0.0.1:9000 pail --healthcheck
+```
+
+A wildcard address, such as `0.0.0.0:9000`, is checked on loopback.
+
 ## Configuration
 
 Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides its variable. An empty variable counts as unset.
@@ -60,8 +199,19 @@ Each setting is a flag with a `PAIL_*` environment fallback. A flag overrides it
 | `--region` | `PAIL_REGION` | `us-east-1` | Region. |
 | `--domain` | `PAIL_DOMAIN` | empty | Base domain for virtual-hosted-style requests. Empty turns them off. |
 | `--log-level` | `PAIL_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. Case-insensitive. |
+| `--healthcheck` | none | off | Check that a pail at `--addr` answers `/_pail/health`, then exit. Needs no keys. |
 | `--version` | none | none | Print the build version and exit. |
 
 pail exits with an error that names the missing setting when a key is empty.
 
+The Docker image sets `PAIL_ADDR=0.0.0.0:9000` and `PAIL_DATA=/data`, and runs as a non-root user.
+
 Set `PAIL_SECRET_ACCESS_KEY` instead of passing `--secret-key`. Flags show in process lists. Environment variables are less exposed.
+
+## Test
+
+`go test ./...` runs the unit tests and the aws-sdk-go-v2 tests. `make smoke` starts a real pail and runs the AWS CLI and boto3 against it. It needs the AWS CLI and a Python with boto3 installed. CI runs it as the `smoke` job. The `docker` job builds the image, starts it, waits for its healthcheck, and runs the AWS CLI against it.
+
+## License
+
+pail is released under the MIT License. See [`LICENSE`](LICENSE).

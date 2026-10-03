@@ -12,6 +12,8 @@ pail is a small S3-compatible server written in pure Go. It targets local testin
 make build           # CGO_ENABLED=0 local build
 go run ./cmd/pail --access-key dev --secret-key devsecret   # run the server; flags fall back to PAIL_* variables
 ./pail --version                                       # build identity
+./pail --healthcheck                                   # exit 0 when pail at --addr answers /_pail/health; needs no keys
+make docker          # docker build -t pail:dev; CI builds and runs the image in the docker job
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
 go test ./test/      # aws-sdk-go-v2 tests against an in-process pail, path-style and virtual-hosted
@@ -59,6 +61,13 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - The SDK sends `aws-chunked` uploads only over HTTPS. Use `startPailTLS` to test them; it serves `example.com`, which the `httptest` certificate covers. `forEachStyle` starts a plain-HTTP pail, so such a test loops over `styles` itself.
 - `scripts/smoke.sh` runs the AWS CLI and boto3 (pinned) against a real pail, with their default settings. Both script files isolate themselves from real AWS credentials and point every client at pail's endpoint. Keep that when you edit them. boto3 presigns with SigV2 by default, which pail rejects, so the boto3 script presigns with SigV4.
 - aws-sdk-go-v2 is a test-only dependency. CI checks that `go list -deps ./cmd/pail` names no `aws` or `smithy` package.
+
+## Release
+
+- A `v*` tag runs `.github/workflows/release.yml`. It refuses a commit without a green `ci.yml` run, attaches Linux and macOS binaries to a GitHub release, and pushes `ghcr.io/yavosh/pail`.
+- Before you tag, check that the CI run on the commit is not cancelled (`cancel-in-progress` cancels a superseded run). Re-run a cancelled run first.
+- The Dockerfile builds only `./cmd/pail` with `CGO_ENABLED=0` into a distroless static image. The image has no shell or `curl`, so its healthcheck is `pail --healthcheck`.
+- Pin every action and base image by SHA or digest, with the version in a comment.
 
 ## Documentation
 

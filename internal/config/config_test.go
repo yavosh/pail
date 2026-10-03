@@ -40,6 +40,8 @@ func TestParsePrecedence(t *testing.T) {
 		{"log level env", nil, map[string]string{"PAIL_LOG_LEVEL": "debug"}, func(c Config) Config { c.LogLevel = slog.LevelDebug; return c }},
 		{"log level flag beats env", []string{"--log-level", "warn"}, map[string]string{"PAIL_LOG_LEVEL": "debug"}, func(c Config) Config { c.LogLevel = slog.LevelWarn; return c }},
 		{"version flag", []string{"--version"}, nil, func(c Config) Config { c.Version = true; return c }},
+		{"healthcheck flag", []string{"--healthcheck"}, nil, func(c Config) Config { c.Healthcheck = true; return c }},
+		{"healthcheck reads addr env", []string{"--healthcheck"}, map[string]string{"PAIL_ADDR": ":1"}, func(c Config) Config { c.Healthcheck = true; c.Addr = ":1"; return c }},
 		{"empty flag value beats env", []string{"--domain="}, map[string]string{"PAIL_DOMAIN": "e.test"}, func(c Config) Config { return c }},
 	}
 	for _, tt := range tests {

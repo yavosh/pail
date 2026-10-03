@@ -1,0 +1,10 @@
+.git
+.worktrees
+.claude
+.github
+tasks
+test
+docs
+data
+/pail
+.env*
