@@ -26,7 +26,7 @@ Pick one of these.
 
   To change the listen address, set `PAIL_ADDR` with `-e`. Do not pass `--addr` after the image name. The container healthcheck reads `PAIL_ADDR`, so an `--addr` argument leaves the container unhealthy.
 
-  The container runs as a non-root user (uid 65532). A named volume works as is. A bind mount must be owned by that user, so run `chown 65532` on the host directory first.
+  The container runs as a non-root user (uid 65532). A named volume works as is. A bind mount must be owned by that user, for example `chown 65532 ./data`.
 
 - Docker Compose. Run it from a source checkout, because `compose.yaml` builds the image with `build: .`. Set both keys in your shell or in a `.env` file next to `compose.yaml`, then start the service.
 

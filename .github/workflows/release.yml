@@ -72,8 +72,7 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          files=(pail README.md)
-          if [ -f LICENSE ]; then files+=(LICENSE); fi
+          files=(pail README.md LICENSE)
           tar czf "pail-$VERSION-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${files[@]}"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
