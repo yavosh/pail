@@ -30,6 +30,8 @@ var (
 	ErrEntityTooSmall            = errors.New("part smaller than the minimum size")
 	ErrEntityTooLarge            = errors.New("object larger than the maximum size")
 	ErrChecksumAlgorithmMismatch = errors.New("checksum algorithm does not match the upload")
+	ErrChecksumTypeMismatch      = errors.New("checksum type does not match the upload")
+	ErrMissingPartChecksum       = errors.New("missing part checksum")
 )
 
 // Multipart limits, as on AWS.
@@ -105,6 +107,7 @@ type CompleteOptions struct {
 	// checksum. Only a FULL_OBJECT upload, or one with no algorithm, has one.
 	ChecksumAlgorithm  string
 	FullObjectChecksum []byte
+	ChecksumType       string
 }
 
 func uploadsDir(bucket string) string { return path.Join("buckets", bucket, "uploads") }
@@ -439,6 +442,10 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 	if err != nil {
 		return ObjectInfo{}, err
 	}
+	if opts.ChecksumType != "" && opts.ChecksumType != cmp.Or(up.ChecksumType, checksum.FullObject) {
+		return ObjectInfo{}, ErrChecksumTypeMismatch
+	}
+
 	records, err := s.checkParts(bucket, up, parts)
 	if err != nil {
 		return ObjectInfo{}, err
@@ -558,6 +565,15 @@ func (s *Store) checkParts(bucket string, up UploadInfo, parts []CompletePart) (
 		}
 		if strings.Trim(cp.ETag, `"`) != r.ETag {
 			return nil, ErrInvalidPart
+		}
+		if up.ChecksumType == checksum.Composite {
+			if cp.Checksum == "" {
+				return nil, ErrMissingPartChecksum
+			}
+			if cp.PartNumber != i+1 {
+				// AWS returns InternalError for nonconsecutive composite parts.
+				return nil, fmt.Errorf("checksum part number %d, want %d", cp.PartNumber, i+1)
+			}
 		}
 		if cp.Checksum != "" && (checksum.Canonical(cp.ChecksumAlgorithm) != r.ChecksumAlgorithm || cp.Checksum != r.Checksum) {
 			return nil, ErrInvalidPart

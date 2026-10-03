@@ -49,7 +49,7 @@ func mustPart(t *testing.T, s *Store, bucket, key, id string, n int, body []byte
 func listed(parts ...PartInfo) []CompletePart {
 	out := make([]CompletePart, len(parts))
 	for i, p := range parts {
-		out[i] = CompletePart{PartNumber: p.PartNumber, ETag: `"` + p.ETag + `"`}
+		out[i] = CompletePart{PartNumber: p.PartNumber, ETag: `"` + p.ETag + `"`, ChecksumAlgorithm: p.ChecksumAlgorithm, Checksum: p.Checksum}
 	}
 	return out
 }
@@ -266,8 +266,8 @@ func TestCompleteUploadErrors(t *testing.T) {
 		{"wrong ETag", []CompletePart{wrongETag}, ErrInvalidPart},
 		{"wrong checksum", []CompletePart{{PartNumber: 1, ETag: p1.ETag, ChecksumAlgorithm: "CRC32", Checksum: "AAAAAA=="}}, ErrInvalidPart},
 		{"checksum of another algorithm", []CompletePart{{PartNumber: 1, ETag: p1.ETag, ChecksumAlgorithm: "CRC32C", Checksum: p1.Checksum}}, ErrInvalidPart},
-		{"small part before the last", listed(p2, p3), ErrEntityTooSmall},
-		{"small last part", listed(p1, p3), nil},
+		{"small part before the last", listed(p1, p2, p3), ErrEntityTooSmall},
+		{"small last part", listed(p1, p2), nil},
 	}
 	for _, tt := range tests {
 		_, err := s.CompleteUpload(ctx, "b", "k", crc.ID, tt.parts, CompleteOptions{})

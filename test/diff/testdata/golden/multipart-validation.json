@@ -1,0 +1,139 @@
+{
+  "scenario": "multipart-validation",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "create-upload",
+      "request": "POST /k?uploads",
+      "fingerprint": "7da290c4b1fc9ef7",
+      "status": 200,
+      "headers": {
+        "X-Amz-Checksum-Type": "COMPOSITE",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: k\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "upload-part-1",
+      "request": "PUT /k?partNumber=1&uploadId={uploadId}",
+      "fingerprint": "ad3de73b5354ed38",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"ab35de0787ceb01d719e0329c369afe7\"",
+        "X-Amz-Checksum-Crc32": "9BgeYA==",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "upload-part-2",
+      "request": "PUT /k?partNumber=2&uploadId={uploadId}",
+      "fingerprint": "a898d43f8cb3ca2d",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"ab35de0787ceb01d719e0329c369afe7\"",
+        "X-Amz-Checksum-Crc32": "9BgeYA==",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "complete-missing-checksum",
+      "request": "POST /k?uploadId={uploadId}",
+      "fingerprint": "f56b9f04b3f8bc8a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "complete-nonconsecutive",
+      "request": "POST /k?uploadId={uploadId}",
+      "fingerprint": "dce0cc9ed7fdfc6b",
+      "status": 500,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InternalError\n"
+    },
+    {
+      "step": "complete-wrong-type",
+      "request": "POST /k?uploadId={uploadId}",
+      "fingerprint": "89dc773ca6c6ebad",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "complete-corrected",
+      "request": "POST /k?uploadId={uploadId}",
+      "fingerprint": "f681a59ec33c1ee2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CompleteMultipartUploadResult\n  Location: <volatile>\n  Bucket: {bucket}\n  Key: k\n  ETag: \"33f1df9adf9c45cdbd5a1e423a45f444-1\"\n  ChecksumCRC32: o4byow==-1\n  ChecksumType: COMPOSITE\n"
+    },
+    {
+      "step": "get",
+      "request": "GET /k",
+      "fingerprint": "92e6fc9c4bafd2a6",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "14",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"33f1df9adf9c45cdbd5a1e423a45f444-1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "checksum probe"
+    },
+    {
+      "step": "delete",
+      "request": "DELETE /k",
+      "fingerprint": "d19d2c8bc0681eba",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

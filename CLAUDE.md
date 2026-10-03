@@ -59,6 +59,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Use lowercase bucket names without dots. The SDK silently falls back to path-style for other names, so the virtual-hosted run would not test virtual-hosted routing.
 - Send raw or presigned requests through `pail.httpClient`. It routes every host to the test server, with no DNS or proxy.
 - The SDK sends `aws-chunked` uploads only over HTTPS. Use `startPailTLS` to test them; it serves `example.com`, which the `httptest` certificate covers. `forEachStyle` starts a plain-HTTP pail, so such a test loops over `styles` itself.
+- Keep user metadata names lowercase on the wire. The boto3 smoke test checks casing that Go HTTP clients normalize.
 - `scripts/smoke.sh` runs the AWS CLI and boto3 (pinned) against a real pail, with their default settings. Both script files isolate themselves from real AWS credentials and point every client at pail's endpoint. Keep that when you edit them. boto3 presigns with SigV2 by default, which pail rejects, so the boto3 script presigns with SigV4.
 - aws-sdk-go-v2 is a test-only dependency. CI checks that `go list -deps ./cmd/pail` names no `aws` or `smithy` package.
 
@@ -77,6 +78,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 ## Differential suite
 
 - `test/diff` checks pail against golden files recorded from AWS S3. A new S3 behavior adds a scenario there.
+- Compare successful object bodies byte for byte, including XML objects. Normalize only protocol XML, never stored object content.
 - Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
 - Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.
 - A feature PR removes its steps from `test/diff/testdata/pending.txt`. The PR is done when they pass.

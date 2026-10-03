@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -62,8 +64,16 @@ var droppedElements = map[string]bool{"HostId": true, "RequestId": true}
 // normalize turns a raw response into a comparable exchange.
 func normalize(st step, bucket string, r response) exchange {
 	ex := exchange{Step: st.name, Request: describe(st), Fingerprint: fingerprint(st), Status: r.status, Headers: map[string]string{}}
-	body := strings.ReplaceAll(string(r.body), bucket, "{bucket}")
-	isXML := looksXML(r.header.Get("Content-Type"), body)
+	body := string(r.body)
+	// A successful object read is opaque data, even with an XML content type.
+	// GET with uploadId lists parts instead.
+	q, _ := url.ParseQuery(st.query)
+	objectData := st.key != "" && (st.method == http.MethodGet || st.method == http.MethodHead) &&
+		(r.status == http.StatusOK || r.status == http.StatusPartialContent) && !q.Has("uploadId")
+	if !objectData {
+		body = strings.ReplaceAll(body, bucket, "{bucket}")
+	}
+	isXML := !objectData && looksXML(r.header.Get("Content-Type"), body)
 	switch {
 	case isXML:
 		var err error
@@ -94,6 +104,11 @@ func normalize(st step, bucket string, r response) exchange {
 		// XML formatting and error Message text differ between servers, and
 		// neither is compared, so their length is not either.
 		delete(ex.Headers, "Content-Length")
+	}
+	// AWS front ends vary in whether bare dot-dot rejections carry request IDs.
+	if r.status == http.StatusBadRequest && len(r.body) == 0 && slices.Contains(strings.Split(st.key, "/"), "..") {
+		delete(ex.Headers, "X-Amz-Request-Id")
+		delete(ex.Headers, "X-Amz-Id-2")
 	}
 	if len(ex.Headers) == 0 {
 		ex.Headers = nil

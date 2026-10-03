@@ -42,8 +42,9 @@ Check these steps by hand in a new recording:
 - The status code.
 - The S3 error `Code`. The error `Message` and diagnostic fields are not compared.
 - A fixed list of headers, in `normalize_test.go`. `Last-Modified`, `x-amz-request-id`, and `x-amz-id-2` are compared for presence only.
+- Request IDs on empty `400` responses for literal `..` path segments are ignored; AWS front ends vary in sending them.
 - `Content-Length` only for object data. XML formatting and error messages differ between servers.
-- The body. A body that is not valid UTF-8 is stored as base64. An XML body is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, continuation tokens, and the `Location` URL of a completed upload, are compared for presence only. Bucket names become `{bucket}`.
+- The body. Successful object reads are compared byte for byte, including XML content. A body that is not valid UTF-8 is stored as base64. Protocol XML is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, continuation tokens, and the `Location` URL of a completed upload, are compared for presence only. Bucket names in protocol responses become `{bucket}`.
 
 ## Known differences
 
