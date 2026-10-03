@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Runs boto3 with its default settings against a running pail.
 
-Needs SMOKE_ENDPOINT, SMOKE_ACCESS_KEY, and SMOKE_SECRET_KEY. Never uses real
-AWS credentials or profiles.
+Needs SMOKE_ENDPOINT, SMOKE_ACCESS_KEY, and SMOKE_SECRET_KEY. Uses no real AWS setup.
 """
 import hashlib
 import os
@@ -15,7 +14,9 @@ import urllib.request
 for name in (
     "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_SESSION_TOKEN",
     "AWS_SECURITY_TOKEN", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3",
-    "AWS_CA_BUNDLE",
+    "AWS_CA_BUNDLE", "AWS_REGION", "AWS_REQUEST_CHECKSUM_CALCULATION",
+    "AWS_RESPONSE_CHECKSUM_VALIDATION", "HTTP_PROXY", "HTTPS_PROXY",
+    "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy",
 ):
     os.environ.pop(name, None)
 
@@ -29,6 +30,7 @@ os.environ.update(
     AWS_ACCESS_KEY_ID=os.environ["SMOKE_ACCESS_KEY"],
     AWS_SECRET_ACCESS_KEY=os.environ["SMOKE_SECRET_KEY"],
     AWS_DEFAULT_REGION="us-east-1",
+    AWS_EC2_METADATA_DISABLED="true",
     AWS_CONFIG_FILE=config_file,
     AWS_SHARED_CREDENTIALS_FILE=credentials_file,
 )

@@ -26,6 +26,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Keep smoke traffic on loopback.
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
+
 export SMOKE_ENDPOINT=http://$SMOKE_ADDR
 export SMOKE_ACCESS_KEY=AKIAPAILSMOKETEST000
 export SMOKE_SECRET_KEY=pail-smoke-secret
@@ -53,7 +56,6 @@ for client in awscli boto3; do
   if [ "$client" = awscli ]; then
     scripts/smoke-awscli.sh || rc=$?
   else
-    # shellcheck disable=SC2086
     $PYTHON scripts/smoke-boto3.py || rc=$?
   fi
   if [ "${rc:-0}" -eq 0 ]; then
