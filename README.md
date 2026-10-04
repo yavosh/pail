@@ -14,15 +14,17 @@ Pick one of these.
   go install github.com/yavosh/pail/cmd/pail@latest
   ```
 
-- Docker. The image listens on port 9000 and keeps objects in the `/data` volume.
+- Docker. Release images are published to [GitHub Container Registry](https://github.com/yavosh/pail/pkgs/container/pail) for Linux amd64 and arm64. The image listens on port 9000 and keeps objects in the `/data` volume.
 
   ```bash
   docker run -p 9000:9000 \
     -e PAIL_ACCESS_KEY_ID=AKIAEXAMPLEKEY000000 \
     -e PAIL_SECRET_ACCESS_KEY=example-secret-key \
     -v pail-data:/data \
-    ghcr.io/yavosh/pail
+    ghcr.io/yavosh/pail:latest
   ```
+
+  `latest` tracks the latest stable release. To pin a release, use its version without the `v` prefix, such as `:1.2.3`.
 
   To change the listen address, set `PAIL_ADDR` with `-e`. Do not pass `--addr` after the image name. The container healthcheck reads `PAIL_ADDR`, so an `--addr` argument leaves the container unhealthy.
 

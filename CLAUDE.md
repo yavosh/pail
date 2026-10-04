@@ -66,9 +66,11 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 ## Release
 
 - A `v*` tag runs `.github/workflows/release.yml`. It refuses a commit without a green `ci.yml` run, attaches Linux and macOS binaries to a GitHub release, and pushes `ghcr.io/yavosh/pail`.
+- Images support Linux amd64 and arm64. Stable releases publish version tags without `v`, a major.minor tag, and `latest`.
+- After the first image publish, open [package settings](https://github.com/users/yavosh/packages/container/pail/settings) and change visibility to **Public**. GitHub creates packages as private; repository visibility does not make them public. Verify an anonymous pull of `ghcr.io/yavosh/pail:latest` with an empty Docker configuration directory.
 - Before you tag, check that the CI run on the commit is not cancelled (`cancel-in-progress` cancels a superseded run). Re-run a cancelled run first.
 - The Dockerfile builds only `./cmd/pail` with `CGO_ENABLED=0` into a distroless static image. The image has no shell or `curl`, so its healthcheck is `pail --healthcheck`.
-- Pin every action and base image by SHA or digest, with the version in a comment.
+- Pin every action by SHA, with the version in a comment. Docker base images use floating `golang:1.27` and `gcr.io/distroless/static-debian12:nonroot` tags.
 
 ## Documentation
 
