@@ -87,6 +87,16 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(s.ln) }()
+	lifecycleCtx, stopLifecycle := context.WithCancel(ctx)
+	lifecycleDone := make(chan struct{})
+	go func() {
+		defer close(lifecycleDone)
+		s.runLifecycle(lifecycleCtx)
+	}()
+	defer func() {
+		stopLifecycle()
+		<-lifecycleDone
+	}()
 	clogServer().Info("listening", "addr", s.ln.Addr().String())
 
 	select {
@@ -107,6 +117,21 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	clogServer().Info("shut down")
 	return nil
+}
+
+func (s *Server) runLifecycle(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		if err := s.store.SweepLifecycle(ctx, time.Now()); err != nil && ctx.Err() == nil {
+			clogServer().Error("lifecycle sweep", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 // Run binds the address and serves until ctx is done.

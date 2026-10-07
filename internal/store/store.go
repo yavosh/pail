@@ -33,6 +33,7 @@ import (
 
 // Errors callers check with errors.Is. Other errors are internal failures.
 var (
+	ErrAccessDenied       = errors.New("access denied")
 	ErrInvalidName        = errors.New("invalid bucket name or key")
 	ErrNoSuchBucket       = errors.New("no such bucket")
 	ErrBucketExists       = errors.New("bucket already exists")

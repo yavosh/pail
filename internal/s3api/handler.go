@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -47,19 +48,30 @@ func New(opts Options) http.Handler {
 func (h *handler) routes() {
 	// An operation without a handler here answers NotImplemented.
 	h.ops = map[operation]opHandler{
-		opListBuckets:       h.handleListBuckets,
-		opCreateBucket:      h.handleCreateBucket,
-		opHeadBucket:        h.handleHeadBucket,
-		opDeleteBucket:      h.handleDeleteBucket,
-		opGetBucketLocation: h.handleGetBucketLocation,
-		opPutObject:         h.handlePutObject,
-		opGetObject:         h.handleGetObject,
-		opHeadObject:        h.handleHeadObject,
-		opDeleteObject:      h.handleDeleteObject,
-		opDeleteObjects:     h.handleDeleteObjects,
-		opCopyObject:        h.handleCopyObject,
-		opListObjects:       h.handleListObjects,
-		opListObjectsV2:     h.handleListObjectsV2,
+		opGetBucketACL:          h.handleACL,
+		opPutBucketACL:          h.handleACL,
+		opGetObjectACL:          h.handleACL,
+		opPutObjectACL:          h.handleACL,
+		opGetBucketCors:         h.handleBucketConfiguration,
+		opPutBucketCors:         h.handleBucketConfiguration,
+		opDeleteBucketCors:      h.handleBucketConfiguration,
+		opGetBucketLifecycle:    h.handleBucketConfiguration,
+		opPutBucketLifecycle:    h.handleBucketConfiguration,
+		opDeleteBucketLifecycle: h.handleBucketConfiguration,
+		opPostObject:            h.handlePostObject,
+		opListBuckets:           h.handleListBuckets,
+		opCreateBucket:          h.handleCreateBucket,
+		opHeadBucket:            h.handleHeadBucket,
+		opDeleteBucket:          h.handleDeleteBucket,
+		opGetBucketLocation:     h.handleGetBucketLocation,
+		opPutObject:             h.handlePutObject,
+		opGetObject:             h.handleGetObject,
+		opHeadObject:            h.handleHeadObject,
+		opDeleteObject:          h.handleDeleteObject,
+		opDeleteObjects:         h.handleDeleteObjects,
+		opCopyObject:            h.handleCopyObject,
+		opListObjects:           h.handleListObjects,
+		opListObjectsV2:         h.handleListObjectsV2,
 
 		opCreateMultipartUpload:   h.handleCreateMultipartUpload,
 		opUploadPart:              h.handleUploadPart,
@@ -98,7 +110,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				rec.Header().Set("x-amz-bucket-region", h.opts.Region)
 			}
 		}
-		if err := h.verifier.Verify(r); err != nil {
+		if r.Method != http.MethodOptions && h.opts.Store != nil && t.bucket != "" {
+			h.applyCORS(rec, r, t, false)
+		}
+		if r.Method == http.MethodOptions && t.bucket != "" {
+			h.applyCORS(rec, r, t, true)
+		} else if op == opPostObject {
+			h.handlePostObject(rec, r, t)
+		} else if err := h.verifier.Verify(r); err != nil && (!errors.Is(err, sigv4.ErrMissingAuth) || h.opts.Store == nil || !h.anonymousAllowed(r, t, op)) {
 			writeError(rec, r, toAPIError(err))
 		} else if fn, ok := h.ops[op]; ok {
 			fn(rec, r, t)

@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yavosh/pail/internal/acl"
 	"github.com/yavosh/pail/internal/checksum"
 	"github.com/yavosh/pail/internal/sigv4"
 	"github.com/yavosh/pail/internal/store"
@@ -61,7 +62,12 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, apiErr)
 		return
 	}
-	opts := store.PutOptions{Metadata: metadata}
+	policy, apiErr, valid := h.writeACL(r, false)
+	if !valid {
+		writeError(w, r, apiErr)
+		return
+	}
+	opts := store.PutOptions{Metadata: metadata, ACL: &policy, Anonymous: policy.Owner.ID == acl.AnonymousID}
 	// A present but empty Content-MD5 is invalid, not absent.
 	if values, ok := r.Header["Content-Md5"]; ok {
 		sum, err := base64.StdEncoding.DecodeString(values[0])
@@ -108,6 +114,7 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, toAPIError(err))
 		return
 	}
+	h.setExpiration(w, r, t.bucket, info)
 	w.Header().Set("ETag", quoteETag(info.ETag))
 	setChecksumHeaders(w.Header(), info)
 	w.WriteHeader(http.StatusOK)
@@ -326,6 +333,7 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 
 	hdr.Set("ETag", etag)
 	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
+	h.setExpiration(w, r, t.bucket, info)
 	setObjectHeaders(hdr, r, info)
 	// The stored checksum covers the whole object, so a range gets none.
 	if status == http.StatusOK && strings.EqualFold(r.Header.Get("x-amz-checksum-mode"), "ENABLED") {

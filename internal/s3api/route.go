@@ -11,6 +11,17 @@ import (
 type operation string
 
 const (
+	opGetBucketACL            operation = "GetBucketAcl"
+	opPutBucketACL            operation = "PutBucketAcl"
+	opGetObjectACL            operation = "GetObjectAcl"
+	opPutObjectACL            operation = "PutObjectAcl"
+	opGetBucketCors           operation = "GetBucketCors"
+	opPutBucketCors           operation = "PutBucketCors"
+	opDeleteBucketCors        operation = "DeleteBucketCors"
+	opGetBucketLifecycle      operation = "GetBucketLifecycleConfiguration"
+	opPutBucketLifecycle      operation = "PutBucketLifecycleConfiguration"
+	opDeleteBucketLifecycle   operation = "DeleteBucketLifecycle"
+	opPostObject              operation = "PostObject"
 	opListBuckets             operation = "ListBuckets"
 	opCreateBucket            operation = "CreateBucket"
 	opHeadBucket              operation = "HeadBucket"
@@ -113,6 +124,33 @@ func resolve(method string, t target, q url.Values, h http.Header) operation {
 		}
 	case t.key == "":
 		switch {
+		case only("acl"):
+			switch method {
+			case http.MethodGet:
+				return opGetBucketACL
+			case http.MethodPut:
+				return opPutBucketACL
+			}
+		case only("cors"):
+			switch method {
+			case http.MethodGet:
+				return opGetBucketCors
+			case http.MethodPut:
+				return opPutBucketCors
+			case http.MethodDelete:
+				return opDeleteBucketCors
+			}
+		case only("lifecycle"):
+			switch method {
+			case http.MethodGet:
+				return opGetBucketLifecycle
+			case http.MethodPut:
+				return opPutBucketLifecycle
+			case http.MethodDelete:
+				return opDeleteBucketLifecycle
+			}
+		case method == http.MethodPost && only():
+			return opPostObject
 		case method == http.MethodPut && only():
 			return opCreateBucket
 		case method == http.MethodHead && only():
@@ -133,6 +171,10 @@ func resolve(method string, t target, q url.Values, h http.Header) operation {
 	default:
 		part := has("partNumber")
 		switch {
+		case method == http.MethodGet && only("acl"):
+			return opGetObjectACL
+		case method == http.MethodPut && only("acl"):
+			return opPutObjectACL
 		case method == http.MethodPut && only("uploadId") && part && !copySource:
 			return opUploadPart
 		case method == http.MethodPut && only() && !part && copySource:

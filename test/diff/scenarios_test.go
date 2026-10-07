@@ -17,13 +17,15 @@ import (
 // "{uploadId}" in the query, header values, and body becomes the ID that the
 // latest CreateMultipartUpload in the scenario returned.
 type step struct {
-	name   string
-	method string
-	key    string
-	query  string
-	header map[string]string
-	body   string
-	auth   authMode
+	form         map[string]string
+	postMutation string
+	name         string
+	method       string
+	key          string
+	query        string
+	header       map[string]string
+	body         string
+	auth         authMode
 	// stream sends the body aws-chunked in this x-amz-content-sha256 mode.
 	stream      string
 	chunk       int    // chunk size; 0 means 8 KiB
@@ -92,6 +94,10 @@ var specialKeys = []struct{ name, key string }{
 func scenarios() []scenario {
 	const body = "hello world"
 	all := []scenario{
+		corsScenario(),
+		lifecycleRulesScenario(),
+		aclScenario(),
+		postScenario(),
 		{name: "auth-errors", steps: []step{
 			createBucket(),
 			{name: "no-credentials", method: http.MethodGet, query: "list-type=2", auth: authNone},

@@ -1,0 +1,147 @@
+{
+  "scenario": "post-policy",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "post",
+      "request": "POST /",
+      "fingerprint": "76fac60379afd078",
+      "status": 201,
+      "headers": {
+        "Content-Type": "application/xml",
+        "Etag": "\"aec69df9646ca30ef342d20ac27ef5c1\"",
+        "Location": "/form.txt",
+        "X-Amz-Checksum-Crc64nvme": "PVUz+bD4i0o=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "PostResponse\n  Location: <volatile>\n  Bucket: {bucket}\n  Key: form.txt\n  ETag: \"aec69df9646ca30ef342d20ac27ef5c1\"\n"
+    },
+    {
+      "step": "get",
+      "request": "GET /form.txt",
+      "fingerprint": "29019ca7b947e131",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "10",
+        "Content-Type": "text/plain",
+        "Etag": "\"aec69df9646ca30ef342d20ac27ef5c1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-User": "alice",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "form bytes"
+    },
+    {
+      "step": "bad-signature",
+      "request": "POST /",
+      "fingerprint": "a99ffb79ad2048fa",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: SignatureDoesNotMatch\n"
+    },
+    {
+      "step": "expired",
+      "request": "POST /",
+      "fingerprint": "50b278f1f43ceb49",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "wrong-key",
+      "request": "POST /",
+      "fingerprint": "96f6aade28e60d3a",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "uncovered",
+      "request": "POST /",
+      "fingerprint": "ffdeda051ed80508",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "too-large",
+      "request": "POST /",
+      "fingerprint": "35362fffdc717e80",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: EntityTooLarge\n"
+    },
+    {
+      "step": "get-after-failures",
+      "request": "GET /form.txt",
+      "fingerprint": "29019ca7b947e131",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "10",
+        "Content-Type": "text/plain",
+        "Etag": "\"aec69df9646ca30ef342d20ac27ef5c1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-User": "alice",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "form bytes"
+    },
+    {
+      "step": "delete-object",
+      "request": "DELETE /form.txt",
+      "fingerprint": "bc65541ea6d9a835",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

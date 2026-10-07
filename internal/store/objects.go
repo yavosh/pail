@@ -14,16 +14,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yavosh/pail/internal/acl"
 	"github.com/yavosh/pail/internal/checksum"
 	"github.com/yavosh/pail/internal/vfs"
 )
 
 // ObjectInfo describes a stored object.
 type ObjectInfo struct {
-	Key          string    `json:"key"`
-	Size         int64     `json:"size"`
-	ETag         string    `json:"etag"` // hex MD5, without quotes
-	LastModified time.Time `json:"lastModified"`
+	ACL          *acl.Policy `json:"acl,omitempty"`
+	Key          string      `json:"key"`
+	Size         int64       `json:"size"`
+	ETag         string      `json:"etag"` // hex MD5, without quotes
+	LastModified time.Time   `json:"lastModified"`
 	// Metadata holds the headers stored with the object. The store does not interpret them.
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// ChecksumAlgorithm, Checksum (base64), and ChecksumType describe the
@@ -41,7 +43,10 @@ type record struct {
 
 // PutOptions are the optional parts of a PutObject.
 type PutOptions struct {
-	Metadata map[string]string
+	// Anonymous prevents replacing an object owned by an authenticated account.
+	Anonymous bool
+	ACL       *acl.Policy
+	Metadata  map[string]string
 	// ContentMD5 is the digest the client sent; nil means none was sent. A
 	// mismatch, including an empty slice, fails with ErrBadDigest.
 	ContentMD5 []byte
@@ -110,6 +115,7 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 		ETag:         hex.EncodeToString(digest),
 		LastModified: time.Now().UTC(),
 		Metadata:     opts.Metadata,
+		ACL:          opts.ACL,
 		Blob:         blob,
 
 		ChecksumAlgorithm: algorithm,
@@ -138,6 +144,8 @@ func (s *Store) commitRecord(ctx context.Context, bucket string, rec record, opt
 		return err
 	}
 	switch {
+	case opts.Anonymous && exists && (old.ACL == nil || old.ACL.Owner.ID != acl.AnonymousID):
+		return ErrAccessDenied
 	case opts.IfNoneMatch && exists:
 		return ErrPreconditionFailed
 	case opts.IfMatch != "" && !exists:

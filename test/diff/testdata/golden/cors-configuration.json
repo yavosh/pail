@@ -1,0 +1,143 @@
+{
+  "scenario": "cors-configuration",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-missing",
+      "request": "GET /?cors",
+      "fingerprint": "bc90d82caece6089",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchCORSConfiguration\n"
+    },
+    {
+      "step": "put",
+      "request": "PUT /?cors",
+      "fingerprint": "56e828eda251a753",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get",
+      "request": "GET /?cors",
+      "fingerprint": "bc90d82caece6089",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CORSConfiguration\n  CORSRule\n    AllowedOrigin: https://*.example.com\n    AllowedMethod: PUT\n    AllowedMethod: POST\n    MaxAgeSeconds: 300\n    ExposeHeader: ETag\n    AllowedHeader: x-amz-*\n"
+    },
+    {
+      "step": "preflight",
+      "request": "OPTIONS /k",
+      "fingerprint": "3cd3e23d334e4957",
+      "status": 200,
+      "headers": {
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Headers": "x-amz-meta-user",
+        "Access-Control-Allow-Methods": "PUT, POST",
+        "Access-Control-Allow-Origin": "https://app.example.com",
+        "Access-Control-Expose-Headers": "ETag",
+        "Access-Control-Max-Age": "300",
+        "Content-Length": "0",
+        "Vary": "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "preflight-denied",
+      "request": "OPTIONS /k",
+      "fingerprint": "62d12114a476c5a5",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessForbidden\n"
+    },
+    {
+      "step": "put-with-origin",
+      "request": "PUT /k",
+      "fingerprint": "ff8687f0d24df1b0",
+      "status": 200,
+      "headers": {
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "PUT, POST",
+        "Access-Control-Allow-Origin": "https://app.example.com",
+        "Access-Control-Expose-Headers": "ETag",
+        "Access-Control-Max-Age": "300",
+        "Content-Length": "0",
+        "Etag": "\"b439a4514c277ce6fccc8f28ca817183\"",
+        "Vary": "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
+        "X-Amz-Checksum-Crc64nvme": "6XmON4YDOCQ=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-object",
+      "request": "DELETE /k",
+      "fingerprint": "d19d2c8bc0681eba",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete",
+      "request": "DELETE /?cors",
+      "fingerprint": "4b2d641fd99c35dc",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-deleted",
+      "request": "GET /?cors",
+      "fingerprint": "bc90d82caece6089",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchCORSConfiguration\n"
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

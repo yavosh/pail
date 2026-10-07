@@ -2,7 +2,7 @@
 
 pail is a small S3-compatible server written in pure Go. It stores objects on local disk. It targets local testing and personal projects. The goal is S3 API compatibility, not scale. pail is a work in progress.
 
-pail is not a production object store. It has no clustering, replication, or multi-tenant support. It serves one access key pair and one region. It has no versioning, ACLs, bucket policies, or lifecycle rules. An operation it does not support fails with `501 NotImplemented`. Requests with `x-amz-tagging` or `x-amz-tagging-directive` also fail with `501 NotImplemented`.
+pail is not a production object store. It has no clustering, replication, or multi-tenant support. It serves one access key pair and one region. It has no versioning, bucket policies, or storage tiers. An operation it does not support fails with `501 NotImplemented`. Requests with `x-amz-tagging` or `x-amz-tagging-directive` also fail with `501 NotImplemented`.
 
 ## Install
 
@@ -140,6 +140,26 @@ s3 = boto3.client(
 )
 ```
 
+### Browser form uploads
+
+Set bucket CORS rules for the application's origin and `POST` method. Create the form grant on your backend:
+
+```python
+post = s3.generate_presigned_post(
+    Bucket="demo",
+    Key="uploads/${filename}",
+    Fields={"Content-Type": "image/png"},
+    Conditions=[{"Content-Type": "image/png"}, ["content-length-range", 1, 10485760]],
+    ExpiresIn=300,
+)
+```
+
+Return `post` to the browser. Add each `post["fields"]` value to `FormData`, then add the file last. Send it to `post["url"]`.
+
+pail enables ACLs on every bucket. New AWS buckets disable ACLs through Object Ownership by default.
+Use an ACL-enabled AWS bucket when comparing ACL behavior. pail still authenticates only its configured account.
+Canonical grants round-trip. Grants to another account do not enable authentication for that account.
+
 ### Virtual-hosted style
 
 Clients use path-style requests with the settings above. For virtual-hosted style, start pail with `--domain localhost`. pail then serves `http://<bucket>.localhost:9000/<key>`, and your client must resolve `<bucket>.localhost` to pail.
@@ -154,6 +174,10 @@ Clients use path-style requests with the settings above. For virtual-hosted styl
 Supported operations:
 
 - Buckets: `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, and `GetBucketLocation`. Bucket names follow the AWS general-purpose naming rules.
+- CORS: `PutBucketCors`, `GetBucketCors`, and `DeleteBucketCors`, with unauthenticated preflight and cross-origin response headers. Rules support origin and header wildcards.
+- Lifecycle: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, and `DeleteBucketLifecycle`. Enabled rules expire objects by age or date and abort incomplete multipart uploads. Filters support prefixes and exclusive size bounds, including `And`. Cleanup runs at startup and every minute. Age rules round up to midnight UTC. Reads and writes report `x-amz-expiration`. Tag filters, transitions, and version actions return `501 NotImplemented`.
+- ACLs: `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, and `PutObjectAcl`. Canned ACLs, XML grants, and `x-amz-grant-*` headers persist. Object writes, copies, forms, and multipart creation accept ACLs. Public grants permit anonymous reads, listings, ACL access, and new object uploads. Anonymous uploads cannot overwrite objects owned by the configured account. Email grantees return `501 NotImplemented`.
+- Browser forms: `POST Object` accepts SigV4 policies from boto3 and aws-sdk-go-v2. Policies enforce expiration, exact matches, prefixes, required fields, and file size bounds. Forms support `${filename}`, metadata, ACLs, MD5 and flexible checksums, redirects, and success statuses 200, 201, and 204. Send the file field last.
 - Listing: `ListObjectsV2` and `ListObjects`, with `prefix`, `delimiter`, pagination, `fetch-owner`, and `encoding-type=url`. aws-sdk-go-v2 leaves `encoding-type=url` keys encoded; decode them with `url.QueryUnescape`. Use `encoding-type=url` for keys with control characters: XML cannot carry them, so a plain listing replaces them with U+FFFD.
 - Objects: `PutObject`, `GetObject`, `HeadObject`, and `DeleteObject`. They support system and `x-amz-meta-*` metadata (returned with lowercase user metadata names), `Content-MD5`, a single `Range`, the `If-*` read conditions, `If-None-Match: *` and `If-Match` on writes, and the `response-*` overrides. A `PutObject` is limited to 5 GiB, keys to 1024 bytes, and user metadata to 2 KB, as on AWS.
 - Copy: `CopyObject` copies within a bucket or across buckets. `x-amz-copy-source` is a URL-encoded `bucket/key`. `x-amz-metadata-directive` is `COPY` (the default) or `REPLACE`. A copy onto itself needs `REPLACE`, as on AWS. The `x-amz-copy-source-if-match`, `-if-none-match`, `-if-modified-since`, and `-if-unmodified-since` conditions fail with `412 PreconditionFailed`. A source over 5 GiB fails. pail has no versioning, so only `versionId=null` is accepted.
@@ -168,7 +192,7 @@ As on AWS, a request path with a literal `..` segment gets an empty `400 Bad Req
 
 ## Authentication
 
-Every S3 request must carry an AWS Signature Version 4 `Authorization` header, signed with the configured access key pair. pail accepts any region in the signature. A body with a signed SHA-256 payload hash is checked as it is read. Every `x-amz-*` header must be signed.
+S3 requests use AWS Signature Version 4 with the configured access key pair. Presigned URLs and form policies delegate access without sharing the secret key. CORS preflight and operations permitted by public ACL grants need no signature. pail accepts any region in the signature. A body with a signed SHA-256 payload hash is checked as it is read. Every `x-amz-*` header must be signed.
 
 A captured signed request can be replayed for up to 15 minutes, as on AWS. Keep pail on `127.0.0.1`, or behind TLS, when the network is not trusted.
 
