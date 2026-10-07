@@ -3,11 +3,13 @@
 
 Needs SMOKE_ENDPOINT, SMOKE_ACCESS_KEY, and SMOKE_SECRET_KEY. Uses no real AWS setup.
 """
+import base64
 import hashlib
 import os
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 
 # Isolate from any real AWS setup before boto3 reads the environment.
@@ -147,19 +149,51 @@ with Step("upload a tree under a prefix and list it"):
     keys = {o["Key"] for o in resp.get("Contents", [])}
     check(keys == set(tree), f"unexpected keys under synced/: {keys}")
 
-# boto3 presigns with SigV2 by default, which pail does not support. Use SigV4,
-# as the AWS CLI does.
-presigner = boto3.client(
-    "s3", endpoint_url=endpoint, region_name="us-east-1",
-    config=Config(signature_version="s3v4"),
-)
-
 with Step("generate_presigned_url"):
-    url = presigner.generate_presigned_url(
+    url = s3.generate_presigned_url(
         "get_object", Params={"Bucket": bucket, "Key": "small.txt"}
     )
     with urllib.request.urlopen(url) as resp:  # noqa: S310
         check(resp.read() == small, "presigned object differs")
+
+with Step("generate_presigned_url for put_object"):
+    digest = base64.b64encode(hashlib.md5(small).digest()).decode()
+    key = "sigv2/a b+c.txt"
+    url = s3.generate_presigned_url(
+        "put_object", Params={"Bucket": bucket, "Key": key,
+                              "ContentType": "text/plain", "ContentMD5": digest,
+                              "Metadata": {"purpose": "sigv2"}},
+    )
+    request = urllib.request.Request(
+        url, data=small, method="PUT",
+        headers={"Content-Type": "text/plain", "Content-MD5": digest,
+                 "x-amz-meta-purpose": "sigv2"},
+    )
+    with urllib.request.urlopen(request) as resp:  # noqa: S310
+        check(resp.status == 200, f"presigned PUT status is {resp.status}")
+    obj = s3.get_object(Bucket=bucket, Key=key)
+    check(obj["Body"].read() == small, "presigned PUT object differs")
+    obj["Body"].close()
+    check(obj["ContentType"] == "text/plain", "presigned PUT content type differs")
+    check(obj["Metadata"] == {"purpose": "sigv2"}, "presigned PUT metadata differs")
+
+with Step("modified and expired presigned URLs"):
+    url = s3.generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": "small.txt"}
+    )
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    check("AWSAccessKeyId" in query and "Signature" in query, "default presign is not SigV2")
+    modified = url + "&response-content-type=text%2Fhtml"
+    expired = s3.generate_presigned_url(
+        "get_object", Params={"Bucket": bucket, "Key": "small.txt"}, ExpiresIn=-60
+    )
+    for name, rejected in (("modified", modified), ("expired", expired)):
+        try:
+            with urllib.request.urlopen(rejected):  # noqa: S310
+                raise AssertionError(f"{name} URL was accepted")
+        except urllib.error.HTTPError as exc:
+            check(exc.code == 403, f"{name} URL status is {exc.code}")
+            exc.close()
 
 with Step("bucket CORS and lifecycle configuration"):
     cors = [{"AllowedOrigins": ["https://app.example.com"],
@@ -175,9 +209,14 @@ with Step("bucket CORS and lifecycle configuration"):
           "lifecycle rules differ")
 
 with Step("generate_presigned_post with ACL and CORS"):
+    # Browser form policies still require SigV4.
+    post_presigner = boto3.client(
+        "s3", endpoint_url=endpoint, region_name="us-east-1",
+        config=Config(signature_version="s3v4"),
+    )
     fields = {"Content-Type": "text/plain", "acl": "public-read",
               "success_action_status": "201", "x-amz-meta-purpose": "form"}
-    post = presigner.generate_presigned_post(
+    post = post_presigner.generate_presigned_post(
         Bucket=bucket, Key="form/${filename}", Fields=fields,
         Conditions=[{key: value} for key, value in fields.items()]
         + [["content-length-range", 1, 1024]],

@@ -117,7 +117,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.applyCORS(rec, r, t, true)
 		} else if op == opPostObject {
 			h.handlePostObject(rec, r, t)
-		} else if err := h.verifier.Verify(r); err != nil && (!errors.Is(err, sigv4.ErrMissingAuth) || h.opts.Store == nil || !h.anonymousAllowed(r, t, op)) {
+		} else if err := h.verifySignature(r, t); err != nil && (!errors.Is(err, sigv4.ErrMissingAuth) || h.opts.Store == nil || !h.anonymousAllowed(r, t, op)) {
 			writeError(rec, r, toAPIError(err))
 		} else if fn, ok := h.ops[op]; ok {
 			fn(rec, r, t)
@@ -128,6 +128,18 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	clogS3api().Info("request", "method", r.Method, "op", op, "bucket", t.bucket,
 		"status", rec.status, "bytes", rec.bytes, "duration", time.Since(start))
+}
+
+func (h *handler) verifySignature(r *http.Request, t target) error {
+	q := r.URL.Query()
+	if r.Header.Get("Authorization") == "" && (q.Has("AWSAccessKeyId") || q.Has("Signature") || q.Has("Expires")) {
+		bucket := ""
+		if t.virtualHost {
+			bucket = t.bucket
+		}
+		return h.verifier.VerifyPresignedV2(r, bucket)
+	}
+	return h.verifier.Verify(r)
 }
 
 func setRequestIDs(w http.ResponseWriter) {

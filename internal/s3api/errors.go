@@ -76,6 +76,7 @@ var apiErrors = []struct {
 	err error
 	api apiError
 }{
+	{sigv4.ErrMalformedPresignV2, apiError{"InvalidArgument", http.StatusBadRequest, "Query-string authentication requires AWSAccessKeyId, Signature, and Expires."}},
 	{store.ErrAccessDenied, errAccessDenied},
 	{sigv4.ErrPolicyCondition, apiError{"AccessDenied", http.StatusForbidden, "Invalid according to Policy: Policy Condition failed."}},
 	{sigv4.ErrMissingAuth, errAccessDenied},

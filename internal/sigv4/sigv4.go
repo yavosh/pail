@@ -1,4 +1,4 @@
-// Package sigv4 verifies AWS Signature Version 4 on S3 requests.
+// Package sigv4 verifies AWS Signature Version 4 and SigV2 presigned S3 URLs.
 package sigv4
 
 import (

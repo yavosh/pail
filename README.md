@@ -125,7 +125,15 @@ s3 = boto3.client(
 )
 ```
 
-boto3 signs presigned URLs for a custom endpoint with Signature Version 2 by default. pail does not support Signature Version 2. To presign, create the client with `Config`:
+boto3's default presigned URLs work with pail:
+
+```python
+url = s3.generate_presigned_url("get_object", Params={"Bucket": "demo", "Key": "example.txt"})
+```
+
+### Browser form uploads
+
+Form policies require Signature Version 4. Create the client with `Config`:
 
 ```python
 from botocore.config import Config
@@ -139,8 +147,6 @@ s3 = boto3.client(
     config=Config(signature_version="s3v4"),
 )
 ```
-
-### Browser form uploads
 
 Set bucket CORS rules for the application's origin and `POST` method. Create the form grant on your backend:
 
@@ -192,13 +198,15 @@ As on AWS, a request path with a literal `..` segment gets an empty `400 Bad Req
 
 ## Authentication
 
-S3 requests use AWS Signature Version 4 with the configured access key pair. Presigned URLs and form policies delegate access without sharing the secret key. CORS preflight and operations permitted by public ACL grants need no signature. pail accepts any region in the signature. A body with a signed SHA-256 payload hash is checked as it is read. Every `x-amz-*` header must be signed.
+S3 requests use AWS Signature Version 4 with the configured access key pair. Presigned URLs accept Signature Version 2 and Version 4. Form policies require Version 4. SigV2 Authorization headers remain unsupported. Presigned URLs and form policies delegate access without sharing the secret key. CORS preflight and operations permitted by public ACL grants need no signature. pail accepts any region in the SigV4 signature. A body with a signed SHA-256 payload hash is checked as it is read. Every `x-amz-*` header must be signed.
 
 A captured signed request can be replayed for up to 15 minutes, as on AWS. Keep pail on `127.0.0.1`, or behind TLS, when the network is not trusted.
 
 Streaming uploads (`aws-chunked`) work in the three SigV4 modes: signed chunks, unsigned chunks with a trailer, and signed chunks with a signed trailer. The AWS CLI and the SDKs send them by default over HTTPS. pail checks each chunk signature and the decoded length as it reads the body. It stores the object under its `x-amz-decoded-content-length`. As on AWS, a signed chunk other than the last must hold at least 8 KiB. It removes `aws-chunked` from the stored `Content-Encoding`.
 
 Presigned URLs (query-string SigV4) work for any operation. `X-Amz-Expires` must be 0 to 604800 seconds. The payload is not signed. As on AWS, an expired URL, or one dated more than 15 minutes ahead, gets `403 AccessDenied`.
+
+SigV2 URLs use `AWSAccessKeyId`, `Signature`, and `Expires`. `Expires` is a Unix timestamp without SigV4's seven-day limit. Signatures cover the method, MD5, content type, `x-amz-*` headers, escaped resource path, and S3 subresources. Other query parameters remain unsigned, as in S3 SigV2. Expired URLs and URLs missing `Expires` get `403 AccessDenied`. Upload clients must send the headers used when presigning.
 
 ## Health check
 

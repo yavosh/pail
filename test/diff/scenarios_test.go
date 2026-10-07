@@ -98,6 +98,7 @@ func scenarios() []scenario {
 		lifecycleRulesScenario(),
 		aclScenario(),
 		postScenario(),
+		sigV2Scenario(),
 		{name: "auth-errors", steps: []step{
 			createBucket(),
 			{name: "no-credentials", method: http.MethodGet, query: "list-type=2", auth: authNone},
