@@ -115,7 +115,12 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 		writeError(w, r, errInvalidChecksum)
 		return
 	}
-	up, err := h.opts.Store.CreateUpload(r.Context(), t.bucket, t.key, store.UploadOptions{Metadata: metadata, ChecksumAlgorithm: algorithm, ChecksumType: typ})
+	policy, apiErr, valid := h.writeACL(r, false)
+	if !valid {
+		writeError(w, r, apiErr)
+		return
+	}
+	up, err := h.opts.Store.CreateUpload(r.Context(), t.bucket, t.key, store.UploadOptions{ACL: &policy, Metadata: metadata, ChecksumAlgorithm: algorithm, ChecksumType: typ})
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
@@ -277,6 +282,7 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 	if r.TLS != nil {
 		location.Scheme = "https"
 	}
+	h.setExpiration(w, r, t.bucket, info)
 	writeXML(w, r, http.StatusOK, response{
 		Xmlns: s3Namespace, Location: location.String(), Bucket: t.bucket, Key: t.key, ETag: quoteETag(info.ETag),
 		checksumFields: newChecksumFields(info.ChecksumAlgorithm, info.Checksum), ChecksumType: info.ChecksumType,

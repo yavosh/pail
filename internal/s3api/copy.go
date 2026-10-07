@@ -57,7 +57,12 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, errCopyToSelf)
 		return
 	}
-	opts := store.PutOptions{}
+	policy, apiErr, ok := h.writeACL(r, false)
+	if !ok {
+		writeError(w, r, apiErr)
+		return
+	}
+	opts := store.PutOptions{ACL: &policy}
 	if replace {
 		if opts.Metadata, apiErr, ok = requestMetadata(r.Header, false); !ok {
 			writeError(w, r, apiErr)
@@ -111,6 +116,7 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 	if dst.Checksum != "" {
 		resp.Checksum = &checksumElement{XMLName: xml.Name{Local: "Checksum" + dst.ChecksumAlgorithm}, Value: dst.Checksum}
 	}
+	h.setExpiration(w, r, t.bucket, dst)
 	writeXML(w, r, http.StatusOK, resp)
 }
 

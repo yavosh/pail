@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yavosh/pail/internal/acl"
 	"github.com/yavosh/pail/internal/checksum"
 )
 
@@ -44,9 +45,10 @@ const (
 
 // UploadInfo describes a multipart upload.
 type UploadInfo struct {
-	ID        string    `json:"-"` // the directory name
-	Key       string    `json:"key"`
-	Initiated time.Time `json:"initiated"`
+	ACL       *acl.Policy `json:"acl,omitempty"`
+	ID        string      `json:"-"` // the directory name
+	Key       string      `json:"key"`
+	Initiated time.Time   `json:"initiated"`
 	// Metadata is stored with the object that Complete creates.
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// ChecksumAlgorithm and ChecksumType are empty when the client chose none.
@@ -56,6 +58,7 @@ type UploadInfo struct {
 
 // UploadOptions are the optional parts of a CreateUpload.
 type UploadOptions struct {
+	ACL               *acl.Policy
 	Metadata          map[string]string
 	ChecksumAlgorithm string
 	ChecksumType      string
@@ -184,6 +187,7 @@ func (s *Store) CreateUpload(ctx context.Context, bucket, key string, opts Uploa
 		Key:               key,
 		Initiated:         time.Now().UTC(),
 		Metadata:          opts.Metadata,
+		ACL:               opts.ACL,
 		ChecksumAlgorithm: checksum.Canonical(opts.ChecksumAlgorithm),
 		ChecksumType:      opts.ChecksumType,
 	}
@@ -507,6 +511,7 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 		ETag:         hex.EncodeToString(etagSum.Sum(nil)) + "-" + strconv.Itoa(len(records)),
 		LastModified: time.Now().UTC(),
 		Metadata:     up.Metadata,
+		ACL:          up.ACL,
 	}
 	if full != nil {
 		fullSum := full.Sum(nil)

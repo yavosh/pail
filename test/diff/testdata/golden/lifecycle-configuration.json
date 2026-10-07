@@ -1,0 +1,119 @@
+{
+  "scenario": "lifecycle-configuration",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-missing",
+      "request": "GET /?lifecycle",
+      "fingerprint": "d9fee5d50968baf8",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchLifecycleConfiguration\n"
+    },
+    {
+      "step": "put",
+      "request": "PUT /?lifecycle",
+      "fingerprint": "21aeac1c92b938e9",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Transition-Default-Minimum-Object-Size": "all_storage_classes_128K"
+      }
+    },
+    {
+      "step": "get",
+      "request": "GET /?lifecycle",
+      "fingerprint": "d9fee5d50968baf8",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Transition-Default-Minimum-Object-Size": "all_storage_classes_128K"
+      },
+      "body": "LifecycleConfiguration\n  Rule\n    ID: <volatile>\n    Filter\n      Prefix: tmp/\n    Status: Enabled\n    Expiration\n      Days: 7\n  Rule\n    ID: <volatile>\n    Filter: \n    Status: Disabled\n    AbortIncompleteMultipartUpload\n      DaysAfterInitiation: 3\n"
+    },
+    {
+      "step": "put-invalid",
+      "request": "PUT /?lifecycle",
+      "fingerprint": "fbec8dbe1b631f77",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "get-after-invalid",
+      "request": "GET /?lifecycle",
+      "fingerprint": "d9fee5d50968baf8",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Transition-Default-Minimum-Object-Size": "all_storage_classes_128K"
+      },
+      "body": "LifecycleConfiguration\n  Rule\n    ID: <volatile>\n    Filter\n      Prefix: tmp/\n    Status: Enabled\n    Expiration\n      Days: 7\n  Rule\n    ID: <volatile>\n    Filter: \n    Status: Disabled\n    AbortIncompleteMultipartUpload\n      DaysAfterInitiation: 3\n"
+    },
+    {
+      "step": "delete",
+      "request": "DELETE /?lifecycle",
+      "fingerprint": "bcfea5fd41d45422",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-again",
+      "request": "DELETE /?lifecycle",
+      "fingerprint": "bcfea5fd41d45422",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-deleted",
+      "request": "GET /?lifecycle",
+      "fingerprint": "d9fee5d50968baf8",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchLifecycleConfiguration\n"
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

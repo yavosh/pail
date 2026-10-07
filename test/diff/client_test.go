@@ -6,13 +6,18 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,6 +98,11 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 	for k, v := range st.header {
 		req.Header.Set(k, expand(v))
 	}
+	if st.form != nil {
+		if err := tg.encodePost(req, st, bucket); err != nil {
+			return response{}, err
+		}
+	}
 	sum := sha256.Sum256([]byte(st.body))
 	payloadHash := hex.EncodeToString(sum[:])
 	if st.stream != "" {
@@ -101,27 +111,29 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 	}
 	// A presigned request has no x-amz-content-sha256: it would be an unsigned x-amz header.
 	presigned := st.auth >= authPresigned
-	if !presigned {
+	if !presigned && st.form == nil {
 		req.Header.Set("X-Amz-Content-Sha256", payloadHash)
 	}
 
 	creds, signTime := tg.creds, time.Now()
-	switch st.auth {
-	case authNone:
-	case authUnknownKey:
-		creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
-		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
-	case authBadSignature:
-		// The signer caches keys by access key, not secret, so a wrong secret
-		// through the shared signer would break every later request.
-		creds.SecretAccessKey += "-wrong"
-		err = newSigner().SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
-	case authSkewed:
-		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
-	case authPresigned, authPresignedExpired, authPresignedTampered, authPresignedFuture, authPresignedBadCredential, authPresignedMissingParam:
-		err = tg.presign(ctx, req, st.auth, signTime)
-	default:
-		err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
+	if st.form == nil {
+		switch st.auth {
+		case authNone:
+		case authUnknownKey:
+			creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
+			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
+		case authBadSignature:
+			// The signer caches keys by access key, not secret, so a wrong secret
+			// through the shared signer would break every later request.
+			creds.SecretAccessKey += "-wrong"
+			err = newSigner().SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
+		case authSkewed:
+			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
+		case authPresigned, authPresignedExpired, authPresignedTampered, authPresignedFuture, authPresignedBadCredential, authPresignedMissingParam:
+			err = tg.presign(ctx, req, st.auth, signTime)
+		default:
+			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
+		}
 	}
 	if err != nil {
 		return response{}, fmt.Errorf("sign: %w", err)
@@ -346,4 +358,58 @@ func failure(resp response, err error) string {
 		s += " " + strings.Join(strings.Fields(body), " ")
 	}
 	return s
+}
+
+func (tg *target) encodePost(req *http.Request, st step, bucket string) error {
+	now := time.Now().UTC()
+	expiration := now.Add(time.Hour)
+	if st.postMutation == "expired" {
+		expiration = now.Add(-time.Hour)
+	}
+	fields := maps.Clone(st.form)
+	fields["x-amz-algorithm"] = "AWS4-HMAC-SHA256"
+	fields["x-amz-credential"] = tg.creds.AccessKeyID + "/" + now.Format("20060102") + "/" + tg.region + "/s3/aws4_request"
+	fields["x-amz-date"] = now.Format("20060102T150405Z")
+	if tg.creds.SessionToken != "" {
+		fields["x-amz-security-token"] = tg.creds.SessionToken
+	}
+	conditions := []any{map[string]string{"bucket": bucket}, []any{"content-length-range", 1, 32}}
+	for _, key := range slices.Sorted(maps.Keys(fields)) {
+		conditions = append(conditions, map[string]string{key: fields[key]})
+	}
+	policy, err := json.Marshal(map[string]any{"expiration": expiration.Format(time.RFC3339), "conditions": conditions})
+	if err != nil {
+		return err
+	}
+	fields["policy"] = base64.StdEncoding.EncodeToString(policy)
+	fields["x-amz-signature"] = hex.EncodeToString(hmacSHA256(signingKey(tg.creds.SecretAccessKey, now.Format("20060102"), tg.region), fields["policy"]))
+	switch st.postMutation {
+	case "signature":
+		fields["x-amz-signature"] = strings.Repeat("0", 64)
+	case "key":
+		fields["key"] = "forbidden"
+	case "uncovered":
+		fields["x-amz-meta-uncovered"] = "extra"
+	}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for _, key := range slices.Sorted(maps.Keys(fields)) {
+		if err := mw.WriteField(key, fields[key]); err != nil {
+			return err
+		}
+	}
+	part, err := mw.CreateFormFile("file", "form.txt")
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(part, st.body); err != nil {
+		return err
+	}
+	if err := mw.Close(); err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Body = io.NopCloser(bytes.NewReader(body.Bytes()))
+	req.ContentLength = int64(body.Len())
+	return nil
 }

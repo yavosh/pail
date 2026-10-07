@@ -37,6 +37,11 @@ Check these steps by hand in a new recording:
 - `bucket-lifecycle/head-after-delete`: AWS deletes buckets with eventual consistency, so this step can flap. Record it again if it does.
 - Object writes and listings: AWS adds a default CRC64NVME checksum to every object. It shows as `x-amz-checksum-*` headers on writes and `ChecksumAlgorithm` and `ChecksumType` in listings. Those steps are in `pending.txt` until #10.
 
+The `cors-configuration`, `lifecycle-configuration`, `acl-grants`, and `post-policy` scenarios have AWS recordings checked during replay.
+The ACL scenario creates an ACL-enabled AWS bucket with `ObjectWriter` ownership.
+Form steps build signed multipart policies with the suite's signing code.
+They validate successful uploads and rejected signatures, expired policies, keys, fields, and sizes.
+
 ## What is compared
 
 - The status code.

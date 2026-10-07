@@ -161,6 +161,64 @@ with Step("generate_presigned_url"):
     with urllib.request.urlopen(url) as resp:  # noqa: S310
         check(resp.read() == small, "presigned object differs")
 
+with Step("bucket CORS and lifecycle configuration"):
+    cors = [{"AllowedOrigins": ["https://app.example.com"],
+             "AllowedMethods": ["GET", "PUT", "POST"],
+             "AllowedHeaders": ["*"], "ExposeHeaders": ["ETag"]}]
+    s3.put_bucket_cors(Bucket=bucket, CORSConfiguration={"CORSRules": cors})
+    check(s3.get_bucket_cors(Bucket=bucket)["CORSRules"] == cors, "CORS rules differ")
+    rules = [{"ID": "forms", "Status": "Enabled", "Filter": {"Prefix": "form/"},
+              "Expiration": {"Days": 7}}]
+    s3.put_bucket_lifecycle_configuration(
+        Bucket=bucket, LifecycleConfiguration={"Rules": rules})
+    check(s3.get_bucket_lifecycle_configuration(Bucket=bucket)["Rules"] == rules,
+          "lifecycle rules differ")
+
+with Step("generate_presigned_post with ACL and CORS"):
+    fields = {"Content-Type": "text/plain", "acl": "public-read",
+              "success_action_status": "201", "x-amz-meta-purpose": "form"}
+    post = presigner.generate_presigned_post(
+        Bucket=bucket, Key="form/${filename}", Fields=fields,
+        Conditions=[{key: value} for key, value in fields.items()]
+        + [["content-length-range", 1, 1024]],
+    )
+    boundary = "pail-" + os.urandom(16).hex()
+    parts = []
+    for name, value in post["fields"].items():
+        parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"'
+                      f'\r\n\r\n{value}\r\n').encode())
+    parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+                  'filename="form.txt"\r\nContent-Type: text/plain\r\n\r\n').encode())
+    parts.extend([small, f"\r\n--{boundary}--\r\n".encode()])
+    request = urllib.request.Request(
+        post["url"], data=b"".join(parts), method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}",
+                 "Origin": "https://app.example.com"},
+    )
+    with urllib.request.urlopen(request) as resp:  # noqa: S310
+        check(resp.status == 201, f"POST status is {resp.status}")
+        check(resp.headers["Access-Control-Allow-Origin"] == "https://app.example.com",
+              "POST CORS header differs")
+    obj = s3.get_object(Bucket=bucket, Key="form/form.txt")
+    check(obj["Body"].read() == small, "POST object differs")
+    obj["Body"].close()
+    check(obj["Metadata"] == {"purpose": "form"}, "POST metadata differs")
+    check("Expiration" in obj, "POST object has no lifecycle expiration header")
+    acl = s3.get_object_acl(Bucket=bucket, Key="form/form.txt")
+    check(any(g["Grantee"].get("URI") == "http://acs.amazonaws.com/groups/global/AllUsers"
+              and g["Permission"] == "READ" for g in acl["Grants"]), "POST ACL differs")
+    with urllib.request.urlopen(f"{endpoint}/{bucket}/form/form.txt") as resp:  # noqa: S310
+        check(resp.read() == small, "public object differs")
+    s3.put_object_acl(Bucket=bucket, Key="form/form.txt", ACL="private")
+    try:
+        urllib.request.urlopen(f"{endpoint}/{bucket}/form/form.txt")  # noqa: S310
+    except urllib.error.HTTPError as exc:
+        check(exc.code == 403, f"private object status is {exc.code}")
+    else:
+        raise AssertionError("private object was readable anonymously")
+    s3.delete_bucket_cors(Bucket=bucket)
+    s3.delete_bucket_lifecycle(Bucket=bucket)
+
 with Step("head_object"):
     head = s3.head_object(Bucket=bucket, Key="small.txt")
     check(head["Metadata"] == {"purpose": "smoke"}, f"unexpected metadata: {head['Metadata']}")

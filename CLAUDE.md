@@ -52,6 +52,18 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Never use `time.Tick`. It cannot be stopped, which breaks the goroutine-lifetime rule above. Use `time.NewTicker` and `Stop` it.
 - Before you write or review Go code, read [`docs/code-style.md`](docs/code-style.md). It lists the external style guides these rules come from (Effective Go, Google Go Style, modern Go idioms, Dave Cheney, Mat Ryer). Where this list is silent, follow those guides.
 
+## Bucket settings and browser uploads
+
+- `internal/s3api/configuration.go` validates CORS and lifecycle XML and checks request checksums.
+- Bucket configurations persist atomically in `internal/store/configuration.go`.
+- `internal/lifecycle` holds expiration and multipart cleanup rules. The server owns the cleanup worker and stops it before closing storage.
+- Lifecycle cleanup holds the bucket lock exclusively. It reads current metadata before deleting eligible objects.
+- `internal/acl` holds ACL documents. Object ACLs travel with metadata through uploads and multipart completion.
+- ACL grants use the literal `xsi:type` prefix in responses because SDK decoders require it.
+- Anonymous overwrites check ownership again under the object lock before committing.
+- `internal/sigv4/post.go` verifies signed form policies. The file arrives last, and size checks finish before storage commits.
+- pail enables ACLs but still authenticates one account. Tag filters, storage transitions, version actions, and email grantees remain unsupported.
+
 ## Client tests
 
 - Every S3 feature adds aws-sdk-go-v2 tests in `test/`. Use `forEachStyle`, so each test runs path-style and virtual-hosted.

@@ -91,6 +91,22 @@ s3api copy-object --bucket "$bucket" --key copy.txt --copy-source "$bucket/small
 length=$(s3api head-object --bucket "$bucket" --key copy.txt --query ContentLength --output text)
 [ "$length" = "$want" ] || fail "copy ContentLength is $length, want $want"
 
+# Bucket settings and ACL grants through the CLI's default checksum settings.
+s3api put-bucket-cors --bucket "$bucket" --cors-configuration \
+  '{"CORSRules":[{"AllowedOrigins":["https://app.example.com"],"AllowedMethods":["PUT","POST"],"AllowedHeaders":["*"]}]}'
+s3api get-bucket-cors --bucket "$bucket"
+s3api put-bucket-lifecycle-configuration --bucket "$bucket" --lifecycle-configuration \
+  '{"Rules":[{"ID":"temporary","Status":"Enabled","Filter":{"Prefix":"tmp/"},"Expiration":{"Days":7}}]}'
+s3api get-bucket-lifecycle-configuration --bucket "$bucket"
+s3api get-bucket-acl --bucket "$bucket"
+s3api put-object-acl --bucket "$bucket" --key small.txt --grant-read \
+  'uri="http://acs.amazonaws.com/groups/global/AllUsers"'
+curl -fsS -o "$work/small.public" "$SMOKE_ENDPOINT/$bucket/small.txt"
+cmp "$work/small.txt" "$work/small.public" || fail "public object differs"
+s3api put-object-acl --bucket "$bucket" --key small.txt --acl private
+s3api delete-bucket-cors --bucket "$bucket"
+s3api delete-bucket-lifecycle --bucket "$bucket"
+
 s3 rm "s3://$bucket" --recursive
 # shellcheck disable=SC2016
 left=$(s3api list-objects-v2 --bucket "$bucket" --query 'length(Contents || `[]`)' --output text)

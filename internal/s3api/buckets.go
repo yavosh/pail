@@ -14,12 +14,16 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yavosh/pail/internal/acl"
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs"
 )
 
 // Store is the storage the S3 handlers need. *store.Store implements it.
 type Store interface {
+	PutObjectACL(ctx context.Context, bucket, key string, policy acl.Policy) error
+	GetBucketConfiguration(ctx context.Context, bucket, kind string) (store.BucketConfiguration, error)
+	PutBucketConfiguration(ctx context.Context, bucket, kind string, cfg *store.BucketConfiguration) error
 	CreateBucket(ctx context.Context, name string) error
 	HeadBucket(ctx context.Context, name string) (store.BucketInfo, error)
 	ListBuckets(ctx context.Context) ([]store.BucketInfo, error)
@@ -144,6 +148,11 @@ func (h *handler) handleCreateBucket(w http.ResponseWriter, r *http.Request, t t
 			return
 		}
 	}
+	policy, apiErr, valid := h.writeACL(r, true)
+	if !valid {
+		writeError(w, r, apiErr)
+		return
+	}
 	err = h.opts.Store.CreateBucket(r.Context(), t.bucket)
 	// us-east-1 keeps its legacy answer: re-creating your own bucket succeeds.
 	if errors.Is(err, store.ErrBucketExists) && h.opts.Region == "us-east-1" {
@@ -151,6 +160,9 @@ func (h *handler) handleCreateBucket(w http.ResponseWriter, r *http.Request, t t
 	}
 	if err != nil {
 		writeError(w, r, toAPIError(err))
+		return
+	}
+	if !h.storeBucketACL(w, r, t, policy) {
 		return
 	}
 	w.Header().Set("Location", "/"+t.bucket)

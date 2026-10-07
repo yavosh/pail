@@ -46,6 +46,9 @@ var comparedHeaders = []string{
 	"Expires", "Location", "X-Amz-Bucket-Region", "X-Amz-Checksum-Crc32",
 	"X-Amz-Checksum-Crc32c", "X-Amz-Checksum-Crc64nvme", "X-Amz-Checksum-Sha1",
 	"X-Amz-Checksum-Sha256", "X-Amz-Checksum-Type",
+	"Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers",
+	"Access-Control-Expose-Headers", "Access-Control-Allow-Credentials", "Access-Control-Max-Age",
+	"Vary", "X-Amz-Transition-Default-Minimum-Object-Size",
 }
 
 var presenceHeaders = []string{"Last-Modified", "X-Amz-Id-2", "X-Amz-Request-Id"}
@@ -69,7 +72,7 @@ func normalize(st step, bucket string, r response) exchange {
 	// GET with uploadId lists parts instead.
 	q, _ := url.ParseQuery(st.query)
 	objectData := st.key != "" && (st.method == http.MethodGet || st.method == http.MethodHead) &&
-		(r.status == http.StatusOK || r.status == http.StatusPartialContent) && !q.Has("uploadId")
+		(r.status == http.StatusOK || r.status == http.StatusPartialContent) && !q.Has("uploadId") && !q.Has("acl")
 	if !objectData {
 		body = strings.ReplaceAll(body, bucket, "{bucket}")
 	}
@@ -87,6 +90,11 @@ func normalize(st step, bucket string, r response) exchange {
 	ex.Body = body
 	for _, h := range comparedHeaders {
 		if v := r.header.Get(h); v != "" {
+			if h == "Location" && st.form != nil && r.status == http.StatusCreated {
+				if location, err := url.Parse(v); err == nil {
+					v = location.EscapedPath()
+				}
+			}
 			ex.Headers[h] = strings.ReplaceAll(v, bucket, "{bucket}")
 		}
 	}
@@ -126,6 +134,12 @@ func fingerprint(st step) string {
 	h.Write([]byte(st.body))
 	if st.stream != "" { // only here, so older steps keep their fingerprints
 		fmt.Fprintf(h, "\nstream %s %d %q %v", st.stream, st.chunk, st.trailer, st.badChunkSig)
+	}
+	if st.form != nil {
+		for _, key := range slices.Sorted(maps.Keys(st.form)) {
+			fmt.Fprintf(h, "\nform %q=%q", key, st.form[key])
+		}
+		fmt.Fprintf(h, "\npostMutation %q", st.postMutation)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

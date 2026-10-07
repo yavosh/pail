@@ -1,0 +1,121 @@
+{
+  "scenario": "acl-grants",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "2223099bc878d473",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-bucket-acl",
+      "request": "GET /?acl",
+      "fingerprint": "1fb650b3f1359564",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "AccessControlPolicy\n  Owner\n    ID: <volatile>\n  AccessControlList\n    Grant\n      Grantee\n        ID: <volatile>\n      Permission: FULL_CONTROL\n"
+    },
+    {
+      "step": "set-bucket-private",
+      "request": "PUT /?acl",
+      "fingerprint": "5c07bf6c1d5a8f18",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-object",
+      "request": "PUT /k",
+      "fingerprint": "2cd01b9b7f0f4e87",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"a33915ba226b6dbd1edb3e09fac41ed9\"",
+        "X-Amz-Checksum-Crc64nvme": "bF57Wex39vM=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-object-acl",
+      "request": "GET /k?acl",
+      "fingerprint": "9b31db89c40dab91",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "AccessControlPolicy\n  Owner\n    ID: <volatile>\n  AccessControlList\n    Grant\n      Grantee\n        ID: <volatile>\n      Permission: FULL_CONTROL\n"
+    },
+    {
+      "step": "set-object-private",
+      "request": "PUT /k?acl",
+      "fingerprint": "7ff7b1e38f912ed2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-private",
+      "request": "GET /k?acl",
+      "fingerprint": "9b31db89c40dab91",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "AccessControlPolicy\n  Owner\n    ID: <volatile>\n  AccessControlList\n    Grant\n      Grantee\n        ID: <volatile>\n      Permission: FULL_CONTROL\n"
+    },
+    {
+      "step": "anonymous-get",
+      "request": "GET /k",
+      "fingerprint": "be4bec0c96e6e2c5",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "delete-object",
+      "request": "DELETE /k",
+      "fingerprint": "d19d2c8bc0681eba",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}
