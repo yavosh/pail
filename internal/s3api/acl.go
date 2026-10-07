@@ -252,7 +252,7 @@ func (h *handler) anonymousAllowed(r *http.Request, t target, op operation) bool
 
 func (h *handler) writeACL(r *http.Request, bucket bool) (acl.Policy, apiError, bool) {
 	ownerID := h.bucketOwner().ID
-	if r.Header.Get("Authorization") == "" && !r.URL.Query().Has("X-Amz-Signature") {
+	if r.Header.Get("Authorization") == "" && !r.URL.Query().Has("X-Amz-Signature") && !r.URL.Query().Has("Signature") {
 		ownerID = acl.AnonymousID
 	}
 	return h.requestACL(r.Header, bucket, ownerID)

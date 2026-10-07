@@ -1,0 +1,190 @@
+{
+  "scenario": "presigned-v2",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put",
+      "request": "PUT /dir/a b+c.txt",
+      "fingerprint": "d34bc6ac1f654998",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"1677fe8850c8d771cb4efb5b4b63f9dd\"",
+        "X-Amz-Checksum-Crc64nvme": "XrovKoETvlc=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get",
+      "request": "GET /dir/a b+c.txt",
+      "fingerprint": "166049a1c755c329",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "10",
+        "Content-Type": "text/plain",
+        "Etag": "\"1677fe8850c8d771cb4efb5b4b63f9dd\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "sigv2 body"
+    },
+    {
+      "step": "head",
+      "request": "HEAD /dir/a b+c.txt",
+      "fingerprint": "6ab7c02bcae2452d",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "10",
+        "Content-Type": "text/plain",
+        "Etag": "\"1677fe8850c8d771cb4efb5b4b63f9dd\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-override",
+      "request": "GET /dir/a b+c.txt?response-content-type=application%2Fjson",
+      "fingerprint": "05c765c8fe7ed181",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "10",
+        "Content-Type": "application/json",
+        "Etag": "\"1677fe8850c8d771cb4efb5b4b63f9dd\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "sigv2 body"
+    },
+    {
+      "step": "get-acl",
+      "request": "GET /dir/a b+c.txt?acl",
+      "fingerprint": "be2c4a221850b857",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "AccessControlPolicy\n  Owner\n    ID: <volatile>\n  AccessControlList\n    Grant\n      Grantee\n        ID: <volatile>\n      Permission: FULL_CONTROL\n"
+    },
+    {
+      "step": "expired",
+      "request": "GET /dir/a b+c.txt",
+      "fingerprint": "93a028f25b001d2d",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "tampered",
+      "request": "GET /dir/a b+c.txt",
+      "fingerprint": "62532444cf8dc9a0",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: SignatureDoesNotMatch\n"
+    },
+    {
+      "step": "bad-signature",
+      "request": "GET /dir/a b+c.txt",
+      "fingerprint": "73d3dfe1a908ea58",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: SignatureDoesNotMatch\n"
+    },
+    {
+      "step": "missing-expiry",
+      "request": "GET /dir/a b+c.txt",
+      "fingerprint": "261364c9626a822c",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "put-bad-digest",
+      "request": "PUT /dir/a b+c.txt",
+      "fingerprint": "34d922ed64616130",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadDigest\n"
+    },
+    {
+      "step": "get-after-failures",
+      "request": "GET /dir/a b+c.txt",
+      "fingerprint": "166049a1c755c329",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "10",
+        "Content-Type": "text/plain",
+        "Etag": "\"1677fe8850c8d771cb4efb5b4b63f9dd\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Meta-Color": "blue",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "sigv2 body"
+    },
+    {
+      "step": "delete",
+      "request": "DELETE /dir/a b+c.txt",
+      "fingerprint": "07961ea786007dac",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

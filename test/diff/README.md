@@ -42,6 +42,10 @@ The ACL scenario creates an ACL-enabled AWS bucket with `ObjectWriter` ownership
 Form steps build signed multipart policies with the suite's signing code.
 They validate successful uploads and rejected signatures, expired policies, keys, fields, and sizes.
 
+The `presigned-v2` scenario compares SigV2 uploads, downloads, response overrides, ACLs, and rejected URLs.
+Record it with `go test ./test/diff -record -run '^TestDiff/presigned-v2$' -v`.
+The AWS recording includes `403 AccessDenied` for missing `Expires`.
+
 ## What is compared
 
 - The status code.

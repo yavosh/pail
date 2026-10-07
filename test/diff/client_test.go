@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -43,6 +44,11 @@ const (
 	authPresignedFuture        // signed one hour from now
 	authPresignedBadCredential // credential scope names the ec2 service
 	authPresignedMissingParam  // X-Amz-Date removed after signing
+	authPresignedV2
+	authPresignedV2Expired
+	authPresignedV2Tampered
+	authPresignedV2BadSignature
+	authPresignedV2MissingParam
 )
 
 // target is one S3 implementation the suite talks to over HTTP.
@@ -131,6 +137,8 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
 		case authPresigned, authPresignedExpired, authPresignedTampered, authPresignedFuture, authPresignedBadCredential, authPresignedMissingParam:
 			err = tg.presign(ctx, req, st.auth, signTime)
+		case authPresignedV2, authPresignedV2Expired, authPresignedV2Tampered, authPresignedV2BadSignature, authPresignedV2MissingParam:
+			tg.presignV2(req, bucket, st.auth, signTime)
 		default:
 			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
 		}
@@ -358,6 +366,53 @@ func failure(resp response, err error) string {
 		s += " " + strings.Join(strings.Fields(body), " ")
 	}
 	return s
+}
+
+func (tg *target) presignV2(req *http.Request, bucket string, auth authMode, now time.Time) {
+	expires := now.Add(15 * time.Minute)
+	if auth == authPresignedV2Expired {
+		expires = now.Add(-time.Hour)
+	}
+	if tg.creds.SessionToken != "" {
+		req.Header.Set("X-Amz-Security-Token", tg.creds.SessionToken)
+	}
+	expiration := strconv.FormatInt(expires.Unix(), 10)
+	stringToSign := req.Method + "\n" + req.Header.Get("Content-MD5") + "\n" + req.Header.Get("Content-Type") + "\n" + expiration + "\n"
+	for _, name := range slices.Sorted(maps.Keys(req.Header)) {
+		if strings.HasPrefix(strings.ToLower(name), "x-amz-") {
+			stringToSign += strings.ToLower(name) + ":" + strings.TrimSpace(req.Header.Get(name)) + "\n"
+		}
+	}
+	resource := "/" + bucket + req.URL.EscapedPath()
+	q := req.URL.Query()
+	var parameters []string
+	for _, name := range []string{"acl", "partNumber", "response-content-disposition", "response-content-type", "uploadId", "versionId"} {
+		if !q.Has(name) {
+			continue
+		}
+		parameter := name
+		if q.Get(name) != "" {
+			parameter += "=" + q.Get(name)
+		}
+		parameters = append(parameters, parameter)
+	}
+	if len(parameters) > 0 {
+		resource += "?" + strings.Join(parameters, "&")
+	}
+	mac := hmac.New(sha1.New, []byte(tg.creds.SecretAccessKey))
+	_, _ = mac.Write([]byte(stringToSign + resource))
+	q.Set("AWSAccessKeyId", tg.creds.AccessKeyID)
+	q.Set("Expires", expiration)
+	q.Set("Signature", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
+	switch auth {
+	case authPresignedV2Tampered:
+		q.Set("response-content-type", "text/html")
+	case authPresignedV2BadSignature:
+		q.Set("Signature", base64.StdEncoding.EncodeToString(make([]byte, 20)))
+	case authPresignedV2MissingParam:
+		q.Del("Expires")
+	}
+	req.URL.RawQuery = q.Encode()
 }
 
 func (tg *target) encodePost(req *http.Request, st step, bucket string) error {
