@@ -136,8 +136,8 @@ func TestCopyObject(t *testing.T) {
 	}
 	for _, tt := range tests {
 		put("bkt", "src") // the onto-itself REPLACE case overwrites it
-		_ = st.DeleteObject(ctx, "bkt", "dst")
-		_ = st.DeleteObject(ctx, "other", "dst")
+		_ = st.DeleteObject(ctx, "bkt", "dst", store.DeleteOptions{})
+		_ = st.DeleteObject(ctx, "other", "dst", store.DeleteOptions{})
 		// {now} is read after the put above, so it is never before the source's Last-Modified.
 		header := maps.Clone(tt.header)
 		for k, v := range header {

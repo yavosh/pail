@@ -509,7 +509,7 @@ func TestAbortEndedUpload(t *testing.T) {
 	if uploads, err := s.ListUploads(ctx, "b"); err != nil || len(uploads) != 0 {
 		t.Errorf("ListUploads = %+v, %v, want none", uploads, err)
 	}
-	if err := s.DeleteObject(ctx, "b", "k"); err != nil {
+	if err := s.DeleteObject(ctx, "b", "k", DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteBucket(ctx, "b"); err != nil {
@@ -651,7 +651,7 @@ func TestConcurrentUploadOperations(t *testing.T) {
 		if n := dirLen(t, fsys, "buckets/b/uploads"); n != 0 {
 			t.Errorf("round %d: uploads directory has %d entries, want 0", round, n)
 		}
-		_ = s.DeleteObject(ctx, "b", "k")
+		_ = s.DeleteObject(ctx, "b", "k", DeleteOptions{})
 	}
 	if n := dirLen(t, fsys, "buckets/b/blobs"); n != 0 {
 		t.Errorf("blobs directory has %d entries, want 0", n)

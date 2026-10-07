@@ -31,7 +31,7 @@ type Store interface {
 	PutObject(ctx context.Context, bucket, key string, body io.Reader, opts store.PutOptions) (store.ObjectInfo, error)
 	GetObject(ctx context.Context, bucket, key string) (vfs.File, store.ObjectInfo, error)
 	HeadObject(ctx context.Context, bucket, key string) (store.ObjectInfo, error)
-	DeleteObject(ctx context.Context, bucket, key string) error
+	DeleteObject(ctx context.Context, bucket, key string, opts store.DeleteOptions) error
 	ListObjects(ctx context.Context, bucket, prefix, startAfter string) ([]store.ObjectInfo, error)
 	CreateUpload(ctx context.Context, bucket, key string, opts store.UploadOptions) (store.UploadInfo, error)
 	PutPart(ctx context.Context, bucket, key, uploadID string, partNumber int, body io.Reader, opts store.PartOptions) (store.PartInfo, error)

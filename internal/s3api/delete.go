@@ -11,6 +11,7 @@ import (
 
 	"github.com/yavosh/pail/internal/checksum"
 	"github.com/yavosh/pail/internal/sigv4"
+	"github.com/yavosh/pail/internal/store"
 )
 
 const (
@@ -21,8 +22,9 @@ const (
 
 func (h *handler) handleDeleteObjects(w http.ResponseWriter, r *http.Request, t target) {
 	type object struct {
-		Key       string `xml:"Key"`
-		VersionID string `xml:"VersionId"`
+		Key       string  `xml:"Key"`
+		VersionID string  `xml:"VersionId"`
+		ETag      *string `xml:"ETag"`
 	}
 	type request struct {
 		XMLName xml.Name `xml:"Delete"`
@@ -113,7 +115,7 @@ func (h *handler) handleDeleteObjects(w http.ResponseWriter, r *http.Request, t 
 		default:
 			if e, ok := checkObjectTarget(target{bucket: t.bucket, key: o.Key}); !ok {
 				apiErr = e
-			} else if err := h.opts.Store.DeleteObject(r.Context(), t.bucket, o.Key); err != nil {
+			} else if err := h.opts.Store.DeleteObject(r.Context(), t.bucket, o.Key, store.DeleteOptions{IfMatch: o.ETag}); err != nil {
 				apiErr = toAPIError(err)
 			}
 		}
