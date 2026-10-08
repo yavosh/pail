@@ -14,7 +14,7 @@ The review combined route, handler, storage, and test inspection; current AWS do
 
 **Priority: High — data-loss risk**
 
-Remediation: implemented on `fix/conditional-deletes`. Both APIs now evaluate current ETags under the storage key lock; mismatch, wildcard, missing-key, stale-ETag, concurrency, and Quiet behavior have regression tests. The new AWS differential fixture still needs a maintainer recording.
+Remediation: implemented on `fix/conditional-deletes`. Both APIs now evaluate current ETags under the storage key lock; mismatch, wildcard, missing-key, stale-ETag, concurrency, and Quiet behavior have regression tests. The maintainer-recorded AWS differential fixture now replays all 30 exchanges successfully, confirming matching, mismatching, wildcard, missing-key, stale-ETag, mixed-batch, and Quiet behavior.
 
 Confirmed locally before the fix:
 - `DeleteObject(IfMatch='"wrong"')` returned 204 and deleted the object.

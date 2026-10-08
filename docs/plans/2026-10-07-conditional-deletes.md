@@ -23,4 +23,4 @@ Implement finding A in `findings.md`: failed delete preconditions must not remov
 
 Targeted tests, full race tests, lint, modernizers, and a pure Go build pass. Repeated targeted race tests pass, and pinned boto3 probes now return 412 for a single mismatched ETag and a per-key PreconditionFailed error in batch responses, preserving both objects.
 
-The new differential scenario executes in the local determinism test, but AWS-golden replay skips it until a maintainer records `go test ./test/diff -record -run '^TestDiff/conditional-deletes$' -v`. No golden files were edited or manufactured from pail.
+The maintainer-recorded AWS fixture for `conditional-deletes` replays all 30 exchanges successfully. Matching and wildcard deletes succeed; mismatched/stale ETags preserve objects; conditional missing keys return NoSuchKey; mixed and Quiet batches retain per-key errors. A fresh full race run and lint pass with the fixture present. Existing golden files are unchanged, and no fixture was manufactured from pail.
