@@ -382,7 +382,15 @@ func (h *handler) handleDeleteObject(w http.ResponseWriter, r *http.Request, t t
 		writeError(w, r, apiErr)
 		return
 	}
-	if err := h.opts.Store.DeleteObject(r.Context(), t.bucket, t.key); err != nil {
+	var opts store.DeleteOptions
+	if values := r.Header.Values("If-Match"); len(values) > 0 {
+		if len(values) != 1 {
+			writeError(w, r, errInvalidArgument)
+			return
+		}
+		opts.IfMatch = new(values[0])
+	}
+	if err := h.opts.Store.DeleteObject(r.Context(), t.bucket, t.key, opts); err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}

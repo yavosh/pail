@@ -46,6 +46,10 @@ The `presigned-v2` scenario compares SigV2 uploads, downloads, response override
 Record it with `go test ./test/diff -record -run '^TestDiff/presigned-v2$' -v`.
 The AWS recording includes `403 AccessDenied` for missing `Expires`.
 
+The `conditional-deletes` scenario covers matching, mismatching, wildcard, missing-key, and stale-ETag deletes, plus mixed and quiet batches.
+Its maintainer-recorded AWS fixture replays all 30 exchanges successfully, including `412 PreconditionFailed` for mismatched ETags and `404 NoSuchKey` for conditional missing keys.
+Re-record it with `go test ./test/diff -record -run '^TestDiff/conditional-deletes$' -v`; never edit the golden file manually.
+
 ## What is compared
 
 - The status code.

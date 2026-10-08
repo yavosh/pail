@@ -202,8 +202,16 @@ func (s *Store) HeadObject(ctx context.Context, bucket, key string) (ObjectInfo,
 	return rec.ObjectInfo, nil
 }
 
-// DeleteObject removes key. Removing a missing key succeeds, as on S3.
-func (s *Store) DeleteObject(ctx context.Context, bucket, key string) error {
+// DeleteOptions are the optional conditions of a DeleteObject.
+type DeleteOptions struct {
+	// IfMatch requires a strong ETag match, or "*" for any existing object.
+	// nil is unconditional; a conditional missing key fails with ErrNoSuchKey.
+	IfMatch *string
+}
+
+// DeleteObject checks opts and removes key under the key lock.
+// Removing a missing key succeeds only when the delete is unconditional.
+func (s *Store) DeleteObject(ctx context.Context, bucket, key string, opts DeleteOptions) error {
 	if err := s.checkObject(ctx, bucket, key); err != nil {
 		return err
 	}
@@ -219,12 +227,21 @@ func (s *Store) DeleteObject(ctx context.Context, bucket, key string) error {
 	kl := s.keyLock(bucket, key)
 	kl.Lock()
 	defer kl.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	rec, err := s.readRecord(bucket, key)
-	if errors.Is(err, ErrNoSuchKey) {
+	if errors.Is(err, ErrNoSuchKey) && opts.IfMatch == nil {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if opts.IfMatch != nil {
+		etag := *opts.IfMatch
+		if etag != "*" && etag != rec.ETag && etag != `"`+rec.ETag+`"` {
+			return ErrPreconditionFailed
+		}
 	}
 	if err := s.fs.Remove(metaFile(bucket, key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("delete metadata: %w", err)

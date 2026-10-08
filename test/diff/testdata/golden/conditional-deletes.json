@@ -1,0 +1,391 @@
+{
+  "scenario": "conditional-deletes",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put",
+      "request": "PUT /key",
+      "fingerprint": "9c6693f58d9d1251",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "X-Amz-Checksum-Crc64nvme": "qH8Ak/zuapA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-mismatch",
+      "request": "DELETE /key",
+      "fingerprint": "15ce15488d32a5f1",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "get-after-mismatch",
+      "request": "GET /key",
+      "fingerprint": "83205eff3c77dd36",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "8",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "original"
+    },
+    {
+      "step": "delete-match",
+      "request": "DELETE /key",
+      "fingerprint": "7a0a4369410d72b6",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-missing-unconditional",
+      "request": "DELETE /key",
+      "fingerprint": "f091013f11093f24",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-missing-etag",
+      "request": "DELETE /key",
+      "fingerprint": "7a0a4369410d72b6",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "delete-missing-wildcard",
+      "request": "DELETE /key",
+      "fingerprint": "9811a918acc18d4f",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "put-wildcard",
+      "request": "PUT /key",
+      "fingerprint": "9c6693f58d9d1251",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "X-Amz-Checksum-Crc64nvme": "qH8Ak/zuapA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-wildcard",
+      "request": "DELETE /key",
+      "fingerprint": "9811a918acc18d4f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-before-overwrite",
+      "request": "PUT /key",
+      "fingerprint": "9c6693f58d9d1251",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "X-Amz-Checksum-Crc64nvme": "qH8Ak/zuapA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "overwrite",
+      "request": "PUT /key",
+      "fingerprint": "41a79b6b7885c897",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"f5300127f646a4550bc4a04fbe393e79\"",
+        "X-Amz-Checksum-Crc64nvme": "sclHG2ToE2s=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-stale",
+      "request": "DELETE /key",
+      "fingerprint": "7a0a4369410d72b6",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "get-after-stale",
+      "request": "GET /key",
+      "fingerprint": "83205eff3c77dd36",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "11",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"f5300127f646a4550bc4a04fbe393e79\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "replacement"
+    },
+    {
+      "step": "delete-key",
+      "request": "DELETE /key",
+      "fingerprint": "f091013f11093f24",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-match",
+      "request": "PUT /match",
+      "fingerprint": "673f718f38e0003b",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "X-Amz-Checksum-Crc64nvme": "qH8Ak/zuapA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-mismatch",
+      "request": "PUT /mismatch",
+      "fingerprint": "524d4485db3b599b",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "X-Amz-Checksum-Crc64nvme": "qH8Ak/zuapA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-batch-wildcard",
+      "request": "PUT /wildcard",
+      "fingerprint": "e2cef8e32b02d7db",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "X-Amz-Checksum-Crc64nvme": "qH8Ak/zuapA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-stale",
+      "request": "PUT /stale",
+      "fingerprint": "bd5d2e0be6f8b3d8",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "X-Amz-Checksum-Crc64nvme": "qH8Ak/zuapA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "overwrite-stale",
+      "request": "PUT /stale",
+      "fingerprint": "a4f25b6e28987612",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"f5300127f646a4550bc4a04fbe393e79\"",
+        "X-Amz-Checksum-Crc64nvme": "sclHG2ToE2s=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "batch-mixed",
+      "request": "POST /?delete",
+      "fingerprint": "0f77787f8b79cc98",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Deleted\n    Key: match\n  Deleted\n    Key: missing-unconditional\n  Deleted\n    Key: wildcard\n  Error\n    Key: mismatch\n    Code: PreconditionFailed\n    Message: At least one of the pre-conditions you specified did not hold\n  Error\n    Key: missing-etag\n    Code: NoSuchKey\n    Message: The specified key does not exist.\n  Error\n    Key: missing-wildcard\n    Code: NoSuchKey\n    Message: The specified key does not exist.\n  Error\n    Key: stale\n    Code: PreconditionFailed\n    Message: At least one of the pre-conditions you specified did not hold\n"
+    },
+    {
+      "step": "get-batch-mismatch",
+      "request": "GET /mismatch",
+      "fingerprint": "5738ad5e631d54cf",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "8",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "original"
+    },
+    {
+      "step": "get-batch-stale",
+      "request": "GET /stale",
+      "fingerprint": "03122ecb3331c96d",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "11",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"f5300127f646a4550bc4a04fbe393e79\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "replacement"
+    },
+    {
+      "step": "get-batch-match",
+      "request": "GET /match",
+      "fingerprint": "3ab048e02c11f646",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "get-batch-wildcard",
+      "request": "GET /wildcard",
+      "fingerprint": "4cf27b6058add542",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "batch-quiet",
+      "request": "POST /?delete",
+      "fingerprint": "1f9b0a76d2ba684b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Error\n    Key: mismatch\n    Code: PreconditionFailed\n    Message: At least one of the pre-conditions you specified did not hold\n  Error\n    Key: missing-wildcard\n    Code: NoSuchKey\n    Message: The specified key does not exist.\n"
+    },
+    {
+      "step": "get-after-quiet-mismatch",
+      "request": "GET /mismatch",
+      "fingerprint": "5738ad5e631d54cf",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "8",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"919c8b643b7133116b02fc0d9bb7df3f\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "original"
+    },
+    {
+      "step": "get-after-quiet-match",
+      "request": "GET /stale",
+      "fingerprint": "03122ecb3331c96d",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "delete-remaining",
+      "request": "DELETE /mismatch",
+      "fingerprint": "e2f89a34432bd4f7",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}
