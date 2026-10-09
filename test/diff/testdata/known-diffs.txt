@@ -4,3 +4,8 @@
 # <field> is status, body, or header:<Name>, as the failure message prints it.
 # An unlisted difference fails the test. A listed one that no longer occurs
 # also fails, so remove the line when the difference is fixed.
+sns-auth-errors/no-credentials body pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55
+sns-auth-errors/no-credentials header:Content-Type pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55
+sns-auth-errors/no-credentials header:X-Amz-Id-2 pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55
+sns-auth-errors/no-credentials header:X-Amz-Request-Id pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55
+sns-auth-errors/no-credentials header:X-Amzn-Requestid pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55

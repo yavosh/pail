@@ -1,0 +1,53 @@
+{
+  "scenario": "sqs-auth-errors",
+  "exchanges": [
+    {
+      "step": "no-credentials",
+      "request": "POST sqs AmazonSQS.ListQueues",
+      "fingerprint": "634eae6120e8e70c",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "AccessDenied;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#AccessDeniedException\n"
+    },
+    {
+      "step": "unknown-key",
+      "request": "POST sqs AmazonSQS.ListQueues",
+      "fingerprint": "60ef09a2ad65dd7d",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidClientTokenId;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#UnrecognizedClientException\n"
+    },
+    {
+      "step": "bad-signature",
+      "request": "POST sqs AmazonSQS.ListQueues",
+      "fingerprint": "660b51c1f6f4663b",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "SignatureDoesNotMatch;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidSignatureException\n"
+    },
+    {
+      "step": "clock-skew",
+      "request": "POST sqs AmazonSQS.ListQueues",
+      "fingerprint": "83de1078b99b9691",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "SignatureDoesNotMatch;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidSignatureException\n"
+    }
+  ]
+}
