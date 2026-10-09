@@ -22,6 +22,13 @@ func wrongSecret() aws.CredentialsProvider {
 // apiFailure returns the HTTP status and API error code of err.
 func apiFailure(t *testing.T, err error) (int, string) {
 	t.Helper()
+	status, code, _ := apiFailureMessage(t, err)
+	return status, code
+}
+
+// apiFailureMessage is apiFailure with the error message.
+func apiFailureMessage(t *testing.T, err error) (int, string, string) {
+	t.Helper()
 	respErr, ok := errors.AsType[*awshttp.ResponseError](err)
 	if !ok {
 		t.Fatalf("error %v: want *awshttp.ResponseError", err)
@@ -30,7 +37,7 @@ func apiFailure(t *testing.T, err error) (int, string) {
 	if !ok {
 		t.Fatalf("error %v: want smithy.APIError", err)
 	}
-	return respErr.HTTPStatusCode(), apiErr.ErrorCode()
+	return respErr.HTTPStatusCode(), apiErr.ErrorCode(), apiErr.ErrorMessage()
 }
 
 func TestSQSStub(t *testing.T) {
@@ -38,8 +45,12 @@ func TestSQSStub(t *testing.T) {
 	for name, start := range servers {
 		t.Run(name+" list queues is unsupported", func(t *testing.T) {
 			_, err := start(t).sqsClient().ListQueues(context.Background(), &sqs.ListQueuesInput{})
-			if _, ok := errors.AsType[*types.UnsupportedOperation](err); !ok {
+			unsupported, ok := errors.AsType[*types.UnsupportedOperation](err)
+			if !ok {
 				t.Fatalf("ListQueues error = %v, want *types.UnsupportedOperation", err)
+			}
+			if got, want := unsupported.ErrorMessage(), "ListQueues is not supported"; got != want {
+				t.Errorf("ListQueues message = %q, want %q", got, want)
 			}
 		})
 	}
@@ -57,9 +68,9 @@ func TestSQSStub(t *testing.T) {
 func TestSNSStub(t *testing.T) {
 	t.Run("list topics is unsupported", func(t *testing.T) {
 		_, err := startPail(t).snsClient().ListTopics(context.Background(), &sns.ListTopicsInput{})
-		status, code := apiFailure(t, err)
-		if status != 400 || code != "InvalidAction" {
-			t.Errorf("ListTopics: status %d, code %q, want 400 InvalidAction", status, code)
+		status, code, msg := apiFailureMessage(t, err)
+		if status != 400 || code != "InvalidAction" || msg != "ListTopics is not supported" {
+			t.Errorf("ListTopics: status %d, code %q, message %q, want 400 InvalidAction %q", status, code, msg, "ListTopics is not supported")
 		}
 	})
 

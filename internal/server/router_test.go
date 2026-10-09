@@ -24,7 +24,8 @@ func TestRouter(t *testing.T) {
 		{"other scope", "/", fmt.Sprintf(auth, "sts"), "", "s3"},
 		{"unsigned sqs target", "/", "", "AmazonSQS.ListQueues", "sqs"},
 		{"unsigned root", "/", "", "", "s3"},
-		{"presigned s3", "/b/k?X-Amz-Credential=AKID%2F20261009%2Fus-east-1%2Fs3%2Faws4_request", "", "", "s3"},
+		{"presigned s3", "/b/k?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKID%2F20261009%2Fus-east-1%2Fs3%2Faws4_request", "", "", "s3"},
+		{"credential without algorithm", "/b/k?AWSAccessKeyId=AKID&Signature=x&Expires=1&X-Amz-Credential=a/b/c/sqs/d", "", "", "s3"},
 		{"health", "/_pail/health", "", "", "s3"},
 	}
 	for _, tt := range tests {

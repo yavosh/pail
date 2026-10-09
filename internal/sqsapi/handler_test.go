@@ -29,11 +29,12 @@ func TestHandler(t *testing.T) {
 		wantCode  int
 		wantType  string
 		wantQuery string
+		wantMsg   string // checked when set
 	}{
-		{"signed", testSecret, listBody, 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation;Sender"},
-		{"unsigned", "", listBody, 403, "com.amazon.coral.service#MissingAuthenticationTokenException", "MissingAuthenticationToken;Sender"},
-		{"wrong secret", "wrong", listBody, 403, "com.amazon.coral.service#InvalidSignatureException", "SignatureDoesNotMatch;Sender"},
-		{"over the cap", testSecret, strings.Repeat("x", maxRequestBytes+1), 413, "com.amazon.coral.service#RequestEntityTooLargeException", "RequestEntityTooLarge;Sender"},
+		{"signed", testSecret, listBody, 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation;Sender", "ListQueues is not supported"},
+		{"unsigned", "", listBody, 403, "com.amazon.coral.service#MissingAuthenticationTokenException", "MissingAuthenticationToken;Sender", ""},
+		{"wrong secret", "wrong", listBody, 403, "com.amazon.coral.service#InvalidSignatureException", "SignatureDoesNotMatch;Sender", ""},
+		{"over the cap", testSecret, strings.Repeat("x", maxRequestBytes+1), 413, "com.amazon.coral.service#RequestEntityTooLargeException", "RequestEntityTooLarge;Sender", ""},
 	}
 	h := New(Options{AccessKeyID: testKey, SecretAccessKey: testSecret})
 	for _, tt := range tests {
@@ -63,6 +64,9 @@ func TestHandler(t *testing.T) {
 			}
 			if body.Type != tt.wantType {
 				t.Errorf("__type = %q, want %q", body.Type, tt.wantType)
+			}
+			if tt.wantMsg != "" && body.Message != tt.wantMsg {
+				t.Errorf("message = %q, want %q", body.Message, tt.wantMsg)
 			}
 			if got := w.Header().Get("x-amzn-query-error"); got != tt.wantQuery {
 				t.Errorf("x-amzn-query-error = %q, want %q", got, tt.wantQuery)

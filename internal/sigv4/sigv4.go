@@ -87,9 +87,6 @@ func (v *Verifier) VerifyService(r *http.Request, service string) error {
 		}
 		return ErrMissingAuth
 	}
-	if !strings.HasPrefix(auth, algorithm+" ") {
-		return ErrUnsupportedAuth
-	}
 	return v.verifyHeader(r, auth, service)
 }
 
@@ -109,7 +106,9 @@ func Service(r *http.Request) string {
 			}
 		}
 	} else {
-		credential = r.URL.Query().Get("X-Amz-Credential")
+		if q := r.URL.Query(); q.Has("X-Amz-Algorithm") {
+			credential = q.Get("X-Amz-Credential")
+		}
 	}
 	cred := strings.Split(credential, "/")
 	if len(cred) != 5 {
@@ -203,6 +202,9 @@ func (v *Verifier) verifyHeader(r *http.Request, auth, service string) error {
 			trailer:    r.Trailer,
 		})
 		return nil
+	}
+	if service != "s3" {
+		return nil // VerifyService already hashed the body
 	}
 	if payloadHash != unsignedHash && r.Body != nil {
 		want, _ := hex.DecodeString(payloadHash)
@@ -392,20 +394,20 @@ func dropQueryParam(raw, name string) string {
 	return strings.Join(kept, "&")
 }
 
-// canonicalRequest builds the SigV4 canonical request. S3 encodes the path
-// once and never normalizes it; every other service encodes it twice.
+// canonicalRequest builds the SigV4 canonical request. S3 encodes the decoded
+// path once. Other services encode the escaped path again, as the SDKs do.
 // rawQuery is the query to sign.
 func canonicalRequest(r *http.Request, service, rawQuery string, signedHeaders []string, payloadHash string) string {
 	var b strings.Builder
 	b.WriteString(r.Method + "\n")
 	path := r.URL.Path
+	if service != "s3" {
+		path = r.URL.EscapedPath()
+	}
 	if path == "" {
 		path = "/"
 	}
 	path = uriEncode(path, false)
-	if service != "s3" {
-		path = uriEncode(path, false)
-	}
 	b.WriteString(path + "\n")
 	b.WriteString(canonicalQuery(rawQuery) + "\n")
 	for _, name := range signedHeaders {

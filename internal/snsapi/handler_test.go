@@ -28,11 +28,12 @@ func TestHandler(t *testing.T) {
 		body     string
 		wantCode int
 		want     string
+		wantMsg  string // checked when set
 	}{
-		{"signed", testSecret, listBody, 400, "InvalidAction"},
-		{"unsigned", "", listBody, 403, "MissingAuthenticationToken"},
-		{"wrong secret", "wrong", listBody, 403, "SignatureDoesNotMatch"},
-		{"over the cap", testSecret, "Action=" + strings.Repeat("x", maxRequestBytes), 413, "RequestEntityTooLarge"},
+		{"signed", testSecret, listBody, 400, "InvalidAction", "ListTopics is not supported"},
+		{"unsigned", "", listBody, 403, "MissingAuthenticationToken", ""},
+		{"wrong secret", "wrong", listBody, 403, "SignatureDoesNotMatch", ""},
+		{"over the cap", testSecret, "Action=" + strings.Repeat("x", maxRequestBytes), 413, "RequestEntityTooLarge", ""},
 	}
 	h := New(Options{AccessKeyID: testKey, SecretAccessKey: testSecret})
 	for _, tt := range tests {
@@ -55,6 +56,7 @@ func TestHandler(t *testing.T) {
 			var body struct {
 				Type      string `xml:"Error>Type"`
 				Code      string `xml:"Error>Code"`
+				Message   string `xml:"Error>Message"`
 				RequestID string `xml:"RequestId"`
 			}
 			if err := xml.Unmarshal(w.Body.Bytes(), &body); err != nil {
@@ -62,6 +64,9 @@ func TestHandler(t *testing.T) {
 			}
 			if body.Code != tt.want {
 				t.Errorf("Code = %q, want %q", body.Code, tt.want)
+			}
+			if tt.wantMsg != "" && body.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", body.Message, tt.wantMsg)
 			}
 			if body.Type != "Sender" {
 				t.Errorf("Type = %q, want Sender", body.Type)

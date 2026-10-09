@@ -29,6 +29,18 @@ func signedService(t *testing.T, service, contentType, body string) *http.Reques
 	return r
 }
 
+// signedServicePath is signedService for an sqs JSON request to path.
+func signedServicePath(t *testing.T, path string) *http.Request {
+	t.Helper()
+	const body = `{"QueueNamePrefix":"a"}`
+	r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, path, strings.NewReader(body))
+	creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
+	if err := serviceSigner.SignHTTP(r.Context(), creds, r, sha256Hex(body), "sqs", "eu-west-1", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
 func TestVerifyService(t *testing.T) {
 	const jsonBody = `{"QueueNamePrefix":"a"}`
 	const formBody = "Action=ListTopics&Version=2010-03-31"
@@ -80,6 +92,26 @@ func TestVerifyService(t *testing.T) {
 			service: "sqs",
 			verify:  func(v *Verifier, r *http.Request, _ string) error { return v.Verify(r) },
 			want:    ErrMalformedAuth,
+		},
+		{
+			name:    "colon in path",
+			request: func(t *testing.T) *http.Request { return signedServicePath(t, "/a:b") },
+			service: "sqs",
+		},
+		{
+			name:    "queue path",
+			request: func(t *testing.T) *http.Request { return signedServicePath(t, "/000000000000/my-queue") },
+			service: "sqs",
+		},
+		{
+			name: "non-sigv4 authorization",
+			request: func(*testing.T) *http.Request {
+				r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", strings.NewReader(jsonBody))
+				r.Header.Set("Authorization", "AWS AKID:sig")
+				return r
+			},
+			service: "sqs",
+			want:    ErrUnsupportedAuth,
 		},
 		{
 			name: "no authorization",
@@ -150,8 +182,9 @@ func TestService(t *testing.T) {
 	}{
 		{"sqs header", "/", auth("sqs"), "sqs"},
 		{"sns header", "/", auth("sns"), "sns"},
-		{"s3 presigned query", "/b/k?X-Amz-Credential=AKID%2F20261009%2Fus-east-1%2Fs3%2Faws4_request", "", "s3"},
+		{"s3 presigned query", "/b/k?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKID%2F20261009%2Fus-east-1%2Fs3%2Faws4_request", "", "s3"},
 		{"no auth", "/", "", ""},
+		{"credential without algorithm", "/b/k?AWSAccessKeyId=AKID&Signature=x&Expires=1&X-Amz-Credential=a/b/c/sqs/d", "", ""},
 		{"short credential", "/", "AWS4-HMAC-SHA256 Credential=AKID/20261009/sqs, SignedHeaders=host, Signature=abc", ""},
 		{"not sigv4", "/", "AWS AKID:sig", ""},
 	}
