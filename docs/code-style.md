@@ -1,6 +1,6 @@
 # Go style references
 
-pail's own rules live in [CLAUDE.md](../CLAUDE.md) under **Go conventions**.
+pail's own rules live in [AGENTS.md](../AGENTS.md) under **Go conventions**.
 This page lists the external sources those rules come from, so a reviewer can
 cite a link instead of re-arguing a point.
 
@@ -43,7 +43,7 @@ and it is where a stale habit survives longest.
 
 pail enforces this through `modernize` and `errorlint` in `.golangci.yml`, not
 through the JetBrains plugin. The rules those two analyzers cannot see are
-written out in [CLAUDE.md](../CLAUDE.md) under **Go conventions**.
+written out in [AGENTS.md](../AGENTS.md) under **Go conventions**.
 
 ### Rules pail rejects
 
