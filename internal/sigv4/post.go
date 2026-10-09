@@ -19,7 +19,7 @@ func (v *Verifier) VerifyPost(fields map[string]string) (int64, int64, error) {
 	if fields["x-amz-algorithm"] != algorithm {
 		return 0, 0, ErrUnsupportedAuth
 	}
-	a, err := newAuthorization(fields["x-amz-credential"], "host", fields["x-amz-signature"])
+	a, err := newAuthorization(fields["x-amz-credential"], "host", fields["x-amz-signature"], "s3")
 	if err != nil {
 		return 0, 0, err
 	}
@@ -35,7 +35,7 @@ func (v *Verifier) VerifyPost(fields map[string]string) (int64, int64, error) {
 		return 0, 0, ErrRequestNotYetValid
 	}
 	signature, err := hex.DecodeString(a.signature)
-	if err != nil || !hmac.Equal(signature, hmacSHA256(signingKey(secret, a.date, a.region), fields["policy"])) {
+	if err != nil || !hmac.Equal(signature, hmacSHA256(signingKey(secret, a.date, a.region, "s3"), fields["policy"])) {
 		return 0, 0, ErrSignatureMismatch
 	}
 	raw, err := base64.StdEncoding.DecodeString(fields["policy"])

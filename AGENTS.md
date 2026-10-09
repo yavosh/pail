@@ -48,6 +48,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - `main()` is a few lines: it parses flags, sets up a signal context, and calls `run(ctx, ...) error`.
 - HTTP handlers: register routes in one place, do setup at construction, and declare request and response types next to the handler. When middleware or auth is part of what you verify, test the route through `httptest.NewTestServer` and the real mux.
 - S3 requests bypass `http.ServeMux`, because it redirects paths that are not clean, such as `a//b`, and those are valid keys. `internal/s3api` routes them from one operation table. `ServeMux` serves only pail's own `/_pail/` endpoints.
+- `internal/server/router.go` routes each request by its SigV4 credential scope: `sqs` to `internal/sqsapi`, `sns` to `internal/snsapi`, and everything else, including unsigned requests, to `internal/s3api`. An unsigned request with `X-Amz-Target: AmazonSQS.*` goes to SQS.
 - `golangci-lint` enforces much of this (revive, nakedret, bodyclose, containedctx, usetesting, noctx, modernize, errorlint). For noctx, use `ExecContext`, `DialContext`, `HandshakeContext`, and `httptest.NewRequestWithContext`.
 - Write Go 1.27 idioms, not their older equivalents. `modernize` and `errorlint` catch most of this in CI, and `go fix -stringsbuilder=false ./...` applies the mechanical half. The rest is on you: `errors.Is` and `errors.AsType[T]` over `==` and type assertions, `errors.Join` for accumulated errors, `cmp.Or` for fallback chains (every argument is evaluated, so no side effects), typed `atomic.Bool` and `atomic.Pointer[T]` over `atomic.Value`, `sync.OnceValue` over a `sync.Once` plus a result variable, `slices.Sorted(maps.Keys(m))` for deterministic map output, `new(v)` over a temporary variable taken by address, and method-aware `ServeMux` patterns with `r.PathValue`.
 - Never use `time.Tick`. It cannot be stopped, which breaks the goroutine-lifetime rule above. Use `time.NewTicker` and `Stop` it.
@@ -69,6 +70,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 ## Client tests
 
+- SQS and SNS tests use `p.sqsClient()` and `p.snsClient()`, not `forEachStyle`: addressing styles are S3-only. Keep SDK defaults, including SQS MD5 validation.
 - Every S3 feature adds aws-sdk-go-v2 tests in `test/`. Use `forEachStyle`, so each test runs path-style and virtual-hosted.
 - Keep the SDK's default settings, such as checksums. The harness sets them explicitly, because `s3.New` skips the config loader that would. It turns retries off, so a test sees the first answer. Any other change names the issue that removes the need.
 - Use lowercase bucket names without dots. The SDK silently falls back to path-style for other names, so the virtual-hosted run would not test virtual-hosted routing.

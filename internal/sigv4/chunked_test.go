@@ -44,7 +44,7 @@ func chunkedRequest(t *testing.T, mode, body string, size int, trailers [][2]str
 
 	amzDate := r.Header.Get("X-Amz-Date")
 	scope := amzDate[:8] + "/eu-west-1/s3/aws4_request"
-	key := signingKey(testSecret, amzDate[:8], "eu-west-1")
+	key := signingKey(testSecret, amzDate[:8], "eu-west-1", "s3")
 	_, prev, _ := strings.Cut(r.Header.Get("Authorization"), "Signature=")
 	signed := mode != streamingUnsignedTrailer
 	sign := func(data string) string {

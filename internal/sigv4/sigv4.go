@@ -2,6 +2,7 @@
 package sigv4
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,7 +18,7 @@ import (
 	"time"
 )
 
-// Errors callers map to S3 error codes with errors.Is.
+// Errors callers map to API error codes with errors.Is.
 var (
 	ErrMissingAuth           = errors.New("request is not signed")
 	ErrMalformedPresign      = errors.New("malformed presigned URL")
@@ -72,11 +73,59 @@ func (v *Verifier) Verify(r *http.Request) error {
 		}
 		return ErrMissingAuth
 	}
+	return v.verifyHeader(r, auth, "s3")
+}
+
+// VerifyService checks the Authorization header of a request to a non-S3
+// service. It reads the whole body and restores it, so callers must cap r.Body
+// first, for example with http.MaxBytesReader.
+func (v *Verifier) VerifyService(r *http.Request, service string) error {
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		if q := r.URL.Query(); q.Has("X-Amz-Algorithm") || q.Has("X-Amz-Signature") {
+			return fmt.Errorf("presigned %s request: %w", service, ErrNotImplemented)
+		}
+		return ErrMissingAuth
+	}
+	if !strings.HasPrefix(auth, algorithm+" ") {
+		return ErrUnsupportedAuth
+	}
+	return v.verifyHeader(r, auth, service)
+}
+
+// Service returns the service in the credential scope of r, from the
+// Authorization header or the X-Amz-Credential query parameter. It returns ""
+// when there is no well-formed scope. It never reads the body.
+func Service(r *http.Request) string {
+	var credential string
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		rest, ok := strings.CutPrefix(auth, algorithm+" ")
+		if !ok {
+			return ""
+		}
+		for part := range strings.SplitSeq(rest, ",") {
+			if v, ok := strings.CutPrefix(strings.TrimSpace(part), "Credential="); ok {
+				credential = v
+			}
+		}
+	} else {
+		credential = r.URL.Query().Get("X-Amz-Credential")
+	}
+	cred := strings.Split(credential, "/")
+	if len(cred) != 5 {
+		return ""
+	}
+	return cred[3]
+}
+
+// verifyHeader checks the signature in auth, an Authorization header that
+// starts with the algorithm, for requests to service.
+func (v *Verifier) verifyHeader(r *http.Request, auth, service string) error {
 	rest, ok := strings.CutPrefix(auth, algorithm+" ")
 	if !ok {
 		return ErrUnsupportedAuth
 	}
-	a, err := parseAuthorization(rest)
+	a, err := parseAuthorization(rest, service)
 	if err != nil {
 		return err
 	}
@@ -98,21 +147,36 @@ func (v *Verifier) Verify(r *http.Request) error {
 		return ErrRequestTimeTooSkewed
 	}
 
-	payloadHash := r.Header.Get("X-Amz-Content-Sha256")
-	streaming := payloadHash == streamingSigned || payloadHash == streamingUnsignedTrailer || payloadHash == streamingSignedTrailer
-	switch {
-	case payloadHash == "":
-		return ErrMissingContentSHA256
-	case streaming:
-	case strings.HasPrefix(payloadHash, streamingMode):
-		return fmt.Errorf("%s: %w", payloadHash, ErrNotImplemented)
-	case payloadHash != unsignedHash && !isSHA256Hex(payloadHash):
-		return fmt.Errorf("x-amz-content-sha256 %q: %w", payloadHash, ErrMalformedAuth)
+	var payloadHash string
+	streaming := false
+	if service == "s3" {
+		payloadHash = r.Header.Get("X-Amz-Content-Sha256")
+		streaming = payloadHash == streamingSigned || payloadHash == streamingUnsignedTrailer || payloadHash == streamingSignedTrailer
+		switch {
+		case payloadHash == "":
+			return ErrMissingContentSHA256
+		case streaming:
+		case strings.HasPrefix(payloadHash, streamingMode):
+			return fmt.Errorf("%s: %w", payloadHash, ErrNotImplemented)
+		case payloadHash != unsignedHash && !isSHA256Hex(payloadHash):
+			return fmt.Errorf("x-amz-content-sha256 %q: %w", payloadHash, ErrMalformedAuth)
+		}
+	} else {
+		var body []byte
+		if r.Body != nil {
+			body, err = io.ReadAll(r.Body)
+			if err != nil {
+				return fmt.Errorf("read body: %w", err)
+			}
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		sum := sha256.Sum256(body)
+		payloadHash = hex.EncodeToString(sum[:])
 	}
 
-	scope := strings.Join([]string{a.date, a.region, "s3", "aws4_request"}, "/")
-	creq := canonicalRequest(r, r.URL.RawQuery, a.signedHeaders, payloadHash)
-	key := signingKey(secret, a.date, a.region)
+	scope := strings.Join([]string{a.date, a.region, service, "aws4_request"}, "/")
+	creq := canonicalRequest(r, service, r.URL.RawQuery, a.signedHeaders, payloadHash)
+	key := signingKey(secret, a.date, a.region, service)
 	if want := sign(key, amzDate, scope, creq); !hmac.Equal([]byte(want), []byte(a.signature)) {
 		return ErrSignatureMismatch
 	}
@@ -190,7 +254,7 @@ type authorization struct {
 }
 
 // parseAuthorization reads "Credential=..., SignedHeaders=..., Signature=...".
-func parseAuthorization(s string) (authorization, error) {
+func parseAuthorization(s, service string) (authorization, error) {
 	fields := map[string]string{}
 	for part := range strings.SplitSeq(s, ",") {
 		k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
@@ -199,14 +263,14 @@ func parseAuthorization(s string) (authorization, error) {
 		}
 		fields[k] = v
 	}
-	return newAuthorization(fields["Credential"], fields["SignedHeaders"], fields["Signature"])
+	return newAuthorization(fields["Credential"], fields["SignedHeaders"], fields["Signature"], service)
 }
 
 // newAuthorization validates the three fields that the header and the query
 // string of a presigned URL both carry.
-func newAuthorization(credential, signedHeaders, signature string) (authorization, error) {
+func newAuthorization(credential, signedHeaders, signature, service string) (authorization, error) {
 	cred := strings.Split(credential, "/")
-	if len(cred) != 5 || cred[0] == "" || cred[3] != "s3" || cred[4] != "aws4_request" {
+	if len(cred) != 5 || cred[0] == "" || cred[3] != service || cred[4] != "aws4_request" {
 		return authorization{}, fmt.Errorf("credential %q: %w", credential, ErrMalformedAuth)
 	}
 	if signedHeaders == "" || signature == "" {
@@ -274,7 +338,7 @@ func (v *Verifier) verifyPresigned(r *http.Request, q url.Values) error {
 	}
 	// The shared checks fail with ErrMalformedAuth, which names a header
 	// that a presigned URL does not have.
-	a, err := newAuthorization(p["X-Amz-Credential"], p["X-Amz-SignedHeaders"], p["X-Amz-Signature"])
+	a, err := newAuthorization(p["X-Amz-Credential"], p["X-Amz-SignedHeaders"], p["X-Amz-Signature"], "s3")
 	if err != nil {
 		return fmt.Errorf("%s: %w", err.Error(), ErrMalformedPresign)
 	}
@@ -299,8 +363,8 @@ func (v *Verifier) verifyPresigned(r *http.Request, q url.Values) error {
 	}
 
 	scope := strings.Join([]string{a.date, a.region, "s3", "aws4_request"}, "/")
-	creq := canonicalRequest(r, dropQueryParam(r.URL.RawQuery, "X-Amz-Signature"), a.signedHeaders, unsignedHash)
-	if want := sign(signingKey(secret, a.date, a.region), amzDate, scope, creq); !hmac.Equal([]byte(want), []byte(a.signature)) {
+	creq := canonicalRequest(r, "s3", dropQueryParam(r.URL.RawQuery, "X-Amz-Signature"), a.signedHeaders, unsignedHash)
+	if want := sign(signingKey(secret, a.date, a.region, "s3"), amzDate, scope, creq); !hmac.Equal([]byte(want), []byte(a.signature)) {
 		return ErrSignatureMismatch
 	}
 	return nil
@@ -328,16 +392,21 @@ func dropQueryParam(raw, name string) string {
 	return strings.Join(kept, "&")
 }
 
-// canonicalRequest builds the SigV4 canonical request with the S3 rules: the
-// path is encoded once and never normalized. rawQuery is the query to sign.
-func canonicalRequest(r *http.Request, rawQuery string, signedHeaders []string, payloadHash string) string {
+// canonicalRequest builds the SigV4 canonical request. S3 encodes the path
+// once and never normalizes it; every other service encodes it twice.
+// rawQuery is the query to sign.
+func canonicalRequest(r *http.Request, service, rawQuery string, signedHeaders []string, payloadHash string) string {
 	var b strings.Builder
 	b.WriteString(r.Method + "\n")
 	path := r.URL.Path
 	if path == "" {
 		path = "/"
 	}
-	b.WriteString(uriEncode(path, false) + "\n")
+	path = uriEncode(path, false)
+	if service != "s3" {
+		path = uriEncode(path, false)
+	}
+	b.WriteString(path + "\n")
 	b.WriteString(canonicalQuery(rawQuery) + "\n")
 	for _, name := range signedHeaders {
 		b.WriteString(name + ":" + headerValue(r, name) + "\n")
@@ -436,10 +505,10 @@ func uriEncode(s string, encodeSlash bool) string {
 	return b.String()
 }
 
-func signingKey(secret, date, region string) []byte {
+func signingKey(secret, date, region, service string) []byte {
 	k := hmacSHA256([]byte("AWS4"+secret), date)
 	k = hmacSHA256(k, region)
-	k = hmacSHA256(k, "s3")
+	k = hmacSHA256(k, service)
 	return hmacSHA256(k, "aws4_request")
 }
 
