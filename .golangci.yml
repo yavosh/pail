@@ -12,7 +12,7 @@ linters:
     - ineffassign
     - misspell
     - nilerr
-    # Style rules from CLAUDE.md's Go Conventions, machine-enforced.
+    # Style rules from AGENTS.md's Go Conventions, machine-enforced.
     - revive
     - nakedret
     - bodyclose

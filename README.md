@@ -244,6 +244,10 @@ The Docker image sets `PAIL_ADDR=0.0.0.0:9000` and `PAIL_DATA=/data`, and runs a
 
 Set `PAIL_SECRET_ACCESS_KEY` instead of passing `--secret-key`. Flags show in process lists. Environment variables are less exposed.
 
+## Contributing
+
+See [AGENTS.md](AGENTS.md) for project guidance and [Go code style](docs/code-style.md) for style references.
+
 ## Test
 
 `go test ./...` runs the unit tests and the aws-sdk-go-v2 tests. `make smoke` starts a real pail and runs the AWS CLI and boto3 against it. It needs the AWS CLI and a Python with boto3 installed. CI runs it as the `smoke` job. The `docker` job builds the image, starts it, waits for its healthcheck, and runs the AWS CLI against it.
