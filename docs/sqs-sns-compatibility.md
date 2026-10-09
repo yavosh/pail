@@ -69,7 +69,7 @@ Queue definitions, which are attributes and tags, persist in the data directory.
 - A handle that pail never issued returns `ReceiptHandleIsInvalid` with HTTP status 404.
 - A restart invalidates all handles.
 - `ChangeMessageVisibility` with the latest handle applies even when the message is visible again. It hides the message for the new timeout.
-- `ChangeMessageVisibility` with a stale handle, or for a deleted message, returns `InvalidParameterValue`. `DeleteMessage` succeeds in both cases.
+- `ChangeMessageVisibility` with a stale handle, or for a deleted message, returns `InvalidParameterValue` (unverified). `DeleteMessage` succeeds in both cases.
 
 ### Message attributes and checksums
 
@@ -101,7 +101,7 @@ AWS recordings in `test/diff` verify every row except those marked unverified. A
 | SQS operation that pail doesn't implement (unverified) | 400 | `com.amazonaws.sqs#UnsupportedOperation` | `AWS.SimpleQueueService.UnsupportedOperation` |
 | Queue exists with other attributes | 400 | `com.amazonaws.sqs#QueueNameExists` | `QueueAlreadyExists` |
 | Bad attribute name or value | 400 | `com.amazonaws.sqs#InvalidAttributeName` or `#InvalidAttributeValue` | same name |
-| Bad parameter, queue name, missing `QueueName`, or oversized message | 400 | `com.amazon.coral.service#InvalidParameterValueException` | `InvalidParameterValue` |
+| Bad parameter, queue name, missing `QueueName` (verified for `GetQueueUrl`; unverified for `CreateQueue`), or oversized message | 400 | `com.amazon.coral.service#InvalidParameterValueException` | `InvalidParameterValue` |
 | Empty `MessageBody` | 400 | `com.amazon.coral.service#MissingRequiredParameterException` | `MissingParameter` |
 | Missing `QueueUrl` or `ReceiptHandle` (unverified) | 400 | `com.amazon.coral.service#MissingRequiredParameterException` | `MissingParameter` |
 | Invalid message characters | 400 | `com.amazonaws.sqs#InvalidMessageContents` | `InvalidMessageContents` |
@@ -110,7 +110,7 @@ AWS recordings in `test/diff` verify every row except those marked unverified. A
 | Batch rule broken | 400 | `com.amazonaws.sqs#<Batch error name>` | `AWS.SimpleQueueService.<Batch error name>` |
 | Malformed request body | 400 | `com.amazon.coral.service#SerializationException` | `MalformedInput` |
 
-A failed batch entry uses the code `InvalidParameterValue`, `InvalidMessageContents`, `ReceiptHandleIsInvalid`, or `InternalError`. `InvalidMessageContents` is verified. The others are unverified.
+A failed batch entry uses the code `InvalidParameterValue`, `MissingParameter`, `InvalidMessageContents`, `ReceiptHandleIsInvalid`, or `InternalError`. `InvalidMessageContents` and `ReceiptHandleIsInvalid` are verified. The others are unverified.
 
 ### Differences from AWS
 
