@@ -56,7 +56,7 @@ This quickstart needs the [AWS CLI](https://aws.amazon.com/cli/).
    pail
    ```
 
-   pail stops cleanly on SIGINT or SIGTERM.
+   pail stops cleanly on SIGINT or SIGTERM. Listener failures close established HTTP connections before storage closes.
 
 2. In a second terminal, give the AWS CLI the same keys. These variables override any profile you have set up. The CLI sends the requests to pail, so they never reach AWS.
 
@@ -165,6 +165,7 @@ Return `post` to the browser. Add each `post["fields"]` value to `FormData`, the
 pail enables ACLs on every bucket. New AWS buckets disable ACLs through Object Ownership by default.
 Use an ACL-enabled AWS bucket when comparing ACL behavior. pail still authenticates only its configured account.
 Canonical grants round-trip. Grants to another account do not enable authentication for that account.
+Anonymous GET and HEAD requests check the ACL from the response's object snapshot, including concurrent replacements.
 
 ### Virtual-hosted style
 

@@ -252,10 +252,15 @@ func (h *handler) anonymousAllowed(r *http.Request, t target, op operation) bool
 
 func (h *handler) writeACL(r *http.Request, bucket bool) (acl.Policy, apiError, bool) {
 	ownerID := h.bucketOwner().ID
-	if r.Header.Get("Authorization") == "" && !r.URL.Query().Has("X-Amz-Signature") && !r.URL.Query().Has("Signature") {
+	if anonymousRequest(r) {
 		ownerID = acl.AnonymousID
 	}
 	return h.requestACL(r.Header, bucket, ownerID)
+}
+
+// anonymousRequest is used after routing has rejected invalid authentication.
+func anonymousRequest(r *http.Request) bool {
+	return r.Header.Get("Authorization") == "" && !r.URL.Query().Has("X-Amz-Signature") && !r.URL.Query().Has("Signature")
 }
 
 // storeBucketACL persists the ACL accepted during bucket creation.

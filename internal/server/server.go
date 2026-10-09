@@ -101,6 +101,7 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	select {
 	case err := <-serveErr:
+		_ = srv.Close() // close established connections before releasing storage
 		return fmt.Errorf("serve: %w", err)
 	case <-ctx.Done():
 	}

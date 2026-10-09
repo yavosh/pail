@@ -289,6 +289,12 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	if f != nil {
 		defer func() { _ = f.Close() }()
 	}
+	// Authorization may have checked an older object before a replacement.
+	// Check the ACL from the same metadata snapshot as the response.
+	if anonymousRequest(r) && (info.ACL == nil || !info.ACL.Public("READ")) {
+		writeError(w, r, errAccessDenied)
+		return
+	}
 
 	etag := quoteETag(info.ETag)
 	lastModified := info.LastModified.UTC().Truncate(time.Second)
