@@ -5,17 +5,20 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"maps"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
-// step is one raw S3 request. key empty addresses the bucket. query is
-// already encoded. "{bucket}" in query and header values becomes the bucket.
-// "{uploadId}" in the query, header values, and body becomes the ID that the
-// latest CreateMultipartUpload in the scenario returned.
+// step is one raw request. For S3, key empty addresses the bucket, query is
+// already encoded, and "{bucket}" in query and header values becomes the bucket.
+// A non-S3 step always POSTs to "/". In the query, header values, and body, a
+// step may use "{name}" and the variables, such as "{uploadId}", which hold the
+// latest value that a response in the scenario returned.
 type step struct {
 	form         map[string]string
 	postMutation string
@@ -31,13 +34,18 @@ type step struct {
 	chunk       int    // chunk size; 0 means 8 KiB
 	trailer     string // a trailing header line, such as "x-amz-checksum-crc32:<value>"
 	badChunkSig bool   // corrupt the first chunk signature
+	service     string // "" is S3; "sqs" or "sns" signs for and addresses that service
+	target      string // X-Amz-Target of an SQS step, such as "AmazonSQS.CreateQueue"
 }
 
 // scenario runs its steps in order against one fresh bucket name. Scenarios
 // never call ListBuckets: on AWS it would expose the account's other buckets.
+// queues and topics are the SQS queues and SNS topics the steps create, with
+// "{name}" for the scenario's random name; recording deletes them.
 type scenario struct {
-	name  string
-	steps []step
+	name           string
+	steps          []step
+	queues, topics []string
 }
 
 func etagOf(body string) string {
@@ -62,16 +70,32 @@ func md5Base64(body string) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// withUploadID returns st with "{uploadId}" replaced by id. The recorded
-// request and fingerprint come from st itself, so they keep the placeholder.
-func (st step) withUploadID(id string) step {
-	const placeholder = "{uploadId}"
-	st.query = strings.ReplaceAll(st.query, placeholder, id)
-	st.body = strings.ReplaceAll(st.body, placeholder, id)
+// withVars returns st with every "{<var>}" in the variables, and "{name}",
+// replaced from vars; an uncaptured variable becomes "". SQS values are
+// JSON-escaped, SNS values URL-escaped, and S3 values stay raw. The recorded
+// request and fingerprint come from st itself, so they keep the placeholders.
+func (st step) withVars(vars map[string]string) step {
+	escape := func(v string) string { return v }
+	switch st.service {
+	case "sqs":
+		escape = func(v string) string {
+			b, _ := json.Marshal(v)
+			return string(b[1 : len(b)-1])
+		}
+	case "sns":
+		escape = url.QueryEscape
+	}
+	var pairs []string
+	for _, name := range append([]string{"name"}, variables...) {
+		pairs = append(pairs, "{"+name+"}", escape(vars[name]))
+	}
+	expand := strings.NewReplacer(pairs...).Replace
+	st.query = expand(st.query)
+	st.body = expand(st.body)
 	if st.header != nil {
 		header := make(map[string]string, len(st.header))
 		for k, v := range st.header {
-			header[k] = strings.ReplaceAll(v, placeholder, id)
+			header[k] = expand(v)
 		}
 		st.header = header
 	}
@@ -100,6 +124,10 @@ func scenarios() []scenario {
 		postScenario(),
 		sigV2Scenario(),
 		conditionalDeleteScenario(),
+		sqsAuthErrorsScenario(),
+		sqsQueueBasicsScenario(),
+		snsAuthErrorsScenario(),
+		snsTopicBasicsScenario(),
 		{name: "auth-errors", steps: []step{
 			createBucket(),
 			{name: "no-credentials", method: http.MethodGet, query: "list-type=2", auth: authNone},

@@ -99,7 +99,8 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 ## Differential suite
 
-- `test/diff` checks pail against golden files recorded from AWS S3. A new S3 behavior adds a scenario there.
+- `test/diff` checks pail against golden files recorded from AWS S3, SQS, and SNS. A new S3, SQS, or SNS behavior adds a scenario there.
+- Scenarios never call `ListBuckets`, `ListTopics`, or `ListSubscriptions`, and call `ListQueues` only with `QueueNamePrefix`. Golden files must not expose the account's other resources.
 - Compare successful object bodies byte for byte, including XML objects. Normalize only protocol XML, never stored object content.
 - Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
 - Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.

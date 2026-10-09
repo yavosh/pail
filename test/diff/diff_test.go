@@ -1,10 +1,10 @@
-// Package diff checks pail against AWS S3 as a black box. Record mode sends
-// each scenario to AWS and writes golden files; replay mode, the default, sends
-// the same requests to an in-process pail and compares. See README.md here.
+// Package diff checks pail against AWS S3, SQS, and SNS as a black box. Record
+// mode sends each scenario to AWS and writes golden files; replay mode, the
+// default, sends the same requests to an in-process pail and compares. See
+// README.md here.
 package diff
 
 import (
-	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -27,7 +27,7 @@ import (
 	"github.com/yavosh/pail/internal/server"
 )
 
-var record = flag.Bool("record", false, "record golden files against AWS S3 in us-east-1")
+var record = flag.Bool("record", false, "record golden files against AWS S3, SQS, and SNS in us-east-1")
 
 const (
 	goldenDir      = "testdata/golden"
@@ -114,7 +114,17 @@ func TestDiff(t *testing.T) {
 // recordScenario runs sc against AWS and writes its golden file.
 func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 	bucket := newBucketName()
-	t.Cleanup(func() { cleanupBucket(t, tg, bucket) })
+	if slices.ContainsFunc(sc.steps, func(st step) bool { return st.service == "" }) {
+		t.Cleanup(func() { cleanupBucket(t, tg, bucket) })
+	}
+	for _, q := range sc.queues {
+		name := strings.ReplaceAll(q, "{name}", bucket)
+		t.Cleanup(func() { cleanupQueue(t, tg, name) })
+	}
+	for _, topic := range sc.topics {
+		name := strings.ReplaceAll(topic, "{name}", bucket)
+		t.Cleanup(func() { cleanupTopic(t, tg, name) })
+	}
 	g := runScenario(t, tg, sc, bucket)
 	if err := os.MkdirAll(goldenDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -129,13 +139,13 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 func runScenario(t *testing.T, tg *target, sc scenario, bucket string) golden {
 	t.Helper()
 	g := golden{Scenario: sc.name}
-	uploadID := ""
+	vars := map[string]string{"name": bucket}
 	for _, st := range sc.steps {
-		resp, err := tg.do(t.Context(), st.withUploadID(uploadID), bucket)
+		resp, err := tg.do(t.Context(), st.withVars(vars), bucket)
 		if err != nil {
 			t.Fatalf("step %s (%s): %v", st.name, describe(st), err)
 		}
-		uploadID = cmp.Or(initiatedUploadID(resp.body), uploadID)
+		captureVars(vars, resp.body)
 		g.Exchanges = append(g.Exchanges, normalize(st, bucket, resp))
 	}
 	return g
@@ -170,13 +180,13 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 		t.Fatalf("golden file has %d steps, scenario has %d: record it again", len(want.Exchanges), len(sc.steps))
 	}
 	bucket := newBucketName()
-	uploadID := ""
+	vars := map[string]string{"name": bucket}
 	for i, st := range sc.steps {
 		w := want.Exchanges[i]
 		if w.Step != st.name || w.Request != describe(st) || w.Fingerprint != fingerprint(st) {
 			t.Fatalf("step %d %q (%s) changed since the golden file was recorded: record it again", i, st.name, describe(st))
 		}
-		resp, err := tg.do(t.Context(), st.withUploadID(uploadID), bucket)
+		resp, err := tg.do(t.Context(), st.withVars(vars), bucket)
 		if err != nil {
 			// Earlier differences often explain a later failure, so keep them.
 			msg := fmt.Sprintf("step %s (%s): %v", st.name, describe(st), err)
@@ -185,7 +195,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 			}
 			t.Fatal(msg)
 		}
-		uploadID = cmp.Or(initiatedUploadID(resp.body), uploadID)
+		captureVars(vars, resp.body)
 		got := normalize(st, bucket, resp)
 		diffs := compare(w, got)
 		stepKey := sc.name + "/" + st.name
@@ -242,11 +252,12 @@ func awsTarget(t *testing.T) *target {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DisableCompression = true
 	return &target{
-		region: region,
-		creds:  creds,
-		client: &http.Client{Timeout: 30 * time.Second, Transport: transport, CheckRedirect: noRedirect},
-		scheme: "https",
-		host:   func(bucket string) string { return bucket + ".s3." + region + ".amazonaws.com" },
+		region:      region,
+		creds:       creds,
+		client:      &http.Client{Timeout: 30 * time.Second, Transport: transport, CheckRedirect: noRedirect},
+		scheme:      "https",
+		host:        func(bucket string) string { return bucket + ".s3." + region + ".amazonaws.com" },
+		serviceHost: func(service string) string { return service + "." + region + ".amazonaws.com" },
 	}
 }
 
@@ -293,8 +304,9 @@ func pailTarget(t *testing.T) *target {
 				},
 			},
 		},
-		scheme: "http",
-		host:   func(bucket string) string { return bucket + ".localhost:" + port },
+		scheme:      "http",
+		host:        func(bucket string) string { return bucket + ".localhost:" + port },
+		serviceHost: func(string) string { return "localhost:" + port },
 	}
 }
 

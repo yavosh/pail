@@ -1,8 +1,8 @@
 # Differential suite
 
-This suite checks pail against AWS S3 as a black box. It talks to both over HTTP only.
+This suite checks pail against AWS S3, SQS, and SNS as a black box. It talks to both over HTTP only.
 
-Each scenario in `scenarios_test.go` is a list of raw S3 requests. One SigV4 signer signs them, so AWS and pail receive the same requests. A streaming step sends its body `aws-chunked` and signs each chunk with the suite's own code, so a recording checks that code against AWS. A presigned step signs the query string with the same signer and an unsigned payload. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
+Each scenario in `scenarios_test.go` is a list of raw requests. One SigV4 signer signs them, so AWS and pail receive the same requests. A streaming step sends its body `aws-chunked` and signs each chunk with the suite's own code, so a recording checks that code against AWS. A presigned step signs the query string with the same signer and an unsigned payload. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
 
 The signer writes a bare subresource such as `?location` as `?location=`, as the AWS SDKs do. Golden files show the scenario form.
 
@@ -18,7 +18,7 @@ Replay starts pail in-process, sends every scenario that has a golden file, and 
 
 ## Record
 
-Record mode sends the scenarios to AWS S3 in `us-east-1` and writes the golden files. A maintainer runs it by hand and commits the result.
+Record mode sends the scenarios to AWS S3, SQS, and SNS in `us-east-1` and writes the golden files. A maintainer runs it by hand and commits the result.
 
 ```bash
 eval "$(aws configure export-credentials --format env)"
@@ -50,6 +50,32 @@ The `conditional-deletes` scenario covers matching, mismatching, wildcard, missi
 Its maintainer-recorded AWS fixture replays all 30 exchanges successfully, including `412 PreconditionFailed` for mismatched ETags and `404 NoSuchKey` for conditional missing keys.
 Re-record it with `go test ./test/diff -record -run '^TestDiff/conditional-deletes$' -v`; never edit the golden file manually.
 
+## SQS and SNS
+
+The `sqs-*` and `sns-*` scenarios cover the SQS JSON protocol and the SNS query protocol.
+
+- A step sets `service` (`sqs` or `sns`) and, for SQS, `target` (the `X-Amz-Target` value). The suite signs it for that service without `x-amz-content-sha256` and POSTs it to `/`.
+- `{name}` in a query, header, or body is the scenario's random `pail-diff-` name. The variables `{uploadId}`, `{queueUrl}`, `{queueArn}`, `{receiptHandle}`, `{messageId}`, `{topicArn}`, and `{subscriptionArn}` hold the latest value that a response returned. A response without a value keeps the earlier one.
+- Recording creates only `pail-diff-` queues and topics, and deletes them afterward, also when a step fails.
+- Scenarios never call `ListTopics` or `ListSubscriptions`, and call `ListQueues` only with `QueueNamePrefix`. Golden files never contain your other resources.
+
+Record only these scenarios:
+
+```bash
+go test ./test/diff -record -run '^TestDiff/(sqs|sns)-' -v
+```
+
+The recording identity needs these actions, scoped to `pail-diff-*` resources where IAM allows it:
+
+- SQS: `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ListQueues`, and `sqs:DeleteQueue`.
+- SNS: `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:Publish`, and `sns:DeleteTopic`.
+
+A recording makes a few dozen SQS and SNS requests, well inside the free tier.
+
+`sqs-queue-basics/list-queues` can flap, because `ListQueues` right after `CreateQueue` is eventually consistent. Record it again if it does.
+
+The new steps start in `pending.txt`. After you record, remove each line whose step matches AWS.
+
 ## What is compared
 
 - The status code.
@@ -58,6 +84,9 @@ Re-record it with `go test ./test/diff -record -run '^TestDiff/conditional-delet
 - Request IDs on empty `400` responses for literal `..` path segments are ignored; AWS front ends vary in sending them.
 - `Content-Length` only for object data. XML formatting and error messages differ between servers.
 - The body. Successful object reads are compared byte for byte, including XML content. A body that is not valid UTF-8 is stored as base64. Protocol XML is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, continuation tokens, and the `Location` URL of a completed upload, are compared for presence only. Bucket names in protocol responses become `{bucket}`.
+- SQS JSON bodies become sorted `path: value` lines, with array indexes such as `Messages[0].Body`. An error keeps only its `__type`. Values that change on every run, such as `ReceiptHandle` and timestamps, are compared for presence only.
+- In SQS and SNS bodies, the endpoint, the scenario name, UUIDs, and 12-digit account IDs become `{endpoint}`, `{name}`, `{uuid}`, and `{account}`. An SNS `ErrorResponse` keeps its `Type` and `Code`.
+- `x-amzn-query-error` by value, and `x-amzn-RequestId` for presence only. SQS and SNS steps never compare `Content-Length`.
 
 ## Known differences
 
@@ -83,7 +112,7 @@ Use `pending.txt` for behavior pail will implement, with the issue that implemen
 
 ## Add a scenario
 
-1. Add the scenario to `scenarios()`. Use a new bucket per scenario, and delete what you create. A step can write `{uploadId}` in its query, headers, or body. It stands for the ID that the latest `CreateMultipartUpload` step returned.
+1. Add the scenario to `scenarios()`. Use a new bucket per scenario, and delete what you create. A step can write `{name}` or a variable such as `{uploadId}` in its query, headers, or body. See [SQS and SNS](#sqs-and-sns) for the variables. `{uploadId}` stands for the ID that the latest `CreateMultipartUpload` step returned.
 2. Record it against AWS.
 3. Run replay. For each step that differs, fix pail, add the step to `pending.txt` with the issue that will implement it, or list the accepted difference in `known-diffs.txt`.
 4. Commit the golden file together with its `pending.txt` and `known-diffs.txt` lines, so CI stays green.

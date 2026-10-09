@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -48,10 +49,10 @@ var comparedHeaders = []string{
 	"X-Amz-Checksum-Sha256", "X-Amz-Checksum-Type",
 	"Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers",
 	"Access-Control-Expose-Headers", "Access-Control-Allow-Credentials", "Access-Control-Max-Age",
-	"Vary", "X-Amz-Transition-Default-Minimum-Object-Size",
+	"Vary", "X-Amz-Transition-Default-Minimum-Object-Size", "X-Amzn-Query-Error",
 }
 
-var presenceHeaders = []string{"Last-Modified", "X-Amz-Id-2", "X-Amz-Request-Id"}
+var presenceHeaders = []string{"Last-Modified", "X-Amz-Id-2", "X-Amz-Request-Id", "X-Amzn-Requestid"}
 
 // volatileElements change on every run, so only their presence is kept.
 var volatileElements = map[string]bool{
@@ -61,11 +62,26 @@ var volatileElements = map[string]bool{
 	"NextUploadIdMarker": true, "UploadId": true, "UploadIdMarker": true,
 }
 
+// volatileJSONKeys change on every run; the last path segment decides.
+var volatileJSONKeys = map[string]bool{
+	"ReceiptHandle": true, "SequenceNumber": true, "NextToken": true, "SentTimestamp": true,
+	"ApproximateFirstReceiveTimestamp": true, "CreatedTimestamp": true, "LastModifiedTimestamp": true,
+}
+
+// Non-S3 bodies hold run-specific values that normalizeService masks.
+var (
+	uuidPattern    = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+	accountPattern = regexp.MustCompile(`\b[0-9]{12}\b`)
+)
+
 // droppedElements are per-request identifiers.
 var droppedElements = map[string]bool{"HostId": true, "RequestId": true}
 
 // normalize turns a raw response into a comparable exchange.
 func normalize(st step, bucket string, r response) exchange {
+	if st.service != "" {
+		return normalizeService(st, bucket, r)
+	}
 	ex := exchange{Step: st.name, Request: describe(st), Fingerprint: fingerprint(st), Status: r.status, Headers: map[string]string{}}
 	body := string(r.body)
 	// A successful object read is opaque data, even with an XML content type.
@@ -124,6 +140,46 @@ func normalize(st step, bucket string, r response) exchange {
 	return ex
 }
 
+// normalizeService normalizes an SQS or SNS response. The scenario name, the
+// endpoint, UUIDs, and account IDs become placeholders.
+func normalizeService(st step, name string, r response) exchange {
+	ex := exchange{Step: st.name, Request: describe(st), Fingerprint: fingerprint(st), Status: r.status, Headers: map[string]string{}}
+	var body string
+	var err error
+	if st.service == "sqs" {
+		body, _, err = canonicalJSON(string(r.body))
+		if err != nil {
+			body = "unparsable JSON: " + err.Error()
+		}
+	} else {
+		body, _, err = canonicalXML(string(r.body))
+		if err != nil {
+			body = "unparsable XML: " + err.Error()
+		}
+	}
+	if r.endpoint != "" {
+		body = strings.ReplaceAll(body, r.endpoint, "{endpoint}")
+	}
+	body = strings.ReplaceAll(body, name, "{name}")
+	body = uuidPattern.ReplaceAllString(body, "{uuid}")
+	ex.Body = accountPattern.ReplaceAllString(body, "{account}")
+	for _, h := range comparedHeaders {
+		// JSON and XML formatting differ between servers, so length is not compared.
+		if v := r.header.Get(h); v != "" && h != "Content-Length" {
+			ex.Headers[h] = strings.ReplaceAll(v, name, "{name}")
+		}
+	}
+	for _, h := range presenceHeaders {
+		if r.header.Get(h) != "" {
+			ex.Headers[h] = "<present>"
+		}
+	}
+	if len(ex.Headers) == 0 {
+		ex.Headers = nil
+	}
+	return ex
+}
+
 // fingerprint hashes everything a step sends.
 func fingerprint(st step) string {
 	h := sha256.New()
@@ -134,6 +190,9 @@ func fingerprint(st step) string {
 	h.Write([]byte(st.body))
 	if st.stream != "" { // only here, so older steps keep their fingerprints
 		fmt.Fprintf(h, "\nstream %s %d %q %v", st.stream, st.chunk, st.trailer, st.badChunkSig)
+	}
+	if st.service != "" { // only here, so older steps keep their fingerprints
+		fmt.Fprintf(h, "\nservice %s %q", st.service, st.target)
 	}
 	if st.form != nil {
 		for _, key := range slices.Sorted(maps.Keys(st.form)) {
@@ -146,6 +205,14 @@ func fingerprint(st step) string {
 
 // describe is the request line a reader sees in a golden file.
 func describe(st step) string {
+	if st.service != "" {
+		action := st.target
+		if st.service == "sns" {
+			form, _ := url.ParseQuery(st.body)
+			action = form.Get("Action")
+		}
+		return st.method + " " + st.service + " " + action
+	}
 	s := st.method + " /" + st.key
 	if st.query != "" {
 		s += "?" + st.query
@@ -198,6 +265,23 @@ func canonicalXML(body string) (string, bool, error) {
 	if root == nil {
 		return "", false, nil
 	}
+	if root.name == "ErrorResponse" {
+		var typ, code string
+		for _, e := range root.children {
+			if e.name != "Error" {
+				continue
+			}
+			for _, c := range e.children {
+				switch c.name {
+				case "Type":
+					typ = c.text
+				case "Code":
+					code = c.text
+				}
+			}
+		}
+		return "ErrorResponse\n  Type: " + typ + "\n  Code: " + code + "\n", true, nil
+	}
 	if root.name == "Error" {
 		code := ""
 		for _, c := range root.children {
@@ -214,6 +298,59 @@ func canonicalXML(body string) (string, bool, error) {
 	var b strings.Builder
 	writeNode(&b, root, 0)
 	return b.String(), false, nil
+}
+
+// canonicalJSON renders a JSON body as one "path: value" line per leaf. For an
+// error it keeps the __type only: message text differs between servers.
+func canonicalJSON(body string) (string, bool, error) {
+	if strings.TrimSpace(body) == "" {
+		return "", false, nil
+	}
+	dec := json.NewDecoder(strings.NewReader(body))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return "", false, err
+	}
+	if obj, ok := v.(map[string]any); ok {
+		if typ, ok := obj["__type"]; ok {
+			return fmt.Sprintf("__type: %v\n", typ), true, nil
+		}
+	}
+	var b strings.Builder
+	writeJSON(&b, "", "", v)
+	return b.String(), false, nil
+}
+
+// writeJSON writes the leaves under v. key is v's own key, for volatile keys.
+func writeJSON(b *strings.Builder, path, key string, v any) {
+	switch v := v.(type) {
+	case map[string]any:
+		if len(v) == 0 && path != "" {
+			fmt.Fprintf(b, "%s: {}\n", path)
+		}
+		for _, k := range slices.Sorted(maps.Keys(v)) {
+			p := k
+			if path != "" {
+				p = path + "." + k
+			}
+			writeJSON(b, p, k, v[k])
+		}
+	case []any:
+		if len(v) == 0 {
+			fmt.Fprintf(b, "%s: []\n", path)
+		}
+		for i, e := range v {
+			writeJSON(b, fmt.Sprintf("%s[%d]", path, i), "", e)
+		}
+	case nil:
+		fmt.Fprintf(b, "%s: null\n", path)
+	default:
+		if volatileJSONKeys[key] {
+			v = "<volatile>"
+		}
+		fmt.Fprintf(b, "%s: %v\n", path, v)
+	}
 }
 
 func nodeText(n *xmlNode) string {
