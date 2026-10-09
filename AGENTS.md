@@ -90,7 +90,9 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 ## Documentation
 
-- Update `README.md` and `AGENTS.md` in the same PR as the change. Stale docs are a bug.
+- Update `README.md`, `docs/s3-compatibility.md`, and `AGENTS.md` in the same PR as the change. Stale docs are a bug.
+- `README.md` summarizes pail. Exact S3 behavior, limits, and AWS differences go in `docs/s3-compatibility.md`.
+- Follow the [Google developer documentation style guide](https://developers.google.com/style).
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
 
 ## Differential suite
