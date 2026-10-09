@@ -50,6 +50,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - S3 requests bypass `http.ServeMux`, because it redirects paths that are not clean, such as `a//b`, and those are valid keys. `internal/s3api` routes them from one operation table. `ServeMux` serves only pail's own `/_pail/` endpoints.
 - `internal/server/router.go` routes each request by its SigV4 credential scope: `sqs` to `internal/sqsapi` and `sns` to `internal/snsapi`. An unsigned request with `X-Amz-Target: AmazonSQS.*` also goes to SQS. Everything else, including other unsigned requests, goes to `internal/s3api`.
 - `internal/queue` holds SQS queues. Definitions persist under `sqs/queues/` in the data directory; messages live in memory. Visibility, delay, and retention are evaluated lazily, so the engine runs no goroutine. Long polls wait on a per-queue wake channel, and `StopWaiters` releases them at shutdown.
+- `http.Server.RegisterOnShutdown` calls `queue.Engine.StopWaiters`, so long polls end before `Shutdown`'s deadline.
 - `golangci-lint` enforces much of this (revive, nakedret, bodyclose, containedctx, usetesting, noctx, modernize, errorlint). For noctx, use `ExecContext`, `DialContext`, `HandshakeContext`, and `httptest.NewRequestWithContext`.
 - Write Go 1.27 idioms, not their older equivalents. `modernize` and `errorlint` catch most of this in CI, and `go fix -stringsbuilder=false ./...` applies the mechanical half. The rest is on you: `errors.Is` and `errors.AsType[T]` over `==` and type assertions, `errors.Join` for accumulated errors, `cmp.Or` for fallback chains (every argument is evaluated, so no side effects), typed `atomic.Bool` and `atomic.Pointer[T]` over `atomic.Value`, `sync.OnceValue` over a `sync.Once` plus a result variable, `slices.Sorted(maps.Keys(m))` for deterministic map output, `new(v)` over a temporary variable taken by address, and method-aware `ServeMux` patterns with `r.PathValue`.
 - Never use `time.Tick`. It cannot be stopped, which breaks the goroutine-lifetime rule above. Use `time.NewTicker` and `Stop` it.
@@ -78,7 +79,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Send raw or presigned requests through `pail.httpClient`. It routes every host to the test server, with no DNS or proxy.
 - The SDK sends `aws-chunked` uploads only over HTTPS. Use `startPailTLS` to test them; it serves `example.com`, which the `httptest` certificate covers. `forEachStyle` starts a plain-HTTP pail, so such a test loops over `styles` itself.
 - Keep user metadata names lowercase on the wire. The boto3 smoke test checks casing that Go HTTP clients normalize.
-- `scripts/smoke.sh` runs the AWS CLI and boto3 (pinned) against a real pail, with their default settings. Both script files isolate themselves from real AWS credentials and point every client at pail's endpoint. Keep that when you edit them. boto3 presigns URLs with its default client. Browser POST policies use an explicit SigV4 client.
+- `scripts/smoke.sh` runs the AWS CLI and boto3 (pinned) against a real pail, with their default settings. Both script files isolate themselves from real AWS credentials and point every client at pail's endpoint. They unset `AWS_ENDPOINT_URL_SQS` and `AWS_ENDPOINT_URL_SNS` as part of that isolation. Keep that when you edit them. boto3 presigns URLs with its default client. Browser POST policies use an explicit SigV4 client.
 - `internal/sigv4/sigv2.go` verifies SigV2 query signatures. Routing supplies the virtual bucket; canonical resources preserve path escapes and sort S3 subresources. SigV2 Authorization headers remain unsupported.
 - aws-sdk-go-v2 is a test-only dependency. CI checks that `go list -deps ./cmd/pail` names no `aws` or `smithy` package.
 
@@ -93,8 +94,9 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 ## Documentation
 
-- Update `README.md`, `docs/s3-compatibility.md`, and `AGENTS.md` in the same PR as the change. Stale docs are a bug.
+- Update `README.md`, `docs/s3-compatibility.md`, `docs/sqs-sns-compatibility.md`, and `AGENTS.md` in the same PR as the change. Stale docs are a bug.
 - `README.md` summarizes pail. Exact S3 behavior, limits, and AWS differences go in `docs/s3-compatibility.md`.
+- Exact SQS and SNS behavior goes in `docs/sqs-sns-compatibility.md`.
 - Follow the [Google developer documentation style guide](https://developers.google.com/style).
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
 

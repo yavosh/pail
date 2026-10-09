@@ -66,7 +66,12 @@ var volatileElements = map[string]bool{
 var volatileJSONKeys = map[string]bool{
 	"ReceiptHandle": true, "SequenceNumber": true, "NextToken": true, "SentTimestamp": true,
 	"ApproximateFirstReceiveTimestamp": true, "CreatedTimestamp": true, "LastModifiedTimestamp": true,
+	"SenderId": true, // the recording identity's IAM unique ID; never store it
 }
+
+// droppedJSONKeys hold text that differs between servers, such as the Message of a
+// failed batch entry. Error bodies keep only __type, so this applies to successes.
+var droppedJSONKeys = map[string]bool{"Message": true}
 
 // Non-S3 bodies hold run-specific values that normalizeService masks.
 var (
@@ -333,6 +338,9 @@ func writeJSON(b *strings.Builder, path, key string, v any) {
 			fmt.Fprintf(b, "%s: {}\n", path)
 		}
 		for _, k := range slices.Sorted(maps.Keys(v)) {
+			if droppedJSONKeys[k] {
+				continue
+			}
 			p := k
 			if path != "" {
 				p = path + "." + k

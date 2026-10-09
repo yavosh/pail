@@ -12,7 +12,7 @@ trap 'rm -rf "$work"' EXIT
 
 # Isolate from any real AWS setup: smoke keys, temp config files, no profile.
 unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN AWS_SECURITY_TOKEN \
-  AWS_ENDPOINT_URL AWS_ENDPOINT_URL_S3 AWS_CA_BUNDLE AWS_REGION AWS_CLI_AUTO_PROMPT \
+  AWS_ENDPOINT_URL AWS_ENDPOINT_URL_S3 AWS_ENDPOINT_URL_SQS AWS_ENDPOINT_URL_SNS AWS_CA_BUNDLE AWS_REGION AWS_CLI_AUTO_PROMPT \
   AWS_REQUEST_CHECKSUM_CALCULATION AWS_RESPONSE_CHECKSUM_VALIDATION \
   HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
 export AWS_EC2_METADATA_DISABLED=true
@@ -38,9 +38,10 @@ run() {
   fi
 }
 
-# s3 and s3api run the aws CLI against pail; every call passes --endpoint-url.
+# s3, s3api, and sqs run the aws CLI against pail; every call passes --endpoint-url.
 s3() { run aws --endpoint-url "$SMOKE_ENDPOINT" s3 "$@"; }
 s3api() { run aws --endpoint-url "$SMOKE_ENDPOINT" s3api "$@"; }
+sqs() { run aws --endpoint-url "$SMOKE_ENDPOINT" sqs "$@"; }
 
 fail() {
   echo "FAILED: $*" >&2
@@ -113,3 +114,18 @@ left=$(s3api list-objects-v2 --bucket "$bucket" --query 'length(Contents || `[]`
 [ "$left" = "0" ] || fail "$left objects left after rm --recursive"
 
 s3 rb "s3://$bucket"
+
+# SQS: one message through a queue, with the CLI's default settings.
+queue=smoke-cli-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+sqs create-queue --queue-name "$queue"
+queue_url=$(sqs get-queue-url --queue-name "$queue" --query QueueUrl --output text)
+sqs send-message --queue-url "$queue_url" --message-body "hello from the smoke test"
+received=$(sqs receive-message --queue-url "$queue_url" --wait-time-seconds 1 \
+  --query 'Messages[0].[Body,ReceiptHandle]' --output text)
+IFS=$'\t' read -r body handle <<<"$received"
+[ "$body" = "hello from the smoke test" ] || fail "received message body is '$body'"
+sqs delete-message --queue-url "$queue_url" --receipt-handle "$handle"
+timeout=$(sqs get-queue-attributes --queue-url "$queue_url" --attribute-names All \
+  --query Attributes.VisibilityTimeout --output text)
+[ "$timeout" = "30" ] || fail "VisibilityTimeout is $timeout, want 30"
+sqs delete-queue --queue-url "$queue_url"

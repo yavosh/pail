@@ -3,6 +3,8 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -10,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 
 	"github.com/yavosh/pail/internal/config"
 )
@@ -112,5 +117,82 @@ func TestServeStopsOnCancel(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("Serve() did not return after cancel")
+	}
+}
+
+// postSQS sends a signed SQS request to addr and returns the status and body.
+func postSQS(ctx context.Context, addr, op, body string) (int, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+"/", strings.NewReader(body))
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
+	req.Header.Set("X-Amz-Target", "AmazonSQS."+op)
+	sum := sha256.Sum256([]byte(body))
+	creds := aws.Credentials{AccessKeyID: "AKIAPAILTEST00000000", SecretAccessKey: "pail-test-secret"}
+	if err := v4.NewSigner().SignHTTP(ctx, creds, req, hex.EncodeToString(sum[:]), "sqs", "us-east-1", time.Now()); err != nil {
+		return 0, "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b), err
+}
+
+func TestServeEndsLongPollsOnShutdown(t *testing.T) {
+	s := New(config.Config{
+		Addr: "127.0.0.1:0", DataDir: t.TempDir(), Region: "us-east-1",
+		AccessKeyID: "AKIAPAILTEST00000000", SecretAccessKey: "pail-test-secret",
+	})
+	if err := s.Listen(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.ln.Close(); _ = s.fs.Close() })
+	addr := s.Addr().String()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ctx) }()
+
+	if status, body, err := postSQS(ctx, addr, "CreateQueue", `{"QueueName":"q"}`); err != nil || status != http.StatusOK {
+		t.Fatalf("CreateQueue = %d %s, %v; want 200", status, body, err)
+	}
+	type result struct {
+		status int
+		body   string
+		err    error
+	}
+	poll := make(chan result, 1)
+	go func() {
+		status, body, err := postSQS(context.WithoutCancel(ctx), addr, "ReceiveMessage",
+			`{"QueueUrl":"http://`+addr+`/000000000000/q","WaitTimeSeconds":20}`)
+		poll <- result{status, body, err}
+	}()
+	// The poll has to reach the engine before shutdown starts; real sockets leave no signal to wait on.
+	time.Sleep(200 * time.Millisecond)
+
+	start := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Serve() after cancel = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve() did not return while a long poll waited")
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("shutdown took %v, want well under the 20 s poll", took)
+	}
+	select {
+	case r := <-poll:
+		if r.err != nil || r.status != http.StatusOK || r.body != "{}" {
+			t.Errorf("long poll = %d %q, %v; want 200 {}", r.status, r.body, r.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("long poll did not return")
 	}
 }

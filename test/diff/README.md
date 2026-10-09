@@ -67,7 +67,7 @@ go test ./test/diff -record -run '^TestDiff/(sqs|sns)-' -v
 
 The recording identity needs these actions, scoped to `pail-diff-*` resources where IAM allows it:
 
-- SQS: `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ListQueues`, and `sqs:DeleteQueue`.
+- SQS: `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`, `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility`, `sqs:PurgeQueue`, `sqs:TagQueue`, `sqs:UntagQueue`, `sqs:ListQueueTags`, `sqs:ListQueues`, and `sqs:DeleteQueue`.
 - SNS: `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:Publish`, and `sns:DeleteTopic`.
 
 A recording makes a few dozen SQS and SNS requests, well inside the free tier.
@@ -76,7 +76,23 @@ A recording makes a few dozen SQS and SNS requests, well inside the free tier.
 
 `sqs-queue-basics/receive-message` can come back empty on a standard queue. A step that uses a variable no earlier response set then stops the recording, instead of committing a wrong golden file. The failure names the previous step's status and error code.
 
-The steps of `sqs-auth-errors`, `sqs-queue-basics`, `sns-auth-errors`, and `sns-topic-basics` start in `pending.txt`. After you record, remove each line whose step matches AWS.
+The SQS API scenarios are:
+
+- `sqs-queue-basics`: queue lifecycle, send, receive, and delete.
+- `sqs-message-attributes`: String, Number, and Binary attributes, and the `MessageAttributeNames` filter (`All`, an exact name, `prefix.*`, and none).
+- `sqs-visibility`: visibility timeouts, receipt handles that are stale, deleted, or garbage, and `PurgeQueue`.
+- `sqs-batches`: batch operations, partial failures, and batch validation errors.
+- `sqs-errors`: queue name, attribute, size, and parameter errors, an unknown operation, malformed JSON, and tags.
+
+Record the four newer scenarios with:
+
+```bash
+go test ./test/diff -record -run '^TestDiff/sqs-(message-attributes|visibility|batches|errors)$' -v
+```
+
+The recording masks `SenderId`, because it is the recording identity's IAM unique ID. The suite also drops the `Message` text of failed batch entries, which differs between servers.
+
+The steps of `sns-topic-basics` and the four newer SQS scenarios start in `pending.txt`. After you record, remove each line whose step matches AWS.
 
 ## What is compared
 
@@ -86,7 +102,7 @@ The steps of `sqs-auth-errors`, `sqs-queue-basics`, `sns-auth-errors`, and `sns-
 - Request IDs on empty `400` responses for literal `..` path segments are ignored; AWS front ends vary in sending them.
 - `Content-Length` only for object data. XML formatting and error messages differ between servers.
 - The body. Successful object reads are compared byte for byte, including XML content. A body that is not valid UTF-8 is stored as base64. Protocol XML is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, continuation tokens, and the `Location` URL of a completed upload, are compared for presence only. Bucket names in protocol responses become `{bucket}`.
-- SQS JSON bodies become sorted `path: value` lines, with array indexes such as `Messages[0].Body`. An error keeps only its `__type`. Values that change on every run, such as `ReceiptHandle` and timestamps, are compared for presence only.
+- SQS JSON bodies become sorted `path: value` lines, with array indexes such as `Messages[0].Body`. An error keeps only its `__type`. Values that change on every run, such as `ReceiptHandle`, `SenderId`, and timestamps, are compared for presence only.
 - In SQS and SNS bodies, the endpoint, the scenario name, UUIDs, and 12-digit account IDs become `{endpoint}`, `{name}`, `{uuid}`, and `{account}`. An SNS `ErrorResponse` keeps its `Type` and `Code`.
 - `x-amzn-query-error` by value, and `x-amzn-RequestId` for presence only. SQS and SNS steps never compare `Content-Length`.
 

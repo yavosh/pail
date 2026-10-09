@@ -2,61 +2,163 @@
 package sqsapi
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/sigv4"
 )
 
 // SQS messages and batches reach 1 MiB, and JSON escaping can triple them.
 const maxRequestBytes = 4 << 20
 
+const contentType = "application/x-amz-json-1.0"
+
+// Queues is the queue engine the handler serves. *queue.Engine implements it.
+type Queues interface {
+	CreateQueue(ctx context.Context, name string, attrs, tags map[string]string) error
+	DeleteQueue(ctx context.Context, name string) error
+	Lookup(ctx context.Context, name string) error
+	ListQueues(ctx context.Context, prefix string, limit int, after string) (names []string, next string, err error)
+	Attributes(ctx context.Context, name string, names []string) (map[string]string, error)
+	SetAttributes(ctx context.Context, name string, attrs map[string]string) error
+	Purge(ctx context.Context, name string) error
+	Send(ctx context.Context, name string, in []queue.SendInput) ([]queue.SendResult, error)
+	Receive(ctx context.Context, name string, in queue.ReceiveInput) ([]queue.Message, error)
+	Delete(ctx context.Context, name string, handles []string) ([]error, error)
+	ChangeVisibility(ctx context.Context, name string, changes []queue.VisibilityChange) ([]error, error)
+	Tag(ctx context.Context, name string, tags map[string]string) error
+	Untag(ctx context.Context, name string, keys []string) error
+	Tags(ctx context.Context, name string) (map[string]string, error)
+}
+
 // Options configures the handler.
 type Options struct {
 	AccessKeyID     string
 	SecretAccessKey string
+	Queues          Queues
 }
+
+// opFunc runs one operation. It returns the response value, or nil for an empty body.
+type opFunc func(r *http.Request, body []byte) (any, error)
 
 type handler struct {
-	verifier *sigv4.Verifier
+	verifier    *sigv4.Verifier
+	accessKeyID string
+	queues      Queues
+	ops         map[string]opFunc
 }
 
-// New returns the SQS handler. Every action answers UnsupportedOperation.
+// New returns the SQS handler. An operation outside the table answers UnsupportedOperation.
 func New(opts Options) http.Handler {
-	return &handler{verifier: sigv4.New(opts.AccessKeyID, opts.SecretAccessKey)}
+	h := &handler{
+		verifier:    sigv4.New(opts.AccessKeyID, opts.SecretAccessKey),
+		accessKeyID: opts.AccessKeyID,
+		queues:      opts.Queues,
+	}
+	h.ops = map[string]opFunc{
+		"CreateQueue":                  operation(h.createQueue),
+		"GetQueueUrl":                  operation(h.getQueueURL),
+		"DeleteQueue":                  operation(h.deleteQueue),
+		"PurgeQueue":                   operation(h.purgeQueue),
+		"ListQueues":                   operation(h.listQueues),
+		"GetQueueAttributes":           operation(h.getQueueAttributes),
+		"SetQueueAttributes":           operation(h.setQueueAttributes),
+		"TagQueue":                     operation(h.tagQueue),
+		"UntagQueue":                   operation(h.untagQueue),
+		"ListQueueTags":                operation(h.listQueueTags),
+		"SendMessage":                  operation(h.sendMessage),
+		"SendMessageBatch":             operation(h.sendMessageBatch),
+		"ReceiveMessage":               operation(h.receiveMessage),
+		"DeleteMessage":                operation(h.deleteMessage),
+		"DeleteMessageBatch":           operation(h.deleteMessageBatch),
+		"ChangeMessageVisibility":      operation(h.changeMessageVisibility),
+		"ChangeMessageVisibilityBatch": operation(h.changeMessageVisibilityBatch),
+	}
+	return h
+}
+
+// operation decodes the JSON request body into In before it calls fn.
+func operation[In any](fn func(r *http.Request, in In) (any, error)) opFunc {
+	return func(r *http.Request, body []byte) (any, error) {
+		var in In
+		if err := json.Unmarshal(body, &in); err != nil {
+			return nil, fmt.Errorf("the request body is not valid for this operation: %w", errBadJSON)
+		}
+		return fn(r, in)
+	}
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	w.Header().Set("x-amzn-RequestId", newRequestID())
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	op := strings.TrimPrefix(r.Header.Get("X-Amz-Target"), "AmazonSQS.")
+	status := h.serve(w, r, op)
+	clogSqsapi().Info("request", "method", r.Method, "op", op, "status", status, "duration", time.Since(start))
+}
 
-	apiErr, msg := errUnsupportedOperation, "the action is not supported"
-	if op != "" {
-		msg = fmt.Sprintf("%s is not supported", op)
-	}
+// serve answers the request and returns the status it wrote, or 0 when the
+// client left during a long poll and nothing was written.
+func (h *handler) serve(w http.ResponseWriter, r *http.Request, op string) int {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
 	if err := h.verifier.VerifyService(r, "sqs"); err != nil {
-		apiErr, msg = authError(err), err.Error()
+		return writeError(w, authError(err), err.Error())
 	}
-	writeError(w, apiErr, msg)
-	clogSqsapi().Info("request", "method", r.Method, "op", op, "status", apiErr.status, "duration", time.Since(start))
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return writeError(w, authError(err), err.Error())
+	}
+	fn, ok := h.ops[op]
+	if !ok {
+		msg := "the action is not supported"
+		if op != "" {
+			msg = fmt.Sprintf("%s is not supported", op)
+		}
+		return writeError(w, errUnsupportedOperation, msg)
+	}
+	v, err := fn(r, body)
+	if err != nil {
+		if r.Context().Err() != nil {
+			return 0
+		}
+		apiErr := mapError(err)
+		return writeError(w, apiErr, err.Error())
+	}
+	return writeResult(w, v)
+}
+
+// writeResult answers 200 with v as JSON, or with an empty body when v is nil.
+func writeResult(w http.ResponseWriter, v any) int {
+	var body []byte
+	if v != nil {
+		var err error
+		if body, err = json.Marshal(v); err != nil {
+			return writeError(w, errInternalFailure, "encode response: "+err.Error())
+		}
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+	return http.StatusOK
 }
 
 // writeError answers with the JSON 1.0 error body and the legacy query code.
-func writeError(w http.ResponseWriter, e apiError, message string) {
+func writeError(w http.ResponseWriter, e apiError, message string) int {
 	body, _ := json.Marshal(struct {
 		Type    string `json:"__type"`
 		Message string `json:"message"`
 	}{e.typ, message})
-	w.Header().Set("Content-Type", "application/x-amz-json-1.0")
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("x-amzn-query-error", e.queryCode+";Sender")
 	w.WriteHeader(e.status)
 	_, _ = w.Write(body)
+	return e.status
 }
 
 // newRequestID returns a random UUID v4.
