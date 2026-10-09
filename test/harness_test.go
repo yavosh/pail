@@ -13,9 +13,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
 	"github.com/yavosh/pail/internal/config"
-	"github.com/yavosh/pail/internal/s3api"
 	"github.com/yavosh/pail/internal/server"
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs/localdisk"
@@ -100,13 +101,12 @@ func startPailTLS(t *testing.T) *pail {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewUnstartedServer(s3api.New(s3api.Options{
+	srv := httptest.NewUnstartedServer(server.NewHandler(config.Config{
 		Domain:          "example.com",
 		AccessKeyID:     testKey,
 		SecretAccessKey: testSecret,
 		Region:          testRegion,
-		Store:           st,
-	}))
+	}, st))
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 
@@ -162,6 +162,33 @@ func (p *pail) clientWith(st style, wrap func(http.RoundTripper) http.RoundTripp
 		// A retry would hide the first answer.
 		RetryMaxAttempts: 1,
 	})
+}
+
+// sqsClient returns an SDK client for p. It keeps the SDK defaults, including
+// MD5 validation, and turns retries off so a test sees the first answer.
+func (p *pail) sqsClient(optFns ...func(*sqs.Options)) *sqs.Client {
+	return sqs.New(sqs.Options{
+		BaseEndpoint: aws.String(p.endpoint),
+		Region:       testRegion,
+		Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+			return aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}, nil
+		}),
+		HTTPClient:       p.httpClient,
+		RetryMaxAttempts: 1,
+	}, optFns...)
+}
+
+// snsClient is sqsClient for SNS.
+func (p *pail) snsClient(optFns ...func(*sns.Options)) *sns.Client {
+	return sns.New(sns.Options{
+		BaseEndpoint: aws.String(p.endpoint),
+		Region:       testRegion,
+		Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) {
+			return aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}, nil
+		}),
+		HTTPClient:       p.httpClient,
+		RetryMaxAttempts: 1,
+	}, optFns...)
 }
 
 // bucketURL is the URL of bucket in the given style, for raw requests.

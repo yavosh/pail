@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/yavosh/pail/internal/config"
-	"github.com/yavosh/pail/internal/s3api"
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs/localdisk"
 )
@@ -74,13 +73,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.ln == nil {
 		return errors.New("serve: not listening")
 	}
-	srv := &http.Server{Handler: s3api.New(s3api.Options{
-		Domain:          s.cfg.Domain,
-		AccessKeyID:     s.cfg.AccessKeyID,
-		SecretAccessKey: s.cfg.SecretAccessKey,
-		Region:          s.cfg.Region,
-		Store:           s.store,
-	}), ReadHeaderTimeout: readHeaderTimeout}
+	srv := &http.Server{Handler: NewHandler(s.cfg, s.store), ReadHeaderTimeout: readHeaderTimeout}
 	// After a shutdown timeout, handlers still running see a closed data
 	// directory and fail; their temp files are cleared at the next start.
 	defer func() { _ = s.fs.Close() }()
