@@ -197,7 +197,6 @@ func TestSQSLongPoll(t *testing.T) {
 	url := mustQueue(t, c, "longpoll")
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		time.Sleep(100 * time.Millisecond)
 		if _, err := c.SendMessage(context.Background(), &sqs.SendMessageInput{QueueUrl: &url, MessageBody: aws.String("late")}); err != nil {
 			t.Errorf("SendMessage error = %v", err)
 		}

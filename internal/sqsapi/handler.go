@@ -100,7 +100,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("x-amzn-RequestId", newRequestID())
 	op := strings.TrimPrefix(r.Header.Get("X-Amz-Target"), "AmazonSQS.")
 	status := h.serve(w, r, op)
-	clogSqsapi().Info("request", "method", r.Method, "op", op, "status", status, "duration", time.Since(start))
+	log := clogSqsapi().With("method", r.Method, "op", op, "status", status, "duration", time.Since(start))
+	if status == 0 {
+		log = log.With("client_gone", true)
+	}
+	log.Info("request")
 }
 
 // serve answers the request and returns the status it wrote, or 0 when the

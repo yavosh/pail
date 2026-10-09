@@ -357,7 +357,8 @@ func TestSendReceiveDelete(t *testing.T) {
 	const invalid = "com.amazonaws.sqs#InvalidParameterValueException"
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":""}`, u), 400, invalid, "InvalidParameterValue")
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"\u0000"}`, u), 400, "com.amazonaws.sqs#InvalidMessageContents", "InvalidMessageContents")
-	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageGroupId":"g"}`, u), 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation")
+	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageGroupId":"g"}`, u), 400, invalid, "InvalidParameterValue")
+	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageDeduplicationId":"d"}`, u), 400, invalid, "InvalidParameterValue")
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageAttributes":{"a":{"DataType":"String","StringListValues":["b"]}}}`, u), 400, invalid, "InvalidParameterValue")
 	e.fail("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"MaxNumberOfMessages":11}`, u), 400, invalid, "InvalidParameterValue")
 	e.fail("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"WaitTimeSeconds":21}`, u), 400, invalid, "InvalidParameterValue")
@@ -554,6 +555,14 @@ func TestBatchPartialFailure(t *testing.T) {
 		t.Errorf("Failed = %+v, want entry bad with InvalidMessageContents", sent.Failed)
 	}
 
+	// Entries that cannot convert fail alone and the others are sent.
+	var mixed batchBody
+	e.ok("SendMessageBatch", fmt.Sprintf(`{"QueueUrl":%q,"Entries":[{"Id":"ok","MessageBody":"fine"},{"Id":"fifo","MessageBody":"fine","MessageGroupId":"g"},{"Id":"list","MessageBody":"fine","MessageAttributes":{"a":{"DataType":"String","StringListValues":["x"]}}}]}`, u), &mixed)
+	if len(mixed.Successful) != 1 || mixed.Successful[0].ID != "ok" || len(mixed.Failed) != 2 ||
+		mixed.Failed[0].ID != "fifo" || mixed.Failed[1].ID != "list" || mixed.Failed[0].Code != "InvalidParameterValue" || mixed.Failed[1].Code != "InvalidParameterValue" {
+		t.Errorf("mixed SendMessageBatch = %+v, %+v; want ok sent, fifo and list failed with InvalidParameterValue", mixed.Successful, mixed.Failed)
+	}
+
 	var got receivedBody
 	e.ok("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"WaitTimeSeconds":1}`, u), &got)
 	handle := got.Messages[0].ReceiptHandle
@@ -564,6 +573,11 @@ func TestBatchPartialFailure(t *testing.T) {
 	}
 	e.ok("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"WaitTimeSeconds":1}`, u), &got)
 	handle = got.Messages[0].ReceiptHandle
+	var noTimeout batchBody
+	e.ok("ChangeMessageVisibilityBatch", fmt.Sprintf(`{"QueueUrl":%q,"Entries":[{"Id":"n","ReceiptHandle":%q}]}`, u, handle), &noTimeout)
+	if len(noTimeout.Successful) != 0 || len(noTimeout.Failed) != 1 || noTimeout.Failed[0].Code != "InvalidParameterValue" {
+		t.Errorf("entry without VisibilityTimeout = %+v, %+v; want failed with InvalidParameterValue", noTimeout.Successful, noTimeout.Failed)
+	}
 	var del batchBody
 	e.ok("DeleteMessageBatch", fmt.Sprintf(`{"QueueUrl":%q,"Entries":[{"Id":"x","ReceiptHandle":%q},{"Id":"y","ReceiptHandle":"garbage"}]}`, u, handle), &del)
 	if len(del.Successful) != 1 || len(del.Failed) != 1 || del.Failed[0].Code != "ReceiptHandleIsInvalid" {

@@ -38,6 +38,7 @@ sqs-batches/send-batch-empty SQS behavior recorded before pail matches it; see d
 sqs-batches/send-batch-too-many SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-batches/send-batch-duplicate-ids SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-batches/send-batch-invalid-id SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
+sqs-batches/send-batch-fifo-field SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-batches/receive-one SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-batches/change-visibility-batch SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-batches/receive-again SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
@@ -54,6 +55,7 @@ sqs-errors/set-max-size SQS behavior recorded before pail matches it; see docs/p
 sqs-errors/send-too-long SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-errors/send-invalid-chars SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-errors/send-empty-body SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
+sqs-errors/send-fifo-field-standard-queue SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-errors/receive-max-11 SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-errors/receive-wait-21 SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md
 sqs-errors/get-queue-url-missing-name SQS behavior recorded before pail matches it; see docs/plans/2026-10-09-sqs-sns.md

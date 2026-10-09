@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"testing"
 	"time"
@@ -121,10 +122,18 @@ func TestServeStopsOnCancel(t *testing.T) {
 }
 
 // postSQS sends a signed SQS request to addr and returns the status and body.
-func postSQS(ctx context.Context, addr, op, body string) (int, string, error) {
+// When running is set, the request sends Expect: 100-continue and running is
+// closed on the server's 100 Continue, which the handler sends on its first body read.
+func postSQS(ctx context.Context, addr, op, body string, running chan<- struct{}) (int, string, error) {
+	if running != nil {
+		ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{Got100Continue: func() { close(running) }})
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+"/", strings.NewReader(body))
 	if err != nil {
 		return 0, "", err
+	}
+	if running != nil {
+		req.Header.Set("Expect", "100-continue")
 	}
 	req.Header.Set("Content-Type", "application/x-amz-json-1.0")
 	req.Header.Set("X-Amz-Target", "AmazonSQS."+op)
@@ -157,7 +166,7 @@ func TestServeEndsLongPollsOnShutdown(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- s.Serve(ctx) }()
 
-	if status, body, err := postSQS(ctx, addr, "CreateQueue", `{"QueueName":"q"}`); err != nil || status != http.StatusOK {
+	if status, body, err := postSQS(ctx, addr, "CreateQueue", `{"QueueName":"q"}`, nil); err != nil || status != http.StatusOK {
 		t.Fatalf("CreateQueue = %d %s, %v; want 200", status, body, err)
 	}
 	type result struct {
@@ -166,13 +175,17 @@ func TestServeEndsLongPollsOnShutdown(t *testing.T) {
 		err    error
 	}
 	poll := make(chan result, 1)
+	running := make(chan struct{})
 	go func() {
 		status, body, err := postSQS(context.WithoutCancel(ctx), addr, "ReceiveMessage",
-			`{"QueueUrl":"http://`+addr+`/000000000000/q","WaitTimeSeconds":20}`)
+			`{"QueueUrl":"http://`+addr+`/000000000000/q","WaitTimeSeconds":20}`, running)
 		poll <- result{status, body, err}
 	}()
-	// The poll has to reach the engine before shutdown starts; real sockets leave no signal to wait on.
-	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-running:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the server did not start reading the long poll")
+	}
 
 	start := time.Now()
 	cancel()

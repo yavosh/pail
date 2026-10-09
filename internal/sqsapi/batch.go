@@ -101,22 +101,36 @@ func (h *handler) sendMessageBatch(r *http.Request, in sendMessageBatchRequest) 
 	if size > maxBatchBytes {
 		return nil, fmt.Errorf("the batch is %d bytes, the maximum is %d: %w", size, maxBatchBytes, errBatchTooLong)
 	}
-	inputs := make([]queue.SendInput, len(in.Entries))
+	// An entry that cannot convert fails alone; the rest are sent.
+	errs := make([]error, len(in.Entries))
+	var inputs []queue.SendInput
+	var sentAt []int // entry index of each input
 	for i, e := range in.Entries {
-		if inputs[i], err = e.toInput(); err != nil {
-			return nil, err
+		input, err := e.toInput()
+		if err != nil {
+			errs[i] = err
+			continue
 		}
+		inputs = append(inputs, input)
+		sentAt = append(sentAt, i)
 	}
 	res, err := h.queues.Send(r.Context(), name, inputs)
 	if err != nil {
 		return nil, err
 	}
-	errs := make([]error, len(res))
-	for i, s := range res {
-		errs[i] = s.Err
+	results := make([]queue.SendResult, len(in.Entries))
+	for j, s := range res {
+		results[sentAt[j]] = s
+		errs[sentAt[j]] = s.Err
 	}
 	return collect(ids, errs, func(i int) sendBatchResult {
-		return sendBatchResult{ids[i], res[i].MessageID, res[i].MD5OfBody, res[i].MD5OfAttributes, res[i].MD5OfSystemAttributes}
+		return sendBatchResult{
+			ID:                           ids[i],
+			MessageID:                    results[i].MessageID,
+			MD5OfMessageBody:             results[i].MD5OfBody,
+			MD5OfMessageAttributes:       results[i].MD5OfAttributes,
+			MD5OfMessageSystemAttributes: results[i].MD5OfSystemAttributes,
+		}
 	}), nil
 }
 
@@ -173,16 +187,25 @@ func (h *handler) changeMessageVisibilityBatch(r *http.Request, in changeMessage
 	if err := checkBatchIDs(ids); err != nil {
 		return nil, err
 	}
-	changes := make([]queue.VisibilityChange, len(in.Entries))
+	// An entry without a timeout fails alone with InvalidParameterValue; the
+	// MissingParameter code is only for whole requests.
+	errs := make([]error, len(in.Entries))
+	var changes []queue.VisibilityChange
+	var sentAt []int
 	for i, e := range in.Entries {
 		if e.VisibilityTimeout == nil {
-			return nil, fmt.Errorf("entry %q: VisibilityTimeout is required: %w", e.ID, errMissingParam)
+			errs[i] = fmt.Errorf("VisibilityTimeout is required: %w", queue.ErrInvalidParameterValue)
+			continue
 		}
-		changes[i] = queue.VisibilityChange{ReceiptHandle: e.ReceiptHandle, Timeout: *e.VisibilityTimeout}
+		changes = append(changes, queue.VisibilityChange{ReceiptHandle: e.ReceiptHandle, Timeout: *e.VisibilityTimeout})
+		sentAt = append(sentAt, i)
 	}
-	errs, err := h.queues.ChangeVisibility(r.Context(), name, changes)
+	got, err := h.queues.ChangeVisibility(r.Context(), name, changes)
 	if err != nil {
 		return nil, err
+	}
+	for j, e := range got {
+		errs[sentAt[j]] = e
 	}
 	return collect(ids, errs, func(i int) idOnly { return idOnly{ids[i]} }), nil
 }

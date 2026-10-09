@@ -53,10 +53,10 @@ type sendEntry struct {
 	MessageGroupID          string `json:"MessageGroupId"`
 }
 
-// toInput converts e. FIFO fields wait for the FIFO queue PR.
+// toInput converts e. A standard queue rejects the FIFO fields.
 func (e sendEntry) toInput() (queue.SendInput, error) {
 	if e.MessageGroupID != "" || e.MessageDeduplicationID != "" {
-		return queue.SendInput{}, fmt.Errorf("FIFO queues are not supported: %w", queue.ErrUnsupported)
+		return queue.SendInput{}, fmt.Errorf("MessageGroupId and MessageDeduplicationId are not valid for this queue type: %w", queue.ErrInvalidParameterValue)
 	}
 	attrs, err := toEngine(e.MessageAttributes)
 	if err != nil {
@@ -106,7 +106,12 @@ func (h *handler) sendMessage(r *http.Request, in sendMessageRequest) (any, erro
 	if res[0].Err != nil {
 		return nil, res[0].Err
 	}
-	return sendMessageResponse{res[0].MD5OfBody, res[0].MessageID, res[0].MD5OfAttributes, res[0].MD5OfSystemAttributes}, nil
+	return sendMessageResponse{
+		MD5OfMessageBody:             res[0].MD5OfBody,
+		MessageID:                    res[0].MessageID,
+		MD5OfMessageAttributes:       res[0].MD5OfAttributes,
+		MD5OfMessageSystemAttributes: res[0].MD5OfSystemAttributes,
+	}, nil
 }
 
 type receiveMessageRequest struct {

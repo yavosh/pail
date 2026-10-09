@@ -29,7 +29,7 @@ Every other operation returns `UnsupportedOperation`. That includes `AddPermissi
 - pail ignores the host when it reads a queue URL. A URL from `localhost` works through `127.0.0.1` or a container host name.
 - A queue URL with another account or a malformed path returns `QueueDoesNotExist`. An empty `QueueUrl` returns `MissingParameter`.
 - A queue ARN is `arn:aws:sqs:<region>:000000000000:<name>`. The region is the `--region` setting.
-- A queue name is 1 to 80 letters, digits, hyphens, or underscores. Names that end in `.fifo` return `UnsupportedOperation`.
+- A queue name is 1 to 80 letters, digits, hyphens, or underscores. `CreateQueue` with a name that ends in `.fifo` returns `UnsupportedOperation`. `GetQueueUrl` for such a name returns `QueueDoesNotExist`.
 
 ### Defaults and limits
 
@@ -69,6 +69,7 @@ Queue definitions, which are attributes and tags, persist in the data directory.
 - A handle that pail never issued returns `ReceiptHandleIsInvalid`.
 - A restart invalidates all handles.
 - `ChangeMessageVisibility` on a message that isn't in flight returns `MessageNotInflight`.
+- `ChangeMessageVisibility` with a stale handle, or for a deleted message, returns `InvalidParameterValue`. `DeleteMessage` succeeds in both cases.
 
 ### Message attributes and checksums
 
@@ -86,7 +87,7 @@ Queue definitions, which are attributes and tags, persist in the data directory.
 - A batch has 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique in the batch.
 - A batch body, with its message attributes, is at most 1,048,576 bytes.
 - A request that breaks these rules fails as a whole with `EmptyBatchRequest`, `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong`.
-- An invalid entry fails alone. The response lists it in `Failed` with `SenderFault`, a `Code`, and a `Message`. The other entries still run.
+- An invalid entry fails alone. The response lists it in `Failed` with `SenderFault`, a `Code`, and a `Message`. The other entries still run. An entry fails alone for an invalid message, a FIFO field, list attribute values, or a missing `VisibilityTimeout`; the last three use `InvalidParameterValue`.
 
 ### Errors
 
@@ -119,4 +120,4 @@ A failed batch entry uses the code `InvalidParameterValue`, `InvalidMessageConte
 - `ReceiveRequestAttemptId` is ignored.
 - A message that is sent to a standard queue is delivered in send order. AWS gives no ordering guarantee.
 - pail doesn't support the SQS query protocol.
-- FIFO queues, dead-letter queues, and redrive are not supported yet. FIFO message fields return `UnsupportedOperation`.
+- FIFO queues, dead-letter queues, and redrive are not supported yet. `MessageGroupId` and `MessageDeduplicationId` return `InvalidParameterValue`, as AWS does for a standard queue.

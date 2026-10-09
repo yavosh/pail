@@ -97,6 +97,7 @@ func sqsBatchesScenario() scenario {
 		sqsStep("send-batch-too-many", "SendMessageBatch", send(eleven...)),
 		sqsStep("send-batch-duplicate-ids", "SendMessageBatch", send(entry("a"), entry("a"))),
 		sqsStep("send-batch-invalid-id", "SendMessageBatch", send(entry("bad id"))),
+		sqsStep("send-batch-fifo-field", "SendMessageBatch", send(entry("ok"), `{"Id":"fifo","MessageBody":"fine","MessageGroupId":"g"}`)),
 		sqsStep("receive-one", "ReceiveMessage", `{"QueueUrl":"{queueUrl}","MaxNumberOfMessages":1,"WaitTimeSeconds":5}`),
 		sqsStep("change-visibility-batch", "ChangeMessageVisibilityBatch", `{"QueueUrl":"{queueUrl}","Entries":[`+
 			`{"Id":"x","ReceiptHandle":"{receiptHandle}","VisibilityTimeout":0},`+
@@ -123,6 +124,7 @@ func sqsErrorsScenario() scenario {
 		sqsStep("send-too-long", "SendMessage", `{`+url+`,"MessageBody":"`+strings.Repeat("x", 1025)+`"}`),
 		sqsStep("send-invalid-chars", "SendMessage", `{`+url+`,"MessageBody":"\u0000"}`),
 		sqsStep("send-empty-body", "SendMessage", `{`+url+`,"MessageBody":""}`),
+		sqsStep("send-fifo-field-standard-queue", "SendMessage", `{`+url+`,"MessageBody":"x","MessageGroupId":"g"}`),
 		sqsStep("receive-max-11", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":11}`),
 		sqsStep("receive-wait-21", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":21}`),
 		sqsStep("get-queue-url-missing-name", "GetQueueUrl", `{}`),
