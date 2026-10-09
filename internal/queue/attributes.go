@@ -6,26 +6,28 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 // attrSpec describes one settable attribute. An empty def means no default.
 type attrSpec struct {
-	def string
-	ok  func(string) bool
+	def     string
+	ok      func(string) bool
+	integer bool // stored in canonical decimal form
 }
 
 // attrSpecs is the one table of settable attributes. Later PRs add redrive
 // and FIFO entries here.
 var attrSpecs = map[string]attrSpec{
-	"DelaySeconds":                  {"0", intRange(0, 900)},
-	"MaximumMessageSize":            {"1048576", intRange(1024, 1048576)},
-	"MessageRetentionPeriod":        {"345600", intRange(60, 1209600)},
-	"ReceiveMessageWaitTimeSeconds": {"0", intRange(0, 20)},
-	"VisibilityTimeout":             {"30", intRange(0, 43200)},
-	"SqsManagedSseEnabled":          {"true", func(v string) bool { return v == "true" || v == "false" }},
-	"KmsMasterKeyId":                {"", func(v string) bool { return v != "" }},
-	"KmsDataKeyReusePeriodSeconds":  {"", intRange(60, 86400)},
-	"Policy":                        {"", func(v string) bool { return json.Valid([]byte(v)) }},
+	"DelaySeconds":                  {"0", intRange(0, 900), true},
+	"MaximumMessageSize":            {"1048576", intRange(1024, 1048576), true},
+	"MessageRetentionPeriod":        {"345600", intRange(60, 1209600), true},
+	"ReceiveMessageWaitTimeSeconds": {"0", intRange(0, 20), true},
+	"VisibilityTimeout":             {"30", intRange(0, 43200), true},
+	"SqsManagedSseEnabled":          {"true", func(v string) bool { return v == "true" || v == "false" }, false},
+	"KmsMasterKeyId":                {"", func(v string) bool { return v != "" }, false},
+	"KmsDataKeyReusePeriodSeconds":  {"", intRange(60, 86400), true},
+	"Policy":                        {"", isJSONObject, false},
 }
 
 // computedAttrs are read-only attributes the engine derives.
@@ -38,16 +40,23 @@ var computedAttrs = []string{
 	"QueueArn",
 }
 
-// unsupportedAttrs are valid SQS attributes that a later PR implements.
+// unsupportedAttrs are valid SQS attributes that a later PR implements. They
+// cannot be set yet, and a standard queue does not report them.
 var unsupportedAttrs = []string{
 	"FifoQueue", "ContentBasedDeduplication", "DeduplicationScope",
 	"FifoThroughputLimit", "RedrivePolicy", "RedriveAllowPolicy",
 }
 
-// intRange accepts plain decimal digits within lo and hi.
+// isJSONObject accepts a JSON document whose top level is an object.
+func isJSONObject(v string) bool {
+	return strings.HasPrefix(strings.TrimLeft(v, " \t\r\n"), "{") && json.Valid([]byte(v))
+}
+
+// intRange accepts plain decimal digits within lo and hi. Leading zeros are
+// dropped before the length check, so a value that could overflow int fails.
 func intRange(lo, hi int) func(string) bool {
 	return func(v string) bool {
-		if v == "" || len(v) > 9 {
+		if v == "" {
 			return false
 		}
 		for _, c := range v {
@@ -55,9 +64,26 @@ func intRange(lo, hi int) func(string) bool {
 				return false
 			}
 		}
-		n, err := strconv.Atoi(v)
-		return err == nil && n >= lo && n <= hi
+		v = strings.TrimLeft(v, "0")
+		if len(v) > 9 {
+			return false
+		}
+		n, _ := strconv.Atoi(v)
+		return n >= lo && n <= hi
 	}
+}
+
+// canonicalAttrs returns a copy of validated attrs with integers in canonical
+// decimal form, so "007" is stored and compared as "7".
+func canonicalAttrs(attrs map[string]string) map[string]string {
+	out := maps.Clone(attrs)
+	for name, v := range out {
+		if attrSpecs[name].integer {
+			n, _ := strconv.Atoi(v)
+			out[name] = strconv.Itoa(n)
+		}
+	}
+	return out
 }
 
 // validateAttrs checks names and values in sorted name order.
@@ -92,5 +118,5 @@ func defaultAttrs(attrs map[string]string) map[string]string {
 // knownAttr reports whether name can be requested from Attributes.
 func knownAttr(name string) bool {
 	_, ok := attrSpecs[name]
-	return ok || slices.Contains(computedAttrs, name)
+	return ok || slices.Contains(computedAttrs, name) || slices.Contains(unsupportedAttrs, name)
 }

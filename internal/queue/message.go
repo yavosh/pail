@@ -6,11 +6,14 @@ import (
 	"crypto/rand"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
+
+var numberRE = regexp.MustCompile(`^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$`)
 
 const (
 	maxBatchAttributes = 10
@@ -105,6 +108,7 @@ func (e *Engine) Send(ctx context.Context, name string, in []SendInput) ([]SendR
 		return nil, err
 	}
 	now := time.Now()
+	q.prune(now)
 	maxSize := q.intAttr("MaximumMessageSize")
 	queueDelay := q.intAttr("DelaySeconds")
 	out := make([]SendResult, len(in))
@@ -230,9 +234,21 @@ func validateAttribute(name string, a MessageAttribute) error {
 		if a.StringValue == "" {
 			return bad("string value is empty")
 		}
+		if len(a.BinaryValue) != 0 {
+			return bad("string and number attributes cannot have a binary value")
+		}
+		if !validBody(a.StringValue) {
+			return bad("value has a character outside the allowed set")
+		}
+		if base == "Number" && !numberRE.MatchString(a.StringValue) {
+			return bad("number value is not a decimal number")
+		}
 	case "Binary":
 		if len(a.BinaryValue) == 0 {
 			return bad("binary value is empty")
+		}
+		if a.StringValue != "" {
+			return bad("binary attributes cannot have a string value")
 		}
 	default:
 		return bad("data type must be String, Number, or Binary")
@@ -427,9 +443,7 @@ func (e *Engine) ChangeVisibility(ctx context.Context, name string, changes []Vi
 			continue
 		}
 		m.visibleAt = visibleAt
-		if c.Timeout == 0 {
-			q.notify()
-		}
+		q.notify() // waiting receives size their timers from visibleAt
 	}
 	return errs, nil
 }

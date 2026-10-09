@@ -92,9 +92,18 @@ func Open(ctx context.Context, fsys vfs.FS, region string) (*Engine, error) {
 			continue
 		}
 		var def definition
-		if err := vfs.ReadJSON(fsys, path.Join(queuesDir, ent.Name()), &def); err != nil {
+		file := path.Join(queuesDir, ent.Name())
+		if err := vfs.ReadJSON(fsys, file, &def); err != nil {
 			return nil, fmt.Errorf("read queue %s: %w", ent.Name(), err)
 		}
+		// A file under another name would resurrect a queue deleted by name.
+		if err := errors.Join(checkQueueName(def.Name), validateAttrs(def.Attributes)); err != nil {
+			return nil, fmt.Errorf("queue file %s: %w", ent.Name(), err)
+		}
+		if file != queueFile(def.Name) {
+			return nil, fmt.Errorf("queue file %s: name %q does not match the file name", ent.Name(), def.Name)
+		}
+		def.Attributes = defaultAttrs(canonicalAttrs(def.Attributes))
 		e.queues[def.Name] = &queue{def: def, wake: make(chan struct{})}
 	}
 	clogQueue().Info("queues loaded", "count", len(e.queues))
@@ -127,7 +136,7 @@ func (e *Engine) persist(def definition) error {
 
 func checkQueueName(name string) error {
 	if strings.HasSuffix(name, ".fifo") {
-		return fmt.Errorf("queue %q: FIFO queues land in a later PR: %w", name, ErrUnsupported)
+		return fmt.Errorf("queue %q: fifo queues are not supported: %w", name, ErrUnsupported)
 	}
 	if !queueNameRE.MatchString(name) {
 		return fmt.Errorf("queue name %q: %w", name, ErrInvalidName)
@@ -147,6 +156,7 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 	if err := validateAttrs(attrs); err != nil {
 		return err
 	}
+	attrs = canonicalAttrs(attrs)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if q, ok := e.queues[name]; ok {
@@ -217,7 +227,10 @@ func (e *Engine) DeleteQueue(ctx context.Context, name string) error {
 // ListQueues returns queue names with prefix in sorted order, skipping names
 // up to after. With limit 0 it returns up to 1000 names and no next. Otherwise it
 // returns at most limit names and, when more remain, next as the last one.
-func (e *Engine) ListQueues(_ context.Context, prefix string, limit int, after string) (names []string, next string) {
+func (e *Engine) ListQueues(ctx context.Context, prefix string, limit int, after string) (names []string, next string, err error) {
+	if err = ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	e.mu.Lock()
 	for n := range e.queues {
 		if strings.HasPrefix(n, prefix) && (after == "" || n > after) {
@@ -227,13 +240,13 @@ func (e *Engine) ListQueues(_ context.Context, prefix string, limit int, after s
 	e.mu.Unlock()
 	slices.Sort(names)
 	if limit == 0 {
-		return names[:min(len(names), maxListQueues)], ""
+		return names[:min(len(names), maxListQueues)], "", nil
 	}
 	if len(names) > limit {
 		names = names[:limit]
 		next = names[limit-1]
 	}
-	return names, next
+	return names, next, nil
 }
 
 // Attributes returns the named attributes, or all of them for "All".
@@ -295,6 +308,7 @@ func (e *Engine) SetAttributes(ctx context.Context, name string, attrs map[strin
 	if err := validateAttrs(attrs); err != nil {
 		return err
 	}
+	attrs = canonicalAttrs(attrs)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	q, err := e.find(name)

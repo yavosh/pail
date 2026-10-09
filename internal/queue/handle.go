@@ -9,8 +9,8 @@ import (
 
 const macLen = 16
 
-// Handles validate themselves, so a deleted message's handle is recognized
-// without keeping state, and a restart invalidates them along with the messages.
+// handleMAC signs a receipt handle. Handles validate themselves, so a deleted
+// message's handle is recognized without state, and a restart invalidates them.
 func (e *Engine) handleMAC(queue string, id [16]byte, seq uint32) []byte {
 	h := hmac.New(sha256.New, e.key)
 	h.Write([]byte(queue))

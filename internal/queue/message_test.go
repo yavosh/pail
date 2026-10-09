@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -109,6 +110,16 @@ func TestSendEntryValidation(t *testing.T) {
 		{"missing string value", withAttr("a", MessageAttribute{DataType: "String"}), ErrInvalidParameterValue},
 		{"missing number value", withAttr("a", MessageAttribute{DataType: "Number"}), ErrInvalidParameterValue},
 		{"missing binary value", withAttr("a", MessageAttribute{DataType: "Binary", StringValue: "v"}), ErrInvalidParameterValue},
+		{"number", withAttr("a", MessageAttribute{DataType: "Number", StringValue: "-1.5e+3"}), nil},
+		{"number leading dot", withAttr("a", MessageAttribute{DataType: "Number", StringValue: ".5"}), nil},
+		{"number not numeric", withAttr("a", MessageAttribute{DataType: "Number", StringValue: "abc"}), ErrInvalidParameterValue},
+		{"number trailing junk", withAttr("a", MessageAttribute{DataType: "Number", StringValue: "1 "}), ErrInvalidParameterValue},
+		{"number lone sign", withAttr("a", MessageAttribute{DataType: "Number", StringValue: "-"}), ErrInvalidParameterValue},
+		{"string value nul", withAttr("a", strAttr("a\x00b")), ErrInvalidParameterValue},
+		{"string value invalid utf-8", withAttr("a", strAttr("a\xffb")), ErrInvalidParameterValue},
+		{"string with binary value", withAttr("a", MessageAttribute{DataType: "String", StringValue: "v", BinaryValue: []byte{1}}), ErrInvalidParameterValue},
+		{"number with binary value", withAttr("a", MessageAttribute{DataType: "Number", StringValue: "1", BinaryValue: []byte{1}}), ErrInvalidParameterValue},
+		{"binary with string value", withAttr("a", MessageAttribute{DataType: "Binary", StringValue: "v", BinaryValue: []byte{1}}), ErrInvalidParameterValue},
 		{"binary label", withAttr("a", MessageAttribute{DataType: "Binary.png", BinaryValue: []byte{1}}), nil},
 		{"bad system attribute", SendInput{Body: "x", SystemAttributes: map[string]MessageAttribute{"Other": strAttr("v")}}, ErrInvalidParameterValue},
 		{"bad system type", SendInput{Body: "x", SystemAttributes: map[string]MessageAttribute{"AWSTraceHeader": {DataType: "Number", StringValue: "1"}}}, ErrInvalidParameterValue},
@@ -121,7 +132,7 @@ func TestSendEntryValidation(t *testing.T) {
 			// A valid entry on each side proves one bad entry does not stop the batch.
 			res, err := e.Send(t.Context(), "q", []SendInput{{Body: "before"}, tt.in, {Body: "after"}})
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Send(q, %+v) error = %v", tt.in, err)
 			}
 			if res[0].Err != nil || res[2].Err != nil || res[0].MessageID == "" || res[2].MessageID == "" {
 				t.Errorf("neighbors = %+v, %+v; want sent", res[0], res[2])
@@ -202,7 +213,7 @@ func TestDelay(t *testing.T) {
 		mustCreate(t, e, "q", map[string]string{"DelaySeconds": "10"})
 		sendBodies(t, e, "q", "queue-delay")
 		if _, err := e.Send(t.Context(), "q", []SendInput{{Body: "own-delay", DelaySeconds: new(3)}, {Body: "no-delay", DelaySeconds: new(0)}}); err != nil {
-			t.Fatal(err)
+			t.Fatalf("Send(q, own-delay no-delay) error = %v", err)
 		}
 		counts := func() [3]string {
 			return [3]string{
@@ -309,7 +320,7 @@ func TestLongPoll(t *testing.T) {
 			e := newEngine(t)
 			mustCreate(t, e, "q", nil)
 			if _, err := e.Send(t.Context(), "q", []SendInput{{Body: "d", DelaySeconds: new(7)}}); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Send(q, d) error = %v", err)
 			}
 			start := time.Now()
 			got, err := e.Receive(t.Context(), "q", ReceiveInput{WaitTimeSeconds: new(20)})
@@ -359,7 +370,7 @@ func TestLongPoll(t *testing.T) {
 			wait := startReceive(t.Context(), e, "q", ReceiveInput{WaitTimeSeconds: new(20)})
 			synctest.Wait()
 			if err := e.DeleteQueue(t.Context(), "q"); err != nil {
-				t.Fatal(err)
+				t.Fatalf("DeleteQueue(q) error = %v", err)
 			}
 			if _, err := wait(); !errors.Is(err, ErrQueueDoesNotExist) {
 				t.Errorf("Receive error = %v, want ErrQueueDoesNotExist", err)
@@ -438,7 +449,7 @@ func TestChangeVisibility(t *testing.T) {
 			e, h := setup(t)
 			time.Sleep(20 * time.Second)
 			if err := change(t, e, h, 100); err != nil {
-				t.Fatal(err)
+				t.Fatalf("ChangeVisibility(q, 100) error = %v", err)
 			}
 			time.Sleep(99 * time.Second)
 			if got := receive(t, e, "q", ReceiveInput{}); len(got) != 0 {
@@ -458,10 +469,24 @@ func TestChangeVisibility(t *testing.T) {
 			synctest.Wait()
 			time.Sleep(4 * time.Second)
 			if err := change(t, e, h, 0); err != nil {
-				t.Fatal(err)
+				t.Fatalf("ChangeVisibility(q, 0) error = %v", err)
 			}
 			if got, err := wait(); err != nil || len(got) != 1 || time.Since(start) != 4*time.Second {
 				t.Errorf("Receive = %v, %v after %v; want 1 message after 4s", got, err, time.Since(start))
+			}
+		})
+	})
+	t.Run("shorten wakes a waiting receive", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e, h := setup(t)
+			start := time.Now()
+			wait := startReceive(t.Context(), e, "q", ReceiveInput{WaitTimeSeconds: new(20)})
+			synctest.Wait()
+			if err := change(t, e, h, 5); err != nil {
+				t.Fatalf("ChangeVisibility(5) error = %v", err)
+			}
+			if got, err := wait(); err != nil || len(got) != 1 || time.Since(start) != 5*time.Second {
+				t.Errorf("Receive = %v, %v after %v; want 1 message after 5s", got, err, time.Since(start))
 			}
 		})
 	})
@@ -503,7 +528,7 @@ func TestChangeVisibility(t *testing.T) {
 				t.Errorf("stale handle error = %v, want ErrMessageNotAvailable", err)
 			}
 			if _, err := e.Delete(t.Context(), "q", []string{h2}); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Delete(q, h2) error = %v", err)
 			}
 			if err := change(t, e, h2, 60); !errors.Is(err, ErrMessageNotAvailable) {
 				t.Errorf("deleted message error = %v, want ErrMessageNotAvailable", err)
@@ -513,4 +538,52 @@ func TestChangeVisibility(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestConcurrentReceiveDeliversOnce(t *testing.T) {
+	const total, workers = 200, 20
+	e := newEngine(t)
+	mustCreate(t, e, "q", nil)
+	for i := range total {
+		sendBodies(t, e, "q", "m"+strconv.Itoa(i))
+	}
+	var (
+		mu   sync.Mutex
+		seen = map[string]int{}
+		wg   sync.WaitGroup
+	)
+	for range workers {
+		wg.Go(func() {
+			for {
+				got, err := e.Receive(context.Background(), "q", ReceiveInput{Max: 10, WaitTimeSeconds: new(0)})
+				if err != nil {
+					t.Errorf("Receive() error = %v", err)
+					return
+				}
+				if len(got) == 0 {
+					return
+				}
+				handles := make([]string, len(got))
+				mu.Lock()
+				for i, m := range got {
+					seen[m.ID]++
+					handles[i] = m.ReceiptHandle
+				}
+				mu.Unlock()
+				if _, err := e.Delete(context.Background(), "q", handles); err != nil {
+					t.Errorf("Delete() error = %v", err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+	if len(seen) != total {
+		t.Errorf("distinct messages delivered = %d, want %d", len(seen), total)
+	}
+	for id, n := range seen {
+		if n != 1 {
+			t.Errorf("message %s delivered %d times, want 1", id, n)
+		}
+	}
 }

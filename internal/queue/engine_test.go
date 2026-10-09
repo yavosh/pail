@@ -1,7 +1,9 @@
 package queue
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -49,11 +51,11 @@ func TestPersistence(t *testing.T) {
 	attrs := map[string]string{"VisibilityTimeout": "77", "Policy": `{"a":1}`}
 	tags := map[string]string{"env": "test"}
 	if err := e.CreateQueue(t.Context(), "Orders", attrs, tags); err != nil {
-		t.Fatal(err)
+		t.Fatalf("CreateQueue(Orders, %v, %v) error = %v", attrs, tags, err)
 	}
 	wantAttrs, err := e.Attributes(t.Context(), "Orders", []string{"All"})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Attributes(Orders, All) error = %v", err)
 	}
 
 	e2 := openEngine(t, dir)
@@ -65,7 +67,7 @@ func TestPersistence(t *testing.T) {
 	}
 	gotAttrs, err := e2.Attributes(t.Context(), "Orders", []string{"All"})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Attributes(Orders, All) after reopen error = %v", err)
 	}
 	if !reflect.DeepEqual(gotAttrs, wantAttrs) {
 		t.Errorf("Attributes after reopen = %v, want %v", gotAttrs, wantAttrs)
@@ -85,11 +87,11 @@ func TestOpenCorruptFile(t *testing.T) {
 		t.Fatalf("queue files = %v, %v; want one", files, err)
 	}
 	if err := os.WriteFile(files[0], []byte("{not json"), 0o644); err != nil {
-		t.Fatal(err)
+		t.Fatalf("WriteFile(%q) error = %v", files[0], err)
 	}
 	fsys, err := localdisk.Open(dir)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("localdisk.Open(%q) error = %v", dir, err)
 	}
 	t.Cleanup(func() { _ = fsys.Close() })
 	if _, err := Open(t.Context(), fsys, testRegion); err == nil {
@@ -102,7 +104,7 @@ func TestDeleteQueuePersists(t *testing.T) {
 	e := openEngine(t, dir)
 	mustCreate(t, e, "q", nil)
 	if err := e.DeleteQueue(t.Context(), "q"); err != nil {
-		t.Fatal(err)
+		t.Fatalf("DeleteQueue(q) error = %v", err)
 	}
 	if err := e.DeleteQueue(t.Context(), "q"); !errors.Is(err, ErrQueueDoesNotExist) {
 		t.Errorf("second DeleteQueue error = %v, want ErrQueueDoesNotExist", err)
@@ -168,7 +170,7 @@ func TestAttributesDefaults(t *testing.T) {
 	mustCreate(t, e, "q", nil)
 	got, err := e.Attributes(t.Context(), "q", []string{"All"})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Attributes(q, All) error = %v", err)
 	}
 	created := got["CreatedTimestamp"]
 	if _, err := strconv.ParseInt(created, 10, 64); err != nil {
@@ -198,7 +200,7 @@ func TestAttributesSelection(t *testing.T) {
 	mustCreate(t, e, "q", nil)
 	got, err := e.Attributes(t.Context(), "q", []string{"VisibilityTimeout", "QueueArn", "Policy"})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Attributes(q, list) error = %v", err)
 	}
 	want := map[string]string{"VisibilityTimeout": "30", "QueueArn": e.ARN("q")}
 	if !reflect.DeepEqual(got, want) {
@@ -211,7 +213,7 @@ func TestAttributesSelection(t *testing.T) {
 		t.Errorf("Attributes(missing) error = %v, want ErrQueueDoesNotExist", err)
 	}
 	if err := e.SetAttributes(t.Context(), "q", map[string]string{"Policy": `{"Version":"x"}`}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("SetAttributes(q, Policy) error = %v", err)
 	}
 	got, err = e.Attributes(t.Context(), "q", []string{"Policy"})
 	if err != nil || got["Policy"] != `{"Version":"x"}` {
@@ -243,6 +245,9 @@ func TestSetAttributesValidation(t *testing.T) {
 		{"KmsDataKeyReusePeriodSeconds", "60", true}, {"KmsDataKeyReusePeriodSeconds", "86400", true},
 		{"KmsDataKeyReusePeriodSeconds", "59", false}, {"KmsDataKeyReusePeriodSeconds", "86401", false},
 		{"Policy", `{"a":[1]}`, true}, {"Policy", "{", false}, {"Policy", "", false},
+		{"Policy", "{}", true}, {"Policy", "  {}", true}, {"Policy", "123", false}, {"Policy", `"x"`, false},
+		{"Policy", "[]", false},
+		{"VisibilityTimeout", "0000000000000000000007", true}, {"VisibilityTimeout", "000", true},
 	}
 	for _, tt := range tests {
 		err := e.SetAttributes(t.Context(), "q", map[string]string{tt.attr: tt.value})
@@ -271,7 +276,7 @@ func TestSetAttributesUpdatesLastModified(t *testing.T) {
 		before, _ := e.Attributes(t.Context(), "q", []string{"All"})
 		time.Sleep(10 * time.Second)
 		if err := e.SetAttributes(t.Context(), "q", map[string]string{"VisibilityTimeout": "5"}); err != nil {
-			t.Fatal(err)
+			t.Fatalf("SetAttributes(q, VisibilityTimeout=5) error = %v", err)
 		}
 		after, _ := e.Attributes(t.Context(), "q", []string{"All"})
 		if after["CreatedTimestamp"] != before["CreatedTimestamp"] {
@@ -311,10 +316,10 @@ func TestListQueues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, next := e.ListQueues(t.Context(), tt.prefix, tt.limit, tt.after)
-			if !reflect.DeepEqual(got, tt.want) || next != tt.wantNext {
-				t.Errorf("ListQueues(%q, %d, %q) = %v, %q; want %v, %q",
-					tt.prefix, tt.limit, tt.after, got, next, tt.want, tt.wantNext)
+			got, next, err := e.ListQueues(t.Context(), tt.prefix, tt.limit, tt.after)
+			if err != nil || !reflect.DeepEqual(got, tt.want) || next != tt.wantNext {
+				t.Errorf("ListQueues(%q, %d, %q) = %v, %q, %v; want %v, %q, nil",
+					tt.prefix, tt.limit, tt.after, got, next, err, tt.want, tt.wantNext)
 			}
 		})
 	}
@@ -328,10 +333,10 @@ func TestTags(t *testing.T) {
 		t.Fatalf("Tags(new queue) = %v, %v; want empty", got, err)
 	}
 	if err := e.Tag(t.Context(), "q", map[string]string{"a": "1", "b": "2"}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Tag(q, a b) error = %v", err)
 	}
 	if err := e.Tag(t.Context(), "q", map[string]string{"b": "3"}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Tag(q, b) error = %v", err)
 	}
 	got, _ = e.Tags(t.Context(), "q")
 	if want := map[string]string{"a": "1", "b": "3"}; !reflect.DeepEqual(got, want) {
@@ -342,7 +347,7 @@ func TestTags(t *testing.T) {
 		t.Errorf("Tags returned internal state: a = %q", again["a"])
 	}
 	if err := e.Untag(t.Context(), "q", []string{"a", "missing"}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Untag(q, a missing) error = %v", err)
 	}
 	got, _ = e.Tags(t.Context(), "q")
 	if want := map[string]string{"b": "3"}; !reflect.DeepEqual(got, want) {
@@ -381,7 +386,7 @@ func TestPurge(t *testing.T) {
 		mustCreate(t, e, "q", nil)
 		sendBodies(t, e, "q", "a", "b")
 		if err := e.Purge(t.Context(), "q"); err != nil {
-			t.Fatal(err)
+			t.Fatalf("Purge(q) error = %v", err)
 		}
 		if got := attr(t, e, "q", "ApproximateNumberOfMessages"); got != "0" {
 			t.Errorf("messages after purge = %s, want 0", got)
@@ -426,4 +431,104 @@ func sendBodies(t *testing.T, e *Engine, name string, bodies ...string) {
 			t.Fatalf("Send(%q) entry %d error = %v", name, i, r.Err)
 		}
 	}
+}
+
+func TestOpenValidatesDefinitions(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string // file name; empty means queueFile of the definition's name
+		content string
+		wantErr bool
+	}{
+		{"empty name", "", `{"name":""}`, true},
+		{"bad name", "", `{"name":"a b"}`, true},
+		{"out-of-range attribute", "", `{"name":"q","attributes":{"VisibilityTimeout":"99999"}}`, true},
+		{"unknown attribute", "", `{"name":"q","attributes":{"Bogus":"1"}}`, true},
+		{"file named for another queue", "sqs/queues/" + strings.Repeat("0", 64) + ".json", `{"name":"q"}`, true},
+		{"missing attributes", "", `{"name":"q","attributes":{"VisibilityTimeout":"007"}}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			openEngine(t, dir) // creates sqs/queues
+			var def struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal([]byte(tt.content), &def); err != nil {
+				t.Fatalf("Unmarshal(%s) error = %v", tt.content, err)
+			}
+			file := cmp.Or(tt.file, queueFile(def.Name))
+			if err := os.WriteFile(filepath.Join(dir, file), []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) error = %v", file, err)
+			}
+			fsys, err := localdisk.Open(dir)
+			if err != nil {
+				t.Fatalf("localdisk.Open(%q) error = %v", dir, err)
+			}
+			t.Cleanup(func() { _ = fsys.Close() })
+			e, err := Open(t.Context(), fsys, testRegion)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Open(%s) error = %v, wantErr %v", tt.content, err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			got, err := e.Attributes(t.Context(), "q", []string{"All"})
+			if err != nil {
+				t.Fatalf("Attributes(q, All) error = %v", err)
+			}
+			if got["VisibilityTimeout"] != "7" || got["MessageRetentionPeriod"] != "345600" || got["SqsManagedSseEnabled"] != "true" {
+				t.Errorf("Attributes after Open(%s) = %v, want canonical value and defaults filled in", tt.content, got)
+			}
+		})
+	}
+}
+
+func TestCanonicalIntegerAttributes(t *testing.T) {
+	e := newEngine(t)
+	mustCreate(t, e, "q", map[string]string{"VisibilityTimeout": "007"})
+	if got := attr(t, e, "q", "VisibilityTimeout"); got != "7" {
+		t.Errorf("VisibilityTimeout after create with 007 = %q, want 7", got)
+	}
+	if err := e.CreateQueue(t.Context(), "q", map[string]string{"VisibilityTimeout": "7"}, nil); err != nil {
+		t.Errorf("CreateQueue(q, 7) after 007 error = %v, want nil", err)
+	}
+	if err := e.CreateQueue(t.Context(), "q", map[string]string{"VisibilityTimeout": "0007"}, nil); err != nil {
+		t.Errorf("CreateQueue(q, 0007) after 007 error = %v, want nil", err)
+	}
+	if err := e.SetAttributes(t.Context(), "q", map[string]string{"DelaySeconds": "0010"}); err != nil {
+		t.Fatalf("SetAttributes(DelaySeconds=0010) error = %v", err)
+	}
+	if got := attr(t, e, "q", "DelaySeconds"); got != "10" {
+		t.Errorf("DelaySeconds after set 0010 = %q, want 10", got)
+	}
+}
+
+func TestAttributesUnsupportedNamesAbsent(t *testing.T) {
+	e := newEngine(t)
+	mustCreate(t, e, "q", nil)
+	names := []string{"RedrivePolicy", "RedriveAllowPolicy", "FifoQueue", "ContentBasedDeduplication", "DeduplicationScope", "FifoThroughputLimit"}
+	got, err := e.Attributes(t.Context(), "q", names)
+	if err != nil || len(got) != 0 {
+		t.Errorf("Attributes(q, %v) = %v, %v; want empty map, nil", names, got, err)
+	}
+}
+
+func TestSendPrunesExpired(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEngine(t)
+		mustCreate(t, e, "q", map[string]string{"MessageRetentionPeriod": "60"})
+		sendBodies(t, e, "q", "old")
+		time.Sleep(61 * time.Second)
+		sendBodies(t, e, "q", "new")
+		e.mu.Lock()
+		n := len(e.queues["q"].messages)
+		e.mu.Unlock()
+		if n != 1 {
+			t.Errorf("stored messages after second Send = %d, want 1", n)
+		}
+		if got := attr(t, e, "q", "ApproximateNumberOfMessages"); got != "1" {
+			t.Errorf("ApproximateNumberOfMessages = %s, want 1", got)
+		}
+	})
 }
