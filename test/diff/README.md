@@ -1,6 +1,6 @@
 # Differential suite
 
-This suite checks pail against AWS S3, SQS, and SNS as a black box. It talks to both over HTTP only.
+This suite checks pail against AWS S3, SQS, and SNS as a black box. It talks to AWS and pail over HTTP only.
 
 Each scenario in `scenarios_test.go` is a list of raw requests. One SigV4 signer signs them, so AWS and pail receive the same requests. A streaming step sends its body `aws-chunked` and signs each chunk with the suite's own code, so a recording checks that code against AWS. A presigned step signs the query string with the same signer and an unsigned payload. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
 
@@ -74,7 +74,9 @@ A recording makes a few dozen SQS and SNS requests, well inside the free tier.
 
 `sqs-queue-basics/list-queues` can flap, because `ListQueues` right after `CreateQueue` is eventually consistent. Record it again if it does.
 
-The new steps start in `pending.txt`. After you record, remove each line whose step matches AWS.
+`sqs-queue-basics/receive-message` can come back empty on a standard queue. A step that uses a variable no earlier response set then stops the recording, instead of committing a wrong golden file.
+
+The steps of `sqs-auth-errors`, `sqs-queue-basics`, `sns-auth-errors`, and `sns-topic-basics` start in `pending.txt`. After you record, remove each line whose step matches AWS.
 
 ## What is compared
 

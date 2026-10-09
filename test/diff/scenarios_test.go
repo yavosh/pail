@@ -11,14 +11,13 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 )
 
-// step is one raw request. For S3, key empty addresses the bucket, query is
-// already encoded, and "{bucket}" in query and header values becomes the bucket.
-// A non-S3 step always POSTs to "/". In the query, header values, and body, a
-// step may use "{name}" and the variables, such as "{uploadId}", which hold the
-// latest value that a response in the scenario returned.
+// step is one raw request. S3 keeps "{bucket}" and an already encoded query.
+// A non-S3 step POSTs to "/". Any step may use "{name}" and the variables, such
+// as "{uploadId}": the latest value a response in the scenario returned.
 type step struct {
 	form         map[string]string
 	postMutation string
@@ -38,10 +37,9 @@ type step struct {
 	target      string // X-Amz-Target of an SQS step, such as "AmazonSQS.CreateQueue"
 }
 
-// scenario runs its steps in order against one fresh bucket name. Scenarios
-// never call ListBuckets: on AWS it would expose the account's other buckets.
-// queues and topics are the SQS queues and SNS topics the steps create, with
-// "{name}" for the scenario's random name; recording deletes them.
+// scenario runs its steps in order against one fresh name. Scenarios never call
+// ListBuckets: on AWS it would expose other buckets. queues and topics are what
+// the steps create ("{name}" is the random name); recording deletes them.
 type scenario struct {
 	name           string
 	steps          []step
@@ -70,11 +68,10 @@ func md5Base64(body string) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// withVars returns st with every "{<var>}" in the variables, and "{name}",
-// replaced from vars; an uncaptured variable becomes "". SQS values are
-// JSON-escaped, SNS values URL-escaped, and S3 values stay raw. The recorded
+// withVars replaces "{name}" and the variables from vars, escaped for the
+// service (S3 raw). It also returns the variables that were empty. The recorded
 // request and fingerprint come from st itself, so they keep the placeholders.
-func (st step) withVars(vars map[string]string) step {
+func (st step) withVars(vars map[string]string) (step, []string) {
 	escape := func(v string) string { return v }
 	switch st.service {
 	case "sqs":
@@ -85,9 +82,18 @@ func (st step) withVars(vars map[string]string) step {
 	case "sns":
 		escape = url.QueryEscape
 	}
-	var pairs []string
+	var pairs, missing []string
 	for _, name := range append([]string{"name"}, variables...) {
 		pairs = append(pairs, "{"+name+"}", escape(vars[name]))
+	}
+	uses := func(name string) bool {
+		placeholder := "{" + name + "}"
+		return strings.Contains(st.query+st.body, placeholder) || slices.ContainsFunc(slices.Collect(maps.Values(st.header)), func(v string) bool { return strings.Contains(v, placeholder) })
+	}
+	for _, name := range variables {
+		if vars[name] == "" && uses(name) {
+			missing = append(missing, name)
+		}
 	}
 	expand := strings.NewReplacer(pairs...).Replace
 	st.query = expand(st.query)
@@ -99,7 +105,7 @@ func (st step) withVars(vars map[string]string) step {
 		}
 		st.header = header
 	}
-	return st
+	return st, missing
 }
 
 func createBucket() step { return step{name: "create-bucket", method: http.MethodPut} }

@@ -4,6 +4,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -294,6 +295,7 @@ func TestCanonicalJSON(t *testing.T) {
 				"Messages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.Z: 2\nMessages[0].Body: hello\nMessages[0].ReceiptHandle: <volatile>\n", false},
 		{"error keeps the type only", `{"__type":"com.amazonaws.sqs#QueueDoesNotExist","message":"nope"}`, "__type: com.amazonaws.sqs#QueueDoesNotExist\n", true},
 		{"empty body", "", "", false},
+		{"empty object", "{}", "{}\n", false},
 		{"empty array", `{"Messages":[]}`, "Messages: []\n", false},
 	}
 	for _, tt := range tests {
@@ -384,7 +386,7 @@ func TestWithVars(t *testing.T) {
 		{"uncaptured is empty", step{query: "uploadId={uploadId}"}, step{query: "uploadId="}},
 	}
 	for _, tt := range tests {
-		got := tt.in.withVars(vars)
+		got, _ := tt.in.withVars(vars)
 		if got.query != tt.want.query || got.body != tt.want.body || !maps.Equal(got.header, tt.want.header) {
 			t.Errorf("%s: withVars(%+v) = %+v, want %+v", tt.name, tt.in, got, tt.want)
 		}
@@ -419,5 +421,22 @@ func TestDescribeService(t *testing.T) {
 		if got := describe(tt.st); got != tt.want {
 			t.Errorf("describe(%+v) = %q, want %q", tt.st, got, tt.want)
 		}
+	}
+}
+
+func TestWithVarsMissing(t *testing.T) {
+	st := step{service: "sqs", body: `{"H":"{receiptHandle}","U":"{queueUrl}","N":"{name}"}`, header: map[string]string{"X": "{messageId}"}}
+	_, got := st.withVars(map[string]string{"name": "n", "queueUrl": "u"})
+	if want := []string{"receiptHandle", "messageId"}; !slices.Equal(got, want) {
+		t.Errorf("missing = %v, want %v", got, want)
+	}
+}
+
+func TestNormalizeServiceKeepsDigestsAndMasksAccounts(t *testing.T) {
+	r := response{status: http.StatusOK, header: http.Header{}, body: []byte(`{"MD5OfMessageBody":"5d41402abc4b2a76b9719d911017c592","QueueUrl":"https://q/123456789012/x"}`)}
+	got := normalize(step{name: "s", method: http.MethodPost, service: "sqs", target: "AmazonSQS.SendMessage"}, "n", r)
+	want := "MD5OfMessageBody: 5d41402abc4b2a76b9719d911017c592\nQueueUrl: https://q/{account}/x\n"
+	if got.Body != want {
+		t.Errorf("body = %q, want %q", got.Body, want)
 	}
 }

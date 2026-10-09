@@ -1,7 +1,6 @@
 // Package diff checks pail against AWS S3, SQS, and SNS as a black box. Record
-// mode sends each scenario to AWS and writes golden files; replay mode, the
-// default, sends the same requests to an in-process pail and compares. See
-// README.md here.
+// mode writes golden files from AWS; replay mode, the default, sends the same
+// requests to an in-process pail and compares. See README.md here.
 package diff
 
 import (
@@ -121,11 +120,12 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 		name := strings.ReplaceAll(q, "{name}", bucket)
 		t.Cleanup(func() { cleanupQueue(t, tg, name) })
 	}
+	vars := map[string]string{"name": bucket}
 	for _, topic := range sc.topics {
 		name := strings.ReplaceAll(topic, "{name}", bucket)
-		t.Cleanup(func() { cleanupTopic(t, tg, name) })
+		t.Cleanup(func() { cleanupTopic(t, tg, name, vars["topicArn"]) })
 	}
-	g := runScenario(t, tg, sc, bucket)
+	g := runScenario(t, tg, sc, bucket, vars)
 	if err := os.MkdirAll(goldenDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -136,12 +136,16 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 }
 
 // runScenario sends every step of sc to tg and returns the normalized results.
-func runScenario(t *testing.T, tg *target, sc scenario, bucket string) golden {
+func runScenario(t *testing.T, tg *target, sc scenario, bucket string, vars map[string]string) golden {
 	t.Helper()
 	g := golden{Scenario: sc.name}
-	vars := map[string]string{"name": bucket}
 	for _, st := range sc.steps {
-		resp, err := tg.do(t.Context(), st.withVars(vars), bucket)
+		expanded, missing := st.withVars(vars)
+		// Recording an error golden for a step that never had its input is wrong.
+		if *record && st.service != "" && len(missing) > 0 {
+			t.Fatalf("step %s uses {%s}, which no earlier response set: record again", st.name, missing[0])
+		}
+		resp, err := tg.do(t.Context(), expanded, bucket)
 		if err != nil {
 			t.Fatalf("step %s (%s): %v", st.name, describe(st), err)
 		}
@@ -161,7 +165,8 @@ func TestReplayIsDeterministic(t *testing.T) {
 	tg := pailTarget(t)
 	for _, sc := range scenarios() {
 		t.Run(sc.name, func(t *testing.T) {
-			want := runScenario(t, tg, sc, newBucketName())
+			name := newBucketName()
+			want := runScenario(t, tg, sc, name, map[string]string{"name": name})
 			unexpected, seen := replayScenario(t, tg, sc, want, nil, nil)
 			for _, d := range unexpected {
 				t.Error(d)
@@ -186,7 +191,8 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 		if w.Step != st.name || w.Request != describe(st) || w.Fingerprint != fingerprint(st) {
 			t.Fatalf("step %d %q (%s) changed since the golden file was recorded: record it again", i, st.name, describe(st))
 		}
-		resp, err := tg.do(t.Context(), st.withVars(vars), bucket)
+		expanded, _ := st.withVars(vars)
+		resp, err := tg.do(t.Context(), expanded, bucket)
 		if err != nil {
 			// Earlier differences often explain a later failure, so keep them.
 			msg := fmt.Sprintf("step %s (%s): %v", st.name, describe(st), err)

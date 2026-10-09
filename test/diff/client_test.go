@@ -191,23 +191,12 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 	creds, signTime := tg.creds, time.Now()
 	if st.form == nil {
 		switch st.auth {
-		case authNone:
-		case authUnknownKey:
-			creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
-			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
-		case authBadSignature:
-			// The signer caches keys by access key, not secret, so a wrong secret
-			// through the shared signer would break every later request.
-			creds.SecretAccessKey += "-wrong"
-			err = newSigner().SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
-		case authSkewed:
-			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
 		case authPresigned, authPresignedExpired, authPresignedTampered, authPresignedFuture, authPresignedBadCredential, authPresignedMissingParam:
 			err = tg.presign(ctx, req, st.auth, signTime)
 		case authPresignedV2, authPresignedV2Expired, authPresignedV2Tampered, authPresignedV2BadSignature, authPresignedV2MissingParam:
 			tg.presignV2(req, bucket, st.auth, signTime)
 		default:
-			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
+			creds, err = tg.signHeader(ctx, st.auth, req, payloadHash, "s3", signer, newSigner, signTime)
 		}
 	}
 	if err != nil {
@@ -238,11 +227,35 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 	return response{status: resp.StatusCode, header: resp.Header, body: body}, nil
 }
 
+// signHeader signs req with an Authorization header, as the auth mode says,
+// and returns the credentials it used. fresh makes a signer for a wrong secret:
+// the shared signer caches keys by access key, so it would break later requests.
+func (tg *target) signHeader(ctx context.Context, auth authMode, req *http.Request, payloadHash, service string, shared *v4.Signer, fresh func() *v4.Signer, signTime time.Time) (aws.Credentials, error) {
+	creds, sg := tg.creds, shared
+	switch auth {
+	case authNone:
+		return creds, nil
+	case authUnknownKey:
+		creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
+	case authBadSignature:
+		creds.SecretAccessKey += "-wrong"
+		sg = fresh()
+	case authSkewed:
+		signTime = signTime.Add(-20 * time.Minute)
+	}
+	return creds, sg.SignHTTP(ctx, creds, req, payloadHash, service, tg.region, signTime)
+}
+
 // doService sends one SQS or SNS step. These services take no
 // x-amz-content-sha256 and no bucket.
 func (tg *target) doService(ctx context.Context, st step) (response, error) {
-	if st.auth >= authPresigned || st.form != nil || st.stream != "" {
-		return response{}, fmt.Errorf("%s step: auth mode %d is S3-only", st.service, st.auth)
+	switch {
+	case st.auth >= authPresigned:
+		return response{}, fmt.Errorf("%s step: presigned auth mode %d is S3-only", st.service, st.auth)
+	case st.form != nil:
+		return response{}, fmt.Errorf("%s step: a form is S3-only", st.service)
+	case st.stream != "":
+		return response{}, fmt.Errorf("%s step: a stream is S3-only", st.service)
 	}
 	endpoint := tg.scheme + "://" + tg.serviceHost(st.service)
 	u := &url.URL{Scheme: tg.scheme, Host: tg.serviceHost(st.service), Path: "/", RawQuery: st.query}
@@ -260,22 +273,7 @@ func (tg *target) doService(ctx context.Context, st step) (response, error) {
 		req.Header.Set(k, v)
 	}
 	payloadHash := sha256Hex(st.body)
-	creds, signTime := tg.creds, time.Now()
-	switch st.auth {
-	case authNone:
-	case authUnknownKey:
-		creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
-		err = serviceSigner.SignHTTP(ctx, creds, req, payloadHash, st.service, tg.region, signTime)
-	case authBadSignature:
-		// The signer caches keys by access key, not secret, so a wrong secret
-		// through the shared signer would break every later request.
-		creds.SecretAccessKey += "-wrong"
-		err = v4.NewSigner().SignHTTP(ctx, creds, req, payloadHash, st.service, tg.region, signTime)
-	case authSkewed:
-		err = serviceSigner.SignHTTP(ctx, creds, req, payloadHash, st.service, tg.region, signTime.Add(-20*time.Minute))
-	default:
-		err = serviceSigner.SignHTTP(ctx, creds, req, payloadHash, st.service, tg.region, signTime)
-	}
+	_, err = tg.signHeader(ctx, st.auth, req, payloadHash, st.service, serviceSigner, func() *v4.Signer { return v4.NewSigner() }, time.Now())
 	if err != nil {
 		return response{}, fmt.Errorf("sign: %w", err)
 	}
@@ -508,10 +506,10 @@ func cleanupQueue(t *testing.T, tg *target, name string) {
 	}
 }
 
-// cleanupTopic deletes an SNS topic. CreateTopic is idempotent and returns the
-// ARN, so scenarios must create topics without attributes or tags. It logs
-// instead of failing.
-func cleanupTopic(t *testing.T, tg *target, name string) {
+// cleanupTopic deletes an SNS topic by its captured ARN. Without one, it falls
+// back to CreateTopic, which is idempotent and returns the ARN, so scenarios
+// must create topics without attributes or tags. It logs instead of failing.
+func cleanupTopic(t *testing.T, tg *target, name, capturedARN string) {
 	t.Helper()
 	if !strings.HasPrefix(name, "pail-diff-") {
 		t.Fatalf("cleanup refuses topic %q: not created by this suite", name)
@@ -520,17 +518,21 @@ func cleanupTopic(t *testing.T, tg *target, name string) {
 	sns := func(form string) (response, error) {
 		return tg.do(ctx, step{method: http.MethodPost, service: "sns", body: form + "&Version=2010-03-31"}, "")
 	}
-	resp, err := sns("Action=CreateTopic&Name=" + url.QueryEscape(name))
-	if err != nil || resp.status != http.StatusOK {
-		t.Logf("cleanup: create topic %s: %s", name, failure(resp, err))
-		return
+	arn := capturedARN
+	if !strings.HasSuffix(arn, ":"+name) {
+		resp, err := sns("Action=CreateTopic&Name=" + url.QueryEscape(name))
+		if err != nil || resp.status != http.StatusOK {
+			t.Logf("cleanup: create topic %s: %s", name, failure(resp, err))
+			return
+		}
+		vars := map[string]string{}
+		captureVars(vars, resp.body)
+		if arn = vars["topicArn"]; arn == "" {
+			return
+		}
 	}
-	vars := map[string]string{}
-	captureVars(vars, resp.body)
-	if vars["topicArn"] == "" {
-		return
-	}
-	if resp, err := sns("Action=DeleteTopic&TopicArn=" + url.QueryEscape(vars["topicArn"])); err != nil || resp.status != http.StatusOK {
+	resp, err := sns("Action=DeleteTopic&TopicArn=" + url.QueryEscape(arn))
+	if err != nil || resp.status != http.StatusOK && resp.status != http.StatusNotFound {
 		t.Logf("cleanup: delete topic %s: %s", name, failure(resp, err))
 	}
 }

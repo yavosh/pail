@@ -319,6 +319,9 @@ func canonicalJSON(body string) (string, bool, error) {
 	}
 	var b strings.Builder
 	writeJSON(&b, "", "", v)
+	if b.Len() == 0 {
+		return "{}\n", false, nil // distinct from an empty body
+	}
 	return b.String(), false, nil
 }
 
