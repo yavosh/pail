@@ -5,17 +5,19 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"maps"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 )
 
-// step is one raw S3 request. key empty addresses the bucket. query is
-// already encoded. "{bucket}" in query and header values becomes the bucket.
-// "{uploadId}" in the query, header values, and body becomes the ID that the
-// latest CreateMultipartUpload in the scenario returned.
+// step is one raw request. S3 keeps "{bucket}" and an already encoded query.
+// A non-S3 step POSTs to "/". Any step may use "{name}" and the variables, such
+// as "{uploadId}": the latest value a response in the scenario returned.
 type step struct {
 	form         map[string]string
 	postMutation string
@@ -31,13 +33,17 @@ type step struct {
 	chunk       int    // chunk size; 0 means 8 KiB
 	trailer     string // a trailing header line, such as "x-amz-checksum-crc32:<value>"
 	badChunkSig bool   // corrupt the first chunk signature
+	service     string // "" is S3; "sqs" or "sns" signs for and addresses that service
+	target      string // X-Amz-Target of an SQS step, such as "AmazonSQS.CreateQueue"
 }
 
-// scenario runs its steps in order against one fresh bucket name. Scenarios
-// never call ListBuckets: on AWS it would expose the account's other buckets.
+// scenario runs its steps in order against one fresh name. Scenarios never call
+// ListBuckets: on AWS it would expose other buckets. queues and topics are what
+// the steps create ("{name}" is the random name); recording deletes them.
 type scenario struct {
-	name  string
-	steps []step
+	name           string
+	steps          []step
+	queues, topics []string
 }
 
 func etagOf(body string) string {
@@ -62,20 +68,44 @@ func md5Base64(body string) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// withUploadID returns st with "{uploadId}" replaced by id. The recorded
-// request and fingerprint come from st itself, so they keep the placeholder.
-func (st step) withUploadID(id string) step {
-	const placeholder = "{uploadId}"
-	st.query = strings.ReplaceAll(st.query, placeholder, id)
-	st.body = strings.ReplaceAll(st.body, placeholder, id)
+// withVars replaces "{name}" and the variables from vars, escaped for the
+// service (S3 raw). It also returns the variables that were empty. The recorded
+// request and fingerprint come from st itself, so they keep the placeholders.
+func (st step) withVars(vars map[string]string) (step, []string) {
+	escape := func(v string) string { return v }
+	switch st.service {
+	case "sqs":
+		escape = func(v string) string {
+			b, _ := json.Marshal(v)
+			return string(b[1 : len(b)-1])
+		}
+	case "sns":
+		escape = url.QueryEscape
+	}
+	var pairs, missing []string
+	for _, name := range append([]string{"name"}, variables...) {
+		pairs = append(pairs, "{"+name+"}", escape(vars[name]))
+	}
+	uses := func(name string) bool {
+		placeholder := "{" + name + "}"
+		return strings.Contains(st.query+st.body, placeholder) || slices.ContainsFunc(slices.Collect(maps.Values(st.header)), func(v string) bool { return strings.Contains(v, placeholder) })
+	}
+	for _, name := range variables {
+		if vars[name] == "" && uses(name) {
+			missing = append(missing, name)
+		}
+	}
+	expand := strings.NewReplacer(pairs...).Replace
+	st.query = expand(st.query)
+	st.body = expand(st.body)
 	if st.header != nil {
 		header := make(map[string]string, len(st.header))
 		for k, v := range st.header {
-			header[k] = strings.ReplaceAll(v, placeholder, id)
+			header[k] = expand(v)
 		}
 		st.header = header
 	}
-	return st
+	return st, missing
 }
 
 func createBucket() step { return step{name: "create-bucket", method: http.MethodPut} }
@@ -100,6 +130,10 @@ func scenarios() []scenario {
 		postScenario(),
 		sigV2Scenario(),
 		conditionalDeleteScenario(),
+		sqsAuthErrorsScenario(),
+		sqsQueueBasicsScenario(),
+		snsAuthErrorsScenario(),
+		snsTopicBasicsScenario(),
 		{name: "auth-errors", steps: []step{
 			createBucket(),
 			{name: "no-credentials", method: http.MethodGet, query: "list-type=2", auth: authNone},

@@ -14,14 +14,13 @@ type apiError struct {
 	code   string
 }
 
-// The auth and size entries are from memory and unverified against AWS.
-// PR 2 records them; see docs/plans/2026-10-09-sqs-sns.md.
+// The missing-auth, unknown-key, and bad-signature entries match the AWS
+// recordings in test/diff (sns-auth-errors). The others are from memory.
 var (
 	errInvalidAction       = apiError{http.StatusBadRequest, "Sender", "InvalidAction"}
 	errMissingAuth         = apiError{http.StatusForbidden, "Sender", "MissingAuthenticationToken"}
 	errInvalidClientToken  = apiError{http.StatusForbidden, "Sender", "InvalidClientTokenId"}
 	errSignatureMismatch   = apiError{http.StatusForbidden, "Sender", "SignatureDoesNotMatch"}
-	errRequestExpired      = apiError{http.StatusForbidden, "Sender", "RequestExpired"}
 	errIncompleteSignature = apiError{http.StatusBadRequest, "Sender", "IncompleteSignature"}
 	errTooLarge            = apiError{http.StatusRequestEntityTooLarge, "Sender", "RequestEntityTooLarge"}
 	errInternalFailure     = apiError{http.StatusInternalServerError, "Receiver", "InternalFailure"}
@@ -37,10 +36,9 @@ func authError(err error) apiError {
 		return errMissingAuth
 	case errors.Is(err, sigv4.ErrInvalidAccessKeyID):
 		return errInvalidClientToken
-	case errors.Is(err, sigv4.ErrSignatureMismatch), errors.Is(err, sigv4.ErrUnsignedHeader):
+	// AWS reports a skewed clock as a signature mismatch.
+	case errors.Is(err, sigv4.ErrSignatureMismatch), errors.Is(err, sigv4.ErrUnsignedHeader), errors.Is(err, sigv4.ErrRequestTimeTooSkewed):
 		return errSignatureMismatch
-	case errors.Is(err, sigv4.ErrRequestTimeTooSkewed):
-		return errRequestExpired
 	case errors.Is(err, sigv4.ErrMalformedAuth), errors.Is(err, sigv4.ErrUnsupportedAuth):
 		return errIncompleteSignature
 	case errors.Is(err, sigv4.ErrNotImplemented):

@@ -32,7 +32,7 @@ func TestHandler(t *testing.T) {
 		wantMsg   string // checked when set
 	}{
 		{"signed", testSecret, listBody, 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation;Sender", "ListQueues is not supported"},
-		{"unsigned", "", listBody, 403, "com.amazon.coral.service#MissingAuthenticationTokenException", "MissingAuthenticationToken;Sender", ""},
+		{"unsigned", "", listBody, 403, "com.amazon.coral.service#AccessDeniedException", "AccessDenied;Sender", ""},
 		{"wrong secret", "wrong", listBody, 403, "com.amazon.coral.service#InvalidSignatureException", "SignatureDoesNotMatch;Sender", ""},
 		{"over the cap", testSecret, strings.Repeat("x", maxRequestBytes+1), 413, "com.amazon.coral.service#RequestEntityTooLargeException", "RequestEntityTooLarge;Sender", ""},
 	}

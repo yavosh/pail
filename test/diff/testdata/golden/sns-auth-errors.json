@@ -1,0 +1,49 @@
+{
+  "scenario": "sns-auth-errors",
+  "exchanges": [
+    {
+      "step": "no-credentials",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "07c0d5422608df8a",
+      "status": 403,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: MissingAuthenticationToken\n"
+    },
+    {
+      "step": "unknown-key",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "1a5bb2e1139f3cae",
+      "status": 403,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidClientTokenId\n"
+    },
+    {
+      "step": "bad-signature",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "e7945690b62603e4",
+      "status": 403,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: SignatureDoesNotMatch\n"
+    },
+    {
+      "step": "clock-skew",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "47c75af8d739a209",
+      "status": 403,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: SignatureDoesNotMatch\n"
+    }
+  ]
+}

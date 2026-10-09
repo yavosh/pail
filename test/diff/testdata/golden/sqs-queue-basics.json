@@ -1,0 +1,103 @@
+{
+  "scenario": "sqs-queue-basics",
+  "exchanges": [
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "get-queue-url",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "65823d4862f1a4ec",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "get-queue-attributes",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "d2d1d23ce9423bcc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.ApproximateNumberOfMessages: 0\nAttributes.ApproximateNumberOfMessagesDelayed: 0\nAttributes.ApproximateNumberOfMessagesNotVisible: 0\nAttributes.CreatedTimestamp: <volatile>\nAttributes.DelaySeconds: 0\nAttributes.LastModifiedTimestamp: <volatile>\nAttributes.MaximumMessageSize: 1048576\nAttributes.MessageRetentionPeriod: 345600\nAttributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\nAttributes.ReceiveMessageWaitTimeSeconds: 0\nAttributes.SqsManagedSseEnabled: true\nAttributes.VisibilityTimeout: 30\n"
+    },
+    {
+      "step": "send-message",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "ab8e91cb6b128dd0",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "MD5OfMessageBody: 5d41402abc4b2a76b9719d911017c592\nMessageId: {uuid}\n"
+    },
+    {
+      "step": "receive-message",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "0ae802785cdd24dc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body: hello\nMessages[0].MD5OfBody: 5d41402abc4b2a76b9719d911017c592\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-message",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "get-missing-queue-url",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "8969ff1e694abf1a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "AWS.SimpleQueueService.NonExistentQueue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#QueueDoesNotExist\n"
+    },
+    {
+      "step": "list-queues",
+      "request": "POST sqs AmazonSQS.ListQueues",
+      "fingerprint": "e301e29cd4936722",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrls[0]: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

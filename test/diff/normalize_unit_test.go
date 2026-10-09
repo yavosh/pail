@@ -4,6 +4,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -281,5 +282,161 @@ func TestNormalizeDotDotRequestIDs(t *testing.T) {
 		if got != want {
 			t.Errorf("%q request ID differences = %d, want %d", key, got, want)
 		}
+	}
+}
+
+func TestCanonicalJSON(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+		wantErr        bool
+	}{
+		{"nested success", `{"Messages":[{"Body":"hello","ReceiptHandle":"abc","Attributes":{"SentTimestamp":"1","Z":2}}],"Attributes":{"CreatedTimestamp":"9","QueueArn":"arn","Ok":true,"None":null}}`,
+			"Attributes.CreatedTimestamp: <volatile>\nAttributes.None: null\nAttributes.Ok: true\nAttributes.QueueArn: arn\n" +
+				"Messages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.Z: 2\nMessages[0].Body: hello\nMessages[0].ReceiptHandle: <volatile>\n", false},
+		{"error keeps the type only", `{"__type":"com.amazonaws.sqs#QueueDoesNotExist","message":"nope"}`, "__type: com.amazonaws.sqs#QueueDoesNotExist\n", true},
+		{"empty body", "", "", false},
+		{"empty object", "{}", "{}\n", false},
+		{"empty array", `{"Messages":[]}`, "Messages: []\n", false},
+	}
+	for _, tt := range tests {
+		got, isErr, err := canonicalJSON(tt.in)
+		if err != nil || got != tt.want || isErr != tt.wantErr {
+			t.Errorf("%s: canonicalJSON(%q) = %q, %v, %v; want %q, %v", tt.name, tt.in, got, isErr, err, tt.want, tt.wantErr)
+		}
+	}
+	if _, _, err := canonicalJSON("<xml/>"); err == nil {
+		t.Error("canonicalJSON(XML) error = nil, want an error")
+	}
+}
+
+func TestNormalizeSQS(t *testing.T) {
+	const name = "pail-diff-1"
+	r := response{
+		status:   http.StatusOK,
+		endpoint: "https://sqs.us-east-1.amazonaws.com",
+		header: http.Header{
+			"Content-Type":       {"application/x-amz-json-1.0"},
+			"Content-Length":     {"99"},
+			"X-Amzn-Requestid":   {"5f1b2c3d-0000-0000-0000-000000000000"},
+			"X-Amzn-Query-Error": {"AWS.SimpleQueueService.NonExistentQueue;Sender"},
+		},
+		body: []byte(`{"QueueUrl":"https://sqs.us-east-1.amazonaws.com/123456789012/pail-diff-1","MessageId":"5f1b2c3d-1111-2222-3333-444455556666"}`),
+	}
+	got := normalize(step{name: "s", method: http.MethodPost, service: "sqs", target: "AmazonSQS.CreateQueue"}, name, r)
+	wantBody := "MessageId: {uuid}\nQueueUrl: {endpoint}/{account}/{name}\n"
+	if got.Body != wantBody {
+		t.Errorf("body = %q, want %q", got.Body, wantBody)
+	}
+	want := map[string]string{
+		"Content-Type":       "application/x-amz-json-1.0",
+		"X-Amzn-Query-Error": "AWS.SimpleQueueService.NonExistentQueue;Sender",
+		"X-Amzn-Requestid":   "<present>",
+	}
+	if !maps.Equal(got.Headers, want) {
+		t.Errorf("headers = %v, want %v", got.Headers, want)
+	}
+}
+
+func TestNormalizeSNSError(t *testing.T) {
+	r := response{
+		status: http.StatusNotFound,
+		header: http.Header{"Content-Type": {"text/xml"}},
+		body:   []byte(`<ErrorResponse xmlns="http://sns.amazonaws.com/doc/2010-03-31/"><Error><Type>Sender</Type><Code>NotFound</Code><Message>Topic does not exist</Message></Error><RequestId>abc</RequestId></ErrorResponse>`),
+	}
+	got := normalize(step{name: "s", method: http.MethodPost, service: "sns", body: "Action=GetTopicAttributes&Version=2010-03-31"}, "pail-diff-1", r)
+	if want := "ErrorResponse\n  Type: Sender\n  Code: NotFound\n"; got.Body != want {
+		t.Errorf("body = %q, want %q", got.Body, want)
+	}
+}
+
+func TestCaptureVars(t *testing.T) {
+	vars := map[string]string{}
+	bodies := []string{
+		`<InitiateMultipartUploadResult><UploadId>up1</UploadId></InitiateMultipartUploadResult>`,
+		`{"QueueUrl":"https://q/1"}`,
+		`{"Attributes":{"QueueArn":"arn:q"}}`,
+		`{"Messages":[{"MessageId":"m1","ReceiptHandle":"rh1"}]}`,
+		`<CreateTopicResponse><CreateTopicResult><TopicArn>arn:t</TopicArn></CreateTopicResult></CreateTopicResponse>`,
+		`<PublishResponse><PublishResult><MessageId>m2</MessageId></PublishResult></PublishResponse>`,
+		`{"__type":"x"}`,
+		``,
+	}
+	for _, b := range bodies {
+		captureVars(vars, []byte(b))
+	}
+	want := map[string]string{
+		"uploadId": "up1", "queueUrl": "https://q/1", "queueArn": "arn:q", "receiptHandle": "rh1",
+		"messageId": "m2", "topicArn": "arn:t",
+	}
+	if !maps.Equal(vars, want) {
+		t.Errorf("vars = %v, want %v", vars, want)
+	}
+}
+
+func TestWithVars(t *testing.T) {
+	vars := map[string]string{"name": "pail-diff-1", "topicArn": "arn:aws:sns:us-east-1:1:t", "queueUrl": `a"b`}
+	tests := []struct {
+		name string
+		in   step
+		want step
+	}{
+		{"sqs escapes JSON", step{service: "sqs", body: `{"QueueUrl":"{queueUrl}","N":"{name}"}`}, step{service: "sqs", body: `{"QueueUrl":"a\"b","N":"pail-diff-1"}`}},
+		{"sns escapes the form", step{service: "sns", body: "TopicArn={topicArn}"}, step{service: "sns", body: "TopicArn=arn%3Aaws%3Asns%3Aus-east-1%3A1%3At"}},
+		{"s3 expands raw", step{query: "a={topicArn}", header: map[string]string{"H": "{name}"}}, step{query: "a=arn:aws:sns:us-east-1:1:t", header: map[string]string{"H": "pail-diff-1"}}},
+		{"uncaptured is empty", step{query: "uploadId={uploadId}"}, step{query: "uploadId="}},
+	}
+	for _, tt := range tests {
+		got, _ := tt.in.withVars(vars)
+		if got.query != tt.want.query || got.body != tt.want.body || !maps.Equal(got.header, tt.want.header) {
+			t.Errorf("%s: withVars(%+v) = %+v, want %+v", tt.name, tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestFingerprintService(t *testing.T) {
+	// Computed before service and target existed: S3 steps keep their fingerprints.
+	old := step{method: http.MethodGet, key: "k", header: map[string]string{"Range": "bytes=0-4"}}
+	if got, want := fingerprint(old), "108ea647798fa61a"; got != want {
+		t.Errorf("fingerprint(%+v) = %s, want %s", old, got, want)
+	}
+	for _, v := range []step{
+		{method: old.method, key: old.key, header: old.header, service: "sqs"},
+		{method: old.method, key: old.key, header: old.header, service: "sqs", target: "AmazonSQS.CreateQueue"},
+	} {
+		if fingerprint(v) == fingerprint(old) {
+			t.Errorf("fingerprint(%+v) equals the S3 step's, want different", v)
+		}
+	}
+}
+
+func TestDescribeService(t *testing.T) {
+	tests := []struct {
+		st   step
+		want string
+	}{
+		{step{method: http.MethodPost, service: "sqs", target: "AmazonSQS.CreateQueue"}, "POST sqs AmazonSQS.CreateQueue"},
+		{step{method: http.MethodPost, service: "sns", body: "Action=CreateTopic&Name=x&Version=2010-03-31"}, "POST sns CreateTopic"},
+	}
+	for _, tt := range tests {
+		if got := describe(tt.st); got != tt.want {
+			t.Errorf("describe(%+v) = %q, want %q", tt.st, got, tt.want)
+		}
+	}
+}
+
+func TestWithVarsMissing(t *testing.T) {
+	st := step{service: "sqs", body: `{"H":"{receiptHandle}","U":"{queueUrl}","N":"{name}"}`, header: map[string]string{"X": "{messageId}"}}
+	_, got := st.withVars(map[string]string{"name": "n", "queueUrl": "u"})
+	if want := []string{"receiptHandle", "messageId"}; !slices.Equal(got, want) {
+		t.Errorf("missing = %v, want %v", got, want)
+	}
+}
+
+func TestNormalizeServiceKeepsDigestsAndMasksAccounts(t *testing.T) {
+	r := response{status: http.StatusOK, header: http.Header{}, body: []byte(`{"MD5OfMessageBody":"5d41402abc4b2a76b9719d911017c592","QueueUrl":"https://q/123456789012/x"}`)}
+	got := normalize(step{name: "s", method: http.MethodPost, service: "sqs", target: "AmazonSQS.SendMessage"}, "n", r)
+	want := "MD5OfMessageBody: 5d41402abc4b2a76b9719d911017c592\nQueueUrl: https://q/{account}/x\n"
+	if got.Body != want {
+		t.Errorf("body = %q, want %q", got.Body, want)
 	}
 }

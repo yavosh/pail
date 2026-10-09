@@ -15,14 +15,13 @@ type apiError struct {
 	queryCode string
 }
 
-// The auth and size entries are from memory and unverified against AWS.
-// PR 2 records them; see docs/plans/2026-10-09-sqs-sns.md.
+// The missing-auth, unknown-key, and bad-signature entries match the AWS
+// recordings in test/diff (sqs-auth-errors). The others are from memory.
 var (
 	errUnsupportedOperation = apiError{http.StatusBadRequest, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation"}
-	errMissingAuth          = apiError{http.StatusForbidden, "com.amazon.coral.service#MissingAuthenticationTokenException", "MissingAuthenticationToken"}
+	errAccessDenied         = apiError{http.StatusForbidden, "com.amazon.coral.service#AccessDeniedException", "AccessDenied"}
 	errInvalidClientToken   = apiError{http.StatusForbidden, "com.amazon.coral.service#UnrecognizedClientException", "InvalidClientTokenId"}
 	errSignatureMismatch    = apiError{http.StatusForbidden, "com.amazon.coral.service#InvalidSignatureException", "SignatureDoesNotMatch"}
-	errRequestExpired       = apiError{http.StatusForbidden, "com.amazon.coral.service#InvalidSignatureException", "RequestExpired"}
 	errIncompleteSignature  = apiError{http.StatusBadRequest, "com.amazon.coral.service#IncompleteSignatureException", "IncompleteSignature"}
 	errTooLarge             = apiError{http.StatusRequestEntityTooLarge, "com.amazon.coral.service#RequestEntityTooLargeException", "RequestEntityTooLarge"}
 	errInternalFailure      = apiError{http.StatusInternalServerError, "com.amazon.coral.service#InternalFailure", "InternalFailure"}
@@ -35,13 +34,12 @@ func authError(err error) apiError {
 	}
 	switch {
 	case errors.Is(err, sigv4.ErrMissingAuth):
-		return errMissingAuth
+		return errAccessDenied
 	case errors.Is(err, sigv4.ErrInvalidAccessKeyID):
 		return errInvalidClientToken
-	case errors.Is(err, sigv4.ErrSignatureMismatch), errors.Is(err, sigv4.ErrUnsignedHeader):
+	// AWS reports a skewed clock as a signature mismatch.
+	case errors.Is(err, sigv4.ErrSignatureMismatch), errors.Is(err, sigv4.ErrUnsignedHeader), errors.Is(err, sigv4.ErrRequestTimeTooSkewed):
 		return errSignatureMismatch
-	case errors.Is(err, sigv4.ErrRequestTimeTooSkewed):
-		return errRequestExpired
 	case errors.Is(err, sigv4.ErrMalformedAuth), errors.Is(err, sigv4.ErrUnsupportedAuth):
 		return errIncompleteSignature
 	case errors.Is(err, sigv4.ErrNotImplemented):

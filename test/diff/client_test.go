@@ -57,15 +57,18 @@ type target struct {
 	creds  aws.Credentials
 	client *http.Client
 	// host returns the virtual-hosted-style host for a bucket.
-	host   func(bucket string) string
-	scheme string
+	host func(bucket string) string
+	// serviceHost returns the host of a non-S3 service.
+	serviceHost func(service string) string
+	scheme      string
 }
 
 // response is one raw HTTP answer.
 type response struct {
-	status int
-	header http.Header
-	body   []byte
+	status   int
+	header   http.Header
+	body     []byte
+	endpoint string // scheme://host a non-S3 step was sent to, for normalization
 }
 
 // initiatedUploadID returns the upload ID in a CreateMultipartUpload response, or "".
@@ -80,6 +83,67 @@ func initiatedUploadID(body []byte) string {
 	return r.UploadID
 }
 
+// variables are the placeholders a step can use, besides "{name}".
+var variables = []string{"uploadId", "queueUrl", "queueArn", "receiptHandle", "messageId", "topicArn", "subscriptionArn"}
+
+// captureVars updates vars from one response. The latest value wins, and a
+// response without a value keeps the earlier one.
+func captureVars(vars map[string]string, body []byte) {
+	if id := initiatedUploadID(body); id != "" {
+		vars["uploadId"] = id
+	}
+	var j struct {
+		QueueURL   string `json:"QueueUrl"`
+		MessageID  string `json:"MessageId"`
+		Attributes struct {
+			QueueArn string
+		}
+		Messages []struct {
+			ReceiptHandle string
+			MessageID     string `json:"MessageId"`
+		}
+	}
+	if json.Unmarshal(body, &j) == nil {
+		set := func(name, v string) {
+			if v != "" {
+				vars[name] = v
+			}
+		}
+		set("queueUrl", j.QueueURL)
+		set("queueArn", j.Attributes.QueueArn)
+		set("messageId", j.MessageID)
+		if len(j.Messages) > 0 {
+			set("receiptHandle", j.Messages[0].ReceiptHandle)
+			set("messageId", j.Messages[0].MessageID)
+		}
+		return
+	}
+	// Any element of these names counts, whatever its parent.
+	elements := map[string]string{"TopicArn": "topicArn", "SubscriptionArn": "subscriptionArn", "MessageId": "messageId"}
+	dec := xml.NewDecoder(bytes.NewReader(body))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return
+		}
+		start, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		name := elements[start.Name.Local]
+		if name == "" {
+			continue
+		}
+		var text string
+		if dec.DecodeElement(&text, &start) == nil && text != "" {
+			vars[name] = text
+		}
+	}
+}
+
+// serviceSigner signs non-S3 requests: the SigV4 rule is to encode paths twice.
+var serviceSigner = v4.NewSigner()
+
 // signer signs like the S3 SDKs: S3 paths are encoded once, never twice.
 var signer = newSigner()
 
@@ -89,6 +153,9 @@ func newSigner() *v4.Signer {
 
 // do sends one step to the target, addressed virtual-hosted-style at bucket.
 func (tg *target) do(ctx context.Context, st step, bucket string) (response, error) {
+	if st.service != "" {
+		return tg.doService(ctx, st)
+	}
 	expand := func(s string) string { return strings.ReplaceAll(s, "{bucket}", bucket) }
 	u := &url.URL{
 		Scheme:   tg.scheme,
@@ -124,23 +191,12 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 	creds, signTime := tg.creds, time.Now()
 	if st.form == nil {
 		switch st.auth {
-		case authNone:
-		case authUnknownKey:
-			creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
-			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
-		case authBadSignature:
-			// The signer caches keys by access key, not secret, so a wrong secret
-			// through the shared signer would break every later request.
-			creds.SecretAccessKey += "-wrong"
-			err = newSigner().SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
-		case authSkewed:
-			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime.Add(-20*time.Minute))
 		case authPresigned, authPresignedExpired, authPresignedTampered, authPresignedFuture, authPresignedBadCredential, authPresignedMissingParam:
 			err = tg.presign(ctx, req, st.auth, signTime)
 		case authPresignedV2, authPresignedV2Expired, authPresignedV2Tampered, authPresignedV2BadSignature, authPresignedV2MissingParam:
 			tg.presignV2(req, bucket, st.auth, signTime)
 		default:
-			err = signer.SignHTTP(ctx, creds, req, payloadHash, "s3", tg.region, signTime)
+			creds, err = tg.signHeader(ctx, st.auth, req, payloadHash, "s3", signer, newSigner, signTime)
 		}
 	}
 	if err != nil {
@@ -169,6 +225,71 @@ func (tg *target) do(ctx context.Context, st step, bucket string) (response, err
 		return response{}, err
 	}
 	return response{status: resp.StatusCode, header: resp.Header, body: body}, nil
+}
+
+// signHeader signs req with an Authorization header, as the auth mode says,
+// and returns the credentials it used. fresh makes a signer for a wrong secret:
+// the shared signer caches keys by access key, so it would break later requests.
+func (tg *target) signHeader(ctx context.Context, auth authMode, req *http.Request, payloadHash, service string, shared *v4.Signer, fresh func() *v4.Signer, signTime time.Time) (aws.Credentials, error) {
+	creds, sg := tg.creds, shared
+	switch auth {
+	case authNone:
+		return creds, nil
+	case authUnknownKey:
+		creds = aws.Credentials{AccessKeyID: "AKIAPAILDIFFUNKNOWN0", SecretAccessKey: "unknown"}
+	case authBadSignature:
+		creds.SecretAccessKey += "-wrong"
+		sg = fresh()
+	case authSkewed:
+		signTime = signTime.Add(-20 * time.Minute)
+	}
+	return creds, sg.SignHTTP(ctx, creds, req, payloadHash, service, tg.region, signTime)
+}
+
+// doService sends one SQS or SNS step. These services take no
+// x-amz-content-sha256 and no bucket.
+func (tg *target) doService(ctx context.Context, st step) (response, error) {
+	switch {
+	case st.auth >= authPresigned:
+		return response{}, fmt.Errorf("%s step: presigned auth mode %d is S3-only", st.service, st.auth)
+	case st.form != nil:
+		return response{}, fmt.Errorf("%s step: a form is S3-only", st.service)
+	case st.stream != "":
+		return response{}, fmt.Errorf("%s step: a stream is S3-only", st.service)
+	}
+	endpoint := tg.scheme + "://" + tg.serviceHost(st.service)
+	u := &url.URL{Scheme: tg.scheme, Host: tg.serviceHost(st.service), Path: "/", RawQuery: st.query}
+	req, err := http.NewRequestWithContext(ctx, st.method, u.String(), strings.NewReader(st.body))
+	if err != nil {
+		return response{}, err
+	}
+	if st.service == "sqs" {
+		req.Header.Set("Content-Type", "application/x-amz-json-1.0")
+		req.Header.Set("X-Amz-Target", st.target)
+	} else {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+	}
+	for k, v := range st.header {
+		req.Header.Set(k, v)
+	}
+	payloadHash := sha256Hex(st.body)
+	_, err = tg.signHeader(ctx, st.auth, req, payloadHash, st.service, serviceSigner, func() *v4.Signer { return v4.NewSigner() }, time.Now())
+	if err != nil {
+		return response{}, fmt.Errorf("sign: %w", err)
+	}
+	resp, err := tg.client.Do(req)
+	if err != nil {
+		if ue, ok := errors.AsType[*url.Error](err); ok {
+			err = ue.Err
+		}
+		return response{}, fmt.Errorf("%s %s: %w", req.Method, req.URL.Path, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return response{}, err
+	}
+	return response{status: resp.StatusCode, header: resp.Header, body: body, endpoint: endpoint}, nil
 }
 
 // presign replaces req.URL with a presigned URL. The payload is unsigned.
@@ -356,7 +477,67 @@ list:
 	}
 }
 
-// failure describes a failed cleanup call by status and S3 error code only.
+// cleanupQueue deletes an SQS queue if it exists. It logs instead of failing.
+func cleanupQueue(t *testing.T, tg *target, name string) {
+	t.Helper()
+	if !strings.HasPrefix(name, "pail-diff-") {
+		t.Fatalf("cleanup refuses queue %q: not created by this suite", name)
+	}
+	ctx := context.Background()
+	sqs := func(op, body string) (response, error) {
+		return tg.do(ctx, step{method: http.MethodPost, service: "sqs", target: "AmazonSQS." + op, body: body}, "")
+	}
+	resp, err := sqs("GetQueueUrl", `{"QueueName":"`+name+`"}`)
+	if err != nil || resp.status != http.StatusOK {
+		return
+	}
+	var q struct {
+		QueueURL string `json:"QueueUrl"`
+	}
+	if json.Unmarshal(resp.body, &q) != nil || q.QueueURL == "" {
+		return
+	}
+	body, err := json.Marshal(map[string]string{"QueueUrl": q.QueueURL})
+	if err != nil {
+		return
+	}
+	if resp, err := sqs("DeleteQueue", string(body)); err != nil || resp.status != http.StatusOK {
+		t.Logf("cleanup: delete queue %s: %s", name, failure(resp, err))
+	}
+}
+
+// cleanupTopic deletes an SNS topic by its captured ARN. Without one, it falls
+// back to CreateTopic, which is idempotent and returns the ARN, so scenarios
+// must create topics without attributes or tags. It logs instead of failing.
+func cleanupTopic(t *testing.T, tg *target, name, capturedARN string) {
+	t.Helper()
+	if !strings.HasPrefix(name, "pail-diff-") {
+		t.Fatalf("cleanup refuses topic %q: not created by this suite", name)
+	}
+	ctx := context.Background()
+	sns := func(form string) (response, error) {
+		return tg.do(ctx, step{method: http.MethodPost, service: "sns", body: form + "&Version=2010-03-31"}, "")
+	}
+	arn := capturedARN
+	if !strings.HasSuffix(arn, ":"+name) {
+		resp, err := sns("Action=CreateTopic&Name=" + url.QueryEscape(name))
+		if err != nil || resp.status != http.StatusOK {
+			t.Logf("cleanup: create topic %s: %s", name, failure(resp, err))
+			return
+		}
+		vars := map[string]string{}
+		captureVars(vars, resp.body)
+		if arn = vars["topicArn"]; arn == "" {
+			return
+		}
+	}
+	resp, err := sns("Action=DeleteTopic&TopicArn=" + url.QueryEscape(arn))
+	if err != nil || resp.status != http.StatusOK && resp.status != http.StatusNotFound {
+		t.Logf("cleanup: delete topic %s: %s", name, failure(resp, err))
+	}
+}
+
+// failure describes a failed cleanup call by status and error code only.
 func failure(resp response, err error) string {
 	if err != nil {
 		return err.Error()
@@ -364,6 +545,9 @@ func failure(resp response, err error) string {
 	s := fmt.Sprintf("status %d", resp.status)
 	if body, isErr, _ := canonicalXML(string(resp.body)); isErr {
 		s += " " + strings.Join(strings.Fields(body), " ")
+	}
+	if body, isErr, _ := canonicalJSON(string(resp.body)); isErr {
+		s += " " + strings.TrimSpace(body)
 	}
 	return s
 }
