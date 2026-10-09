@@ -40,6 +40,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Time-dependent tests use `testing/synctest`, not sleeps. HTTP endpoints inside a bubble use `httptest.NewTestServer`; its in-memory network is the only one `synctest` can see.
 - Comments are 2 to 3 lines at most. State the one non-obvious thing and stop.
 - Every long-lived goroutine takes a `context.Context` or a stop channel, and the starter stops it. Prefer synchronous functions.
+- Listener failures close established HTTP connections before releasing storage.
 - Accept interfaces, return structs. Define an interface in the package that consumes it. Shared backend contracts, such as `vfs.FS`, are the exception: every backend must return the same types, so they live in a neutral package, like `io/fs`.
 - Indent error flow. No `else` after `return`. No naked returns. Don't panic outside `main` or `init`.
 - Use one short receiver name per type. Never mix value and pointer receivers.
@@ -61,6 +62,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - `internal/acl` holds ACL documents. Object ACLs travel with metadata through uploads and multipart completion.
 - ACL grants use the literal `xsi:type` prefix in responses because SDK decoders require it.
 - Anonymous overwrites check ownership again under the object lock before committing.
+- Anonymous GET and HEAD check the ACL from the metadata snapshot used for the response.
 - Conditional deletes read current metadata under the object lock and hold it through deletion. `store.DeleteOptions.IfMatch` distinguishes an absent condition from an empty one. Single deletes use `If-Match`; batch deletes use each XML `ETag` and preserve errors in `Quiet` mode.
 - `internal/sigv4/post.go` verifies signed form policies. The file arrives last, and size checks finish before storage commits.
 - pail enables ACLs but still authenticates one account. Tag filters, storage transitions, version actions, and email grantees remain unsupported.
