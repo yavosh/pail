@@ -53,10 +53,15 @@ type sendEntry struct {
 	MessageGroupID          string `json:"MessageGroupId"`
 }
 
-// toInput converts e. A standard queue rejects the FIFO fields.
+// toInput converts e. A standard queue ignores MessageGroupId: AWS fair queues
+// use it for tenant fairness, which pail does not model. MessageDeduplicationId
+// is rejected (unverified).
 func (e sendEntry) toInput() (queue.SendInput, error) {
-	if e.MessageGroupID != "" || e.MessageDeduplicationID != "" {
-		return queue.SendInput{}, fmt.Errorf("MessageGroupId and MessageDeduplicationId are not valid for this queue type: %w", queue.ErrInvalidParameterValue)
+	if e.MessageBody == "" {
+		return queue.SendInput{}, fmt.Errorf("MessageBody is required: %w", errMissingParam)
+	}
+	if e.MessageDeduplicationID != "" {
+		return queue.SendInput{}, fmt.Errorf("MessageDeduplicationId is not valid for this queue type: %w", queue.ErrInvalidParameterValue)
 	}
 	attrs, err := toEngine(e.MessageAttributes)
 	if err != nil {
@@ -204,7 +209,8 @@ func (h *handler) systemAttributes(m queue.Message, names []string) map[string]s
 }
 
 // filterAttributes keeps the attributes that a name in names selects. "All" and
-// ".*" select every attribute, and "prefix.*" selects names starting "prefix.".
+// ".*" select every attribute, and "prefix.*" selects names starting "prefix"
+// (AWS matches the text before ".*", without the dot).
 func filterAttributes(attrs map[string]queue.MessageAttribute, names []string) map[string]queue.MessageAttribute {
 	if len(names) == 0 || len(attrs) == 0 {
 		return nil
@@ -216,7 +222,7 @@ func filterAttributes(attrs map[string]queue.MessageAttribute, names []string) m
 	for n, a := range attrs {
 		if slices.ContainsFunc(names, func(p string) bool {
 			if prefix, ok := strings.CutSuffix(p, ".*"); ok {
-				return strings.HasPrefix(n, prefix+".")
+				return strings.HasPrefix(n, prefix)
 			}
 			return n == p
 		}) {

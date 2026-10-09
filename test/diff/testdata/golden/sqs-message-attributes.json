@@ -1,0 +1,81 @@
+{
+  "scenario": "sqs-message-attributes",
+  "exchanges": [
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "send-with-attributes",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "71f914a34a3413af",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "MD5OfMessageAttributes: d838729972a4b70e2d2acd9d59ac847c\nMD5OfMessageBody: 5d41402abc4b2a76b9719d911017c592\nMessageId: {uuid}\n"
+    },
+    {
+      "step": "receive-all",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "68008591bb517966",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Body: hello\nMessages[0].MD5OfBody: 5d41402abc4b2a76b9719d911017c592\nMessages[0].MD5OfMessageAttributes: d838729972a4b70e2d2acd9d59ac847c\nMessages[0].MessageAttributes.blob.BinaryValue: AQID\nMessages[0].MessageAttributes.blob.DataType: Binary\nMessages[0].MessageAttributes.color.DataType: String\nMessages[0].MessageAttributes.color.StringValue: blue\nMessages[0].MessageAttributes.count.DataType: Number\nMessages[0].MessageAttributes.count.StringValue: 3\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-filtered",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "59ae42ff1dc7018a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body: hello\nMessages[0].MD5OfBody: 5d41402abc4b2a76b9719d911017c592\nMessages[0].MD5OfMessageAttributes: da1b33cc3cbfe8b1630921e78e6b9880\nMessages[0].MessageAttributes.color.DataType: String\nMessages[0].MessageAttributes.color.StringValue: blue\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-prefix",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "f113716cb11fe7c6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body: hello\nMessages[0].MD5OfBody: 5d41402abc4b2a76b9719d911017c592\nMessages[0].MD5OfMessageAttributes: da1b33cc3cbfe8b1630921e78e6b9880\nMessages[0].MessageAttributes.color.DataType: String\nMessages[0].MessageAttributes.color.StringValue: blue\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-none",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "6e2323e09bbd04ba",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body: hello\nMessages[0].MD5OfBody: 5d41402abc4b2a76b9719d911017c592\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

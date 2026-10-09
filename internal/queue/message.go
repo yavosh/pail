@@ -403,7 +403,8 @@ func (e *Engine) Delete(ctx context.Context, name string, handles []string) ([]e
 	return errs, nil
 }
 
-// ChangeVisibility sets the visibility timeout of in-flight messages. It
+// ChangeVisibility sets the visibility timeout of a message by its latest
+// receipt handle, also when the message is visible again, as AWS does. It
 // returns one error per change.
 func (e *Engine) ChangeVisibility(ctx context.Context, name string, changes []VisibilityChange) ([]error, error) {
 	if err := ctx.Err(); err != nil {
@@ -433,10 +434,6 @@ func (e *Engine) ChangeVisibility(ctx context.Context, name string, changes []Vi
 			continue
 		}
 		m := q.messages[j]
-		if !now.Before(m.visibleAt) {
-			errs[i] = ErrMessageNotInflight
-			continue
-		}
 		visibleAt := now.Add(time.Duration(c.Timeout) * time.Second)
 		if visibleAt.After(m.lastReceived.Add(maxInflightExtend)) {
 			errs[i] = fmt.Errorf("visibility timeout %d passes 12 hours from receive: %w", c.Timeout, ErrInvalidParameterValue)

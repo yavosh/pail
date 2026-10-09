@@ -158,7 +158,8 @@ func TestAuth(t *testing.T) {
 func TestUnsupportedAndMalformed(t *testing.T) {
 	e := newEnv(t)
 	const unsupported = "com.amazonaws.sqs#UnsupportedOperation"
-	for _, op := range []string{"Bogus", "AddPermission", "RemovePermission", "StartMessageMoveTask", "CancelMessageMoveTask", "ListMessageMoveTasks", "ListDeadLetterSourceQueues"} {
+	e.fail("Bogus", `{}`, 400, "com.amazon.coral.service#UnknownOperationException", "InvalidAction")
+	for _, op := range []string{"AddPermission", "RemovePermission", "StartMessageMoveTask", "CancelMessageMoveTask", "ListMessageMoveTasks", "ListDeadLetterSourceQueues"} {
 		e.fail(op, `{}`, 400, unsupported, "AWS.SimpleQueueService.UnsupportedOperation")
 	}
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{}`))
@@ -169,12 +170,12 @@ func TestUnsupportedAndMalformed(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, r)
-	if w.Code != 400 || !strings.Contains(w.Body.String(), unsupported) {
-		t.Errorf("no target: status %d, body %s, want 400 UnsupportedOperation", w.Code, w.Body)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "UnknownOperationException") {
+		t.Errorf("no target: status %d, body %s, want 400 UnknownOperationException", w.Code, w.Body)
 	}
 	const serial = "com.amazon.coral.service#SerializationException"
 	for _, body := range []string{`{`, ``, `[]`, `{"QueueName":5}`} {
-		e.fail("CreateQueue", body, 400, serial, "SerializationException")
+		e.fail("CreateQueue", body, 400, serial, "MalformedInput")
 	}
 }
 
@@ -222,7 +223,7 @@ func TestQueueLifecycle(t *testing.T) {
 	if len(seen) != 3 || !strings.HasSuffix(seen[2], "/gamma") {
 		t.Errorf("paged ListQueues = %v, want 3 URLs ending in gamma", seen)
 	}
-	const invalid = "com.amazonaws.sqs#InvalidParameterValueException"
+	const invalid = "com.amazon.coral.service#InvalidParameterValueException"
 	e.fail("ListQueues", `{"MaxResults":0}`, 400, invalid, "InvalidParameterValue")
 	e.fail("ListQueues", `{"MaxResults":1001}`, 400, invalid, "InvalidParameterValue")
 	e.fail("ListQueues", `{"NextToken":"!!"}`, 400, invalid, "InvalidParameterValue")
@@ -258,7 +259,7 @@ func TestQueueLifecycle(t *testing.T) {
 	e.fail("PurgeQueue", body, 403, "com.amazonaws.sqs#PurgeQueueInProgress", "AWS.SimpleQueueService.PurgeQueueInProgress")
 	e.fail("CreateQueue", `{"QueueName":"alpha","Attributes":{"VisibilityTimeout":"61"}}`, 400, "com.amazonaws.sqs#QueueNameExists", "QueueAlreadyExists")
 	e.fail("CreateQueue", `{"QueueName":"bad name"}`, 400, invalid, "InvalidParameterValue")
-	e.fail("CreateQueue", `{}`, 400, "com.amazonaws.sqs#MissingParameterException", "MissingParameter")
+	e.fail("CreateQueue", `{}`, 400, invalid, "InvalidParameterValue")
 	e.fail("CreateQueue", `{"QueueName":"q","Attributes":{"Bogus":"1"}}`, 400, "com.amazonaws.sqs#InvalidAttributeName", "InvalidAttributeName")
 	e.fail("CreateQueue", `{"QueueName":"q","Attributes":{"VisibilityTimeout":"x"}}`, 400, "com.amazonaws.sqs#InvalidAttributeValue", "InvalidAttributeValue")
 	e.fail("CreateQueue", `{"QueueName":"q.fifo"}`, 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation")
@@ -266,7 +267,7 @@ func TestQueueLifecycle(t *testing.T) {
 	e.okEmpty("DeleteQueue", body)
 	const missing = "com.amazonaws.sqs#QueueDoesNotExist"
 	e.fail("GetQueueUrl", `{"QueueName":"alpha"}`, 400, missing, "AWS.SimpleQueueService.NonExistentQueue")
-	e.fail("GetQueueUrl", `{}`, 400, "com.amazonaws.sqs#MissingParameterException", "MissingParameter")
+	e.fail("GetQueueUrl", `{}`, 400, invalid, "InvalidParameterValue")
 	e.fail("DeleteQueue", body, 400, missing, "AWS.SimpleQueueService.NonExistentQueue")
 }
 
@@ -288,7 +289,7 @@ func TestQueueURL(t *testing.T) {
 		{"no name", "http://" + testHost + "/000000000000/", false, missing, "AWS.SimpleQueueService.NonExistentQueue"},
 		{"not a URL", "%zz", false, missing, "AWS.SimpleQueueService.NonExistentQueue"},
 		{"unknown queue", "http://" + testHost + "/000000000000/nope", false, missing, "AWS.SimpleQueueService.NonExistentQueue"},
-		{"empty", "", false, "com.amazonaws.sqs#MissingParameterException", "MissingParameter"},
+		{"empty", "", false, "com.amazon.coral.service#MissingRequiredParameterException", "MissingParameter"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -350,14 +351,14 @@ func TestSendReceiveDelete(t *testing.T) {
 	}
 	e.okEmpty("DeleteMessage", fmt.Sprintf(`{"QueueUrl":%q,"ReceiptHandle":%q}`, u, handle))
 	e.okEmpty("DeleteMessage", fmt.Sprintf(`{"QueueUrl":%q,"ReceiptHandle":%q}`, u, handle)) // a deleted message's handle still succeeds
-	e.fail("DeleteMessage", fmt.Sprintf(`{"QueueUrl":%q,"ReceiptHandle":"garbage"}`, u), 400, "com.amazonaws.sqs#ReceiptHandleIsInvalid", "ReceiptHandleIsInvalid")
-	e.fail("DeleteMessage", fmt.Sprintf(`{"QueueUrl":%q}`, u), 400, "com.amazonaws.sqs#MissingParameterException", "MissingParameter")
-	e.fail("ChangeMessageVisibility", fmt.Sprintf(`{"QueueUrl":%q,"ReceiptHandle":%q}`, u, handle), 400, "com.amazonaws.sqs#MissingParameterException", "MissingParameter")
+	e.fail("DeleteMessage", fmt.Sprintf(`{"QueueUrl":%q,"ReceiptHandle":"garbage"}`, u), 404, "com.amazonaws.sqs#ReceiptHandleIsInvalid", "ReceiptHandleIsInvalid")
+	e.fail("DeleteMessage", fmt.Sprintf(`{"QueueUrl":%q}`, u), 400, "com.amazon.coral.service#MissingRequiredParameterException", "MissingParameter")
+	e.fail("ChangeMessageVisibility", fmt.Sprintf(`{"QueueUrl":%q,"ReceiptHandle":%q}`, u, handle), 400, "com.amazon.coral.service#MissingRequiredParameterException", "MissingParameter")
 
-	const invalid = "com.amazonaws.sqs#InvalidParameterValueException"
-	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":""}`, u), 400, invalid, "InvalidParameterValue")
+	const invalid = "com.amazon.coral.service#InvalidParameterValueException"
+	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":""}`, u), 400, "com.amazon.coral.service#MissingRequiredParameterException", "MissingParameter")
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"\u0000"}`, u), 400, "com.amazonaws.sqs#InvalidMessageContents", "InvalidMessageContents")
-	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageGroupId":"g"}`, u), 400, invalid, "InvalidParameterValue")
+	e.ok("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageGroupId":"g"}`, u), nil) // fair queues accept it
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageDeduplicationId":"d"}`, u), 400, invalid, "InvalidParameterValue")
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageAttributes":{"a":{"DataType":"String","StringListValues":["b"]}}}`, u), 400, invalid, "InvalidParameterValue")
 	e.fail("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"MaxNumberOfMessages":11}`, u), 400, invalid, "InvalidParameterValue")
@@ -431,7 +432,7 @@ func TestMessageAttributeFilter(t *testing.T) {
 		{"All", `"All"`, []string{"blob", "col.x", "color"}},
 		{"dot star", `".*"`, []string{"blob", "col.x", "color"}},
 		{"exact", `"color"`, []string{"color"}},
-		{"prefix", `"col.*"`, []string{"col.x"}},
+		{"prefix", `"col.*"`, []string{"col.x", "color"}},
 		{"two names", `"color","blob"`, []string{"blob", "color"}},
 		{"no match", `"nope"`, nil},
 	}
@@ -558,9 +559,8 @@ func TestBatchPartialFailure(t *testing.T) {
 	// Entries that cannot convert fail alone and the others are sent.
 	var mixed batchBody
 	e.ok("SendMessageBatch", fmt.Sprintf(`{"QueueUrl":%q,"Entries":[{"Id":"ok","MessageBody":"fine"},{"Id":"fifo","MessageBody":"fine","MessageGroupId":"g"},{"Id":"list","MessageBody":"fine","MessageAttributes":{"a":{"DataType":"String","StringListValues":["x"]}}}]}`, u), &mixed)
-	if len(mixed.Successful) != 1 || mixed.Successful[0].ID != "ok" || len(mixed.Failed) != 2 ||
-		mixed.Failed[0].ID != "fifo" || mixed.Failed[1].ID != "list" || mixed.Failed[0].Code != "InvalidParameterValue" || mixed.Failed[1].Code != "InvalidParameterValue" {
-		t.Errorf("mixed SendMessageBatch = %+v, %+v; want ok sent, fifo and list failed with InvalidParameterValue", mixed.Successful, mixed.Failed)
+	if len(mixed.Successful) != 2 || len(mixed.Failed) != 1 || mixed.Failed[0].ID != "list" || mixed.Failed[0].Code != "InvalidParameterValue" {
+		t.Errorf("mixed SendMessageBatch = %+v, %+v; want ok and fifo sent, list failed with InvalidParameterValue", mixed.Successful, mixed.Failed)
 	}
 
 	var got receivedBody

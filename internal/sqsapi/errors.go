@@ -16,13 +16,15 @@ type apiError struct {
 	queryCode string
 }
 
-// Entries that match AWS recordings in test/diff are marked verified. The rest
-// stay unverified until the sqs-errors, sqs-batches, sqs-visibility, and
-// sqs-message-attributes recordings confirm them.
+// Entries marked verified match AWS recordings in test/diff. Still unverified:
+// MissingParameter for QueueUrl and ReceiptHandle, MessageDeduplicationId on a
+// standard queue, the per-entry InternalError code, list attribute values,
+// SerializationException for non-object bodies, and UnsupportedOperation for
+// model operations that pail does not implement.
 var (
-	// Verified by sqs-queue-basics.
+	// Verified.
 	errQueueDoesNotExist = apiError{http.StatusBadRequest, "com.amazonaws.sqs#QueueDoesNotExist", "AWS.SimpleQueueService.NonExistentQueue"}
-	// The auth entries and UnsupportedOperation are verified.
+	// The auth entries are verified. UnsupportedOperation is not, for unimplemented model operations.
 	errUnsupportedOperation = apiError{http.StatusBadRequest, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation"}
 	errAccessDenied         = apiError{http.StatusForbidden, "com.amazon.coral.service#AccessDeniedException", "AccessDenied"}
 	errInvalidClientToken   = apiError{http.StatusForbidden, "com.amazon.coral.service#UnrecognizedClientException", "InvalidClientTokenId"}
@@ -31,22 +33,21 @@ var (
 	errTooLarge             = apiError{http.StatusRequestEntityTooLarge, "com.amazon.coral.service#RequestEntityTooLargeException", "RequestEntityTooLarge"}
 	errInternalFailure      = apiError{http.StatusInternalServerError, "com.amazon.coral.service#InternalFailure", "InternalFailure"}
 
-	// Unverified.
 	errQueueNameExists          = apiError{http.StatusBadRequest, "com.amazonaws.sqs#QueueNameExists", "QueueAlreadyExists"}
 	errInvalidAttributeName     = apiError{http.StatusBadRequest, "com.amazonaws.sqs#InvalidAttributeName", "InvalidAttributeName"}
 	errInvalidAttributeValue    = apiError{http.StatusBadRequest, "com.amazonaws.sqs#InvalidAttributeValue", "InvalidAttributeValue"}
-	errInvalidParameterValue    = apiError{http.StatusBadRequest, "com.amazonaws.sqs#InvalidParameterValueException", "InvalidParameterValue"}
-	errMissingParameter         = apiError{http.StatusBadRequest, "com.amazonaws.sqs#MissingParameterException", "MissingParameter"}
+	errInvalidParameterValue    = apiError{http.StatusBadRequest, "com.amazon.coral.service#InvalidParameterValueException", "InvalidParameterValue"}
+	errMissingParameter         = apiError{http.StatusBadRequest, "com.amazon.coral.service#MissingRequiredParameterException", "MissingParameter"}
 	errInvalidMessageContents   = apiError{http.StatusBadRequest, "com.amazonaws.sqs#InvalidMessageContents", "InvalidMessageContents"}
-	errReceiptHandleIsInvalid   = apiError{http.StatusBadRequest, "com.amazonaws.sqs#ReceiptHandleIsInvalid", "ReceiptHandleIsInvalid"}
-	errMessageNotInflight       = apiError{http.StatusBadRequest, "com.amazonaws.sqs#MessageNotInflight", "AWS.SimpleQueueService.MessageNotInflight"}
+	errReceiptHandleIsInvalid   = apiError{http.StatusNotFound, "com.amazonaws.sqs#ReceiptHandleIsInvalid", "ReceiptHandleIsInvalid"}
 	errPurgeQueueInProgress     = apiError{http.StatusForbidden, "com.amazonaws.sqs#PurgeQueueInProgress", "AWS.SimpleQueueService.PurgeQueueInProgress"}
 	errEmptyBatchRequest        = apiError{http.StatusBadRequest, "com.amazonaws.sqs#EmptyBatchRequest", "AWS.SimpleQueueService.EmptyBatchRequest"}
 	errTooManyEntries           = apiError{http.StatusBadRequest, "com.amazonaws.sqs#TooManyEntriesInBatchRequest", "AWS.SimpleQueueService.TooManyEntriesInBatchRequest"}
 	errBatchEntryIDsNotDistinct = apiError{http.StatusBadRequest, "com.amazonaws.sqs#BatchEntryIdsNotDistinct", "AWS.SimpleQueueService.BatchEntryIdsNotDistinct"}
 	errInvalidBatchEntryID      = apiError{http.StatusBadRequest, "com.amazonaws.sqs#InvalidBatchEntryId", "AWS.SimpleQueueService.InvalidBatchEntryId"}
 	errBatchRequestTooLong      = apiError{http.StatusBadRequest, "com.amazonaws.sqs#BatchRequestTooLong", "AWS.SimpleQueueService.BatchRequestTooLong"}
-	errSerialization            = apiError{http.StatusBadRequest, "com.amazon.coral.service#SerializationException", "SerializationException"}
+	errSerialization            = apiError{http.StatusBadRequest, "com.amazon.coral.service#SerializationException", "MalformedInput"}
+	errUnknownOperation         = apiError{http.StatusBadRequest, "com.amazon.coral.service#UnknownOperationException", "InvalidAction"}
 )
 
 // The API's own errors. Handlers wrap them with %w and a message.
@@ -78,10 +79,9 @@ var mappings = []mapping{
 	{queue.ErrMessageTooLong, errInvalidParameterValue, "InvalidParameterValue"},
 	{queue.ErrMessageNotAvailable, errInvalidParameterValue, "InvalidParameterValue"},
 	{queue.ErrTooManyTags, errInvalidParameterValue, "InvalidParameterValue"},
-	{errMissingParam, errMissingParameter, ""},
+	{errMissingParam, errMissingParameter, "MissingParameter"},
 	{queue.ErrInvalidMessageContents, errInvalidMessageContents, "InvalidMessageContents"},
 	{queue.ErrReceiptHandleInvalid, errReceiptHandleIsInvalid, "ReceiptHandleIsInvalid"},
-	{queue.ErrMessageNotInflight, errMessageNotInflight, "MessageNotInflight"},
 	{queue.ErrPurgeInProgress, errPurgeQueueInProgress, ""},
 	{queue.ErrUnsupported, errUnsupportedOperation, ""},
 	{errEmptyBatch, errEmptyBatchRequest, ""},

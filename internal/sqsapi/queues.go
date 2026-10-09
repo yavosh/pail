@@ -52,7 +52,7 @@ type queueURLResponse struct {
 
 func (h *handler) createQueue(r *http.Request, in createQueueRequest) (any, error) {
 	if in.QueueName == "" {
-		return nil, fmt.Errorf("QueueName is required: %w", errMissingParam)
+		return nil, fmt.Errorf("QueueName is required: %w", queue.ErrInvalidParameterValue)
 	}
 	if err := h.queues.CreateQueue(r.Context(), in.QueueName, in.Attributes, in.Tags); err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ type getQueueURLRequest struct {
 
 func (h *handler) getQueueURL(r *http.Request, in getQueueURLRequest) (any, error) {
 	if in.QueueName == "" {
-		return nil, fmt.Errorf("QueueName is required: %w", errMissingParam)
+		return nil, fmt.Errorf("QueueName is required: %w", queue.ErrInvalidParameterValue)
 	}
 	if err := h.queues.Lookup(r.Context(), in.QueueName); err != nil {
 		return nil, err

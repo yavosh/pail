@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -45,6 +46,13 @@ type Options struct {
 	Queues          Queues
 }
 
+// modelOnly lists SQS operations that exist in the service model and that pail
+// does not implement. Any other name outside the table is not an SQS operation.
+var modelOnly = []string{
+	"AddPermission", "RemovePermission", "StartMessageMoveTask", "CancelMessageMoveTask",
+	"ListMessageMoveTasks", "ListDeadLetterSourceQueues",
+}
+
 // opFunc runs one operation. It returns the response value, or nil for an empty body.
 type opFunc func(r *http.Request, body []byte) (any, error)
 
@@ -55,7 +63,7 @@ type handler struct {
 	ops         map[string]opFunc
 }
 
-// New returns the SQS handler. An operation outside the table answers UnsupportedOperation.
+// New returns the SQS handler. An operation outside the table answers UnsupportedOperation or UnknownOperation.
 func New(opts Options) http.Handler {
 	h := &handler{
 		verifier:    sigv4.New(opts.AccessKeyID, opts.SecretAccessKey),
@@ -120,11 +128,10 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request, op string) int {
 	}
 	fn, ok := h.ops[op]
 	if !ok {
-		msg := "the action is not supported"
-		if op != "" {
-			msg = fmt.Sprintf("%s is not supported", op)
+		if slices.Contains(modelOnly, op) {
+			return writeError(w, errUnsupportedOperation, fmt.Sprintf("%s is not supported", op))
 		}
-		return writeError(w, errUnsupportedOperation, msg)
+		return writeError(w, errUnknownOperation, fmt.Sprintf("unknown operation %q", op))
 	}
 	v, err := fn(r, body)
 	if err != nil {

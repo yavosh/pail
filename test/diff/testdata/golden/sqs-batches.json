@@ -1,0 +1,151 @@
+{
+  "scenario": "sqs-batches",
+  "exchanges": [
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "send-batch",
+      "request": "POST sqs AmazonSQS.SendMessageBatch",
+      "fingerprint": "e66b4a3309ee125a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Successful[0].Id: a\nSuccessful[0].MD5OfMessageBody: fff25994ee3941b225ba898fd17d186f\nSuccessful[0].MessageId: {uuid}\nSuccessful[1].Id: b\nSuccessful[1].MD5OfMessageBody: fff25994ee3941b225ba898fd17d186f\nSuccessful[1].MessageId: {uuid}\n"
+    },
+    {
+      "step": "send-batch-partial",
+      "request": "POST sqs AmazonSQS.SendMessageBatch",
+      "fingerprint": "d28972656311bc74",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Failed[0].Code: InvalidMessageContents\nFailed[0].Id: bad\nFailed[0].SenderFault: true\nSuccessful[0].Id: ok\nSuccessful[0].MD5OfMessageBody: fff25994ee3941b225ba898fd17d186f\nSuccessful[0].MessageId: {uuid}\n"
+    },
+    {
+      "step": "send-batch-empty",
+      "request": "POST sqs AmazonSQS.SendMessageBatch",
+      "fingerprint": "6d16da6887a6d0a4",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "AWS.SimpleQueueService.EmptyBatchRequest;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#EmptyBatchRequest\n"
+    },
+    {
+      "step": "send-batch-too-many",
+      "request": "POST sqs AmazonSQS.SendMessageBatch",
+      "fingerprint": "b6829c59f83a41d7",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "AWS.SimpleQueueService.TooManyEntriesInBatchRequest;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#TooManyEntriesInBatchRequest\n"
+    },
+    {
+      "step": "send-batch-duplicate-ids",
+      "request": "POST sqs AmazonSQS.SendMessageBatch",
+      "fingerprint": "97d9f3fffec79823",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "AWS.SimpleQueueService.BatchEntryIdsNotDistinct;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#BatchEntryIdsNotDistinct\n"
+    },
+    {
+      "step": "send-batch-invalid-id",
+      "request": "POST sqs AmazonSQS.SendMessageBatch",
+      "fingerprint": "a6de9293be815c54",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "AWS.SimpleQueueService.InvalidBatchEntryId;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#InvalidBatchEntryId\n"
+    },
+    {
+      "step": "send-batch-fifo-field",
+      "request": "POST sqs AmazonSQS.SendMessageBatch",
+      "fingerprint": "989b992fc655c4fa",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Successful[0].Id: ok\nSuccessful[0].MD5OfMessageBody: fff25994ee3941b225ba898fd17d186f\nSuccessful[0].MessageId: {uuid}\nSuccessful[1].Id: fifo\nSuccessful[1].MD5OfMessageBody: fff25994ee3941b225ba898fd17d186f\nSuccessful[1].MessageId: {uuid}\n"
+    },
+    {
+      "step": "receive-one",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "0ae802785cdd24dc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body: fine\nMessages[0].MD5OfBody: fff25994ee3941b225ba898fd17d186f\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "change-visibility-batch",
+      "request": "POST sqs AmazonSQS.ChangeMessageVisibilityBatch",
+      "fingerprint": "90b98059f6674379",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Failed[0].Code: ReceiptHandleIsInvalid\nFailed[0].Id: y\nFailed[0].SenderFault: true\nSuccessful[0].Id: x\n"
+    },
+    {
+      "step": "receive-again",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "0ae802785cdd24dc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body: fine\nMessages[0].MD5OfBody: fff25994ee3941b225ba898fd17d186f\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-batch",
+      "request": "POST sqs AmazonSQS.DeleteMessageBatch",
+      "fingerprint": "c9e31a2827ab2a9e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Failed[0].Code: ReceiptHandleIsInvalid\nFailed[0].Id: y\nFailed[0].SenderFault: true\nSuccessful[0].Id: x\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}
