@@ -139,17 +139,19 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 func runScenario(t *testing.T, tg *target, sc scenario, bucket string, vars map[string]string) golden {
 	t.Helper()
 	g := golden{Scenario: sc.name}
+	prev := "no earlier step ran"
 	for _, st := range sc.steps {
 		expanded, missing := st.withVars(vars)
 		// Recording an error golden for a step that never had its input is wrong.
 		if *record && st.service != "" && len(missing) > 0 {
-			t.Fatalf("step %s uses {%s}, which no earlier response set: record again", st.name, missing[0])
+			t.Fatalf("step %s uses {%s}, which no earlier response set (%s): record again", st.name, missing[0], prev)
 		}
 		resp, err := tg.do(t.Context(), expanded, bucket)
 		if err != nil {
 			t.Fatalf("step %s (%s): %v", st.name, describe(st), err)
 		}
 		captureVars(vars, resp.body)
+		prev = st.name + " answered " + failure(resp, nil)
 		g.Exchanges = append(g.Exchanges, normalize(st, bucket, resp))
 	}
 	return g

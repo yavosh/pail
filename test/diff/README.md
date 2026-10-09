@@ -74,7 +74,7 @@ A recording makes a few dozen SQS and SNS requests, well inside the free tier.
 
 `sqs-queue-basics/list-queues` can flap, because `ListQueues` right after `CreateQueue` is eventually consistent. Record it again if it does.
 
-`sqs-queue-basics/receive-message` can come back empty on a standard queue. A step that uses a variable no earlier response set then stops the recording, instead of committing a wrong golden file.
+`sqs-queue-basics/receive-message` can come back empty on a standard queue. A step that uses a variable no earlier response set then stops the recording, instead of committing a wrong golden file. The failure names the previous step's status and error code.
 
 The steps of `sqs-auth-errors`, `sqs-queue-basics`, `sns-auth-errors`, and `sns-topic-basics` start in `pending.txt`. After you record, remove each line whose step matches AWS.
 
