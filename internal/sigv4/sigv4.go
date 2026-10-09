@@ -105,10 +105,8 @@ func Service(r *http.Request) string {
 				credential = v
 			}
 		}
-	} else {
-		if q := r.URL.Query(); q.Has("X-Amz-Algorithm") {
-			credential = q.Get("X-Amz-Credential")
-		}
+	} else if q := r.URL.Query(); q.Has("X-Amz-Algorithm") {
+		credential = q.Get("X-Amz-Credential")
 	}
 	cred := strings.Split(credential, "/")
 	if len(cred) != 5 {
