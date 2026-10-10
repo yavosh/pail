@@ -157,7 +157,7 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | Area | Operations |
 | --- | --- |
 | Buckets | `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, `GetBucketLocation` |
-| Objects | `PutObject`, `GetObject`, `HeadObject`, `DeleteObject`, `DeleteObjects`, `CopyObject` |
+| Objects | `PutObject`, `GetObject`, `HeadObject`, `GetObjectAttributes`, `DeleteObject`, `DeleteObjects`, `CopyObject` |
 | Listing | `ListObjectsV2`, `ListObjects` |
 | Multipart uploads | `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`, `CompleteMultipartUpload`, `AbortMultipartUpload`, `ListParts`, `ListMultipartUploads` |
 | CORS | `PutBucketCors`, `GetBucketCors`, `DeleteBucketCors` |

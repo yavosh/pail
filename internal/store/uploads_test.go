@@ -9,10 +9,12 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc32"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -711,5 +713,45 @@ func TestMultipartLimits(t *testing.T) {
 	// AWS allows 10,000 parts of 5 GiB, which is 53,687,091,200,000 bytes.
 	if got, want := int64(maxMultipartSize), int64(53_687_091_200_000); got != want {
 		t.Errorf("maxMultipartSize = %d, want %d", got, want)
+	}
+}
+
+func TestCompleteUploadKeepsPartLayout(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newStore(t)
+	mustCreate(t, s, "b")
+	up := mustUpload(t, s, "b", "k", UploadOptions{ChecksumAlgorithm: checksum.CRC32})
+	p1 := mustPart(t, s, "b", "k", up.ID, 1, bigPart, PartOptions{})
+	p2 := mustPart(t, s, "b", "k", up.ID, 2, smallPart, PartOptions{})
+	if _, err := s.CompleteUpload(ctx, "b", "k", up.ID, listed(p1, p2), CompleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	want := []ObjectPart{
+		{PartNumber: 1, Size: MinPartSize, ChecksumAlgorithm: checksum.CRC32, Checksum: p1.Checksum},
+		{PartNumber: 2, Size: int64(len(smallPart)), ChecksumAlgorithm: checksum.CRC32, Checksum: p2.Checksum},
+	}
+	// A reopened store reads the layout from the metadata file.
+	got, err := s.HeadObject(ctx, "b", "k")
+	if err != nil || !slices.Equal(got.Parts, want) {
+		t.Errorf("HeadObject Parts = %+v, %v, want %+v", got.Parts, err, want)
+	}
+
+	if _, err := s.PutObject(ctx, "b", "simple", strings.NewReader("x"), PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.HeadObject(ctx, "b", "simple"); err != nil || got.Parts != nil {
+		t.Errorf("simple object Parts = %+v, %v, want none", got.Parts, err)
+	}
+}
+
+func TestRecordWithoutLayoutLoads(t *testing.T) {
+	old := `{"key":"k","size":3,"etag":"abc-2","lastModified":"2026-01-01T00:00:00Z","blob":"b1"}`
+	var r record
+	if err := json.Unmarshal([]byte(old), &r); err != nil || r.Parts != nil || r.Size != 3 || r.Blob != "b1" {
+		t.Errorf("Unmarshal(%s) = %+v, %v, want a record with no parts", old, r, err)
+	}
+	out, err := json.Marshal(record{Key: "k"})
+	if err != nil || strings.Contains(string(out), "parts") {
+		t.Errorf("Marshal of a record with no parts = %s, %v, want no parts key", out, err)
 	}
 }

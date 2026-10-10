@@ -53,6 +53,7 @@ pail supports `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, and `
 - The `If-*` read conditions.
 - `If-None-Match: *` and `If-Match` on writes.
 - The `response-*` overrides.
+- `partNumber` on `GetObject` and `HeadObject`. See [Part reads](#part-reads).
 
 Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and user metadata to 2 KB.
 
@@ -89,11 +90,36 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 - aws-sdk-go-v2 leaves `encoding-type=url` keys encoded. To decode them, use `url.QueryUnescape`.
 - XML can't carry control characters, so a plain listing replaces them with U+FFFD. For keys with control characters, use `encoding-type=url`.
 
+## Part reads
+
+`GetObject` and `HeadObject` accept `partNumber` to read one part.
+
+- A part read returns `206 Partial Content` with the part's bytes, `Content-Range`, and a `Content-Length` of the part size. The ETag is the whole object's ETag.
+- A multipart object also returns `x-amz-mp-parts-count`. A simple object has one part, so `partNumber=1` returns the whole object without that header.
+- A part number past the last part returns `416 InvalidPartNumber`. `HeadObject` returns the status only.
+- `partNumber=0`, or a value that isn't a positive decimal integer, returns `400 InvalidArgument`. `partNumber` with a `Range` header returns `400 InvalidRequest`.
+- Conditional headers, `response-*` overrides, and the archived-class check work as for a read without `partNumber`. A part read returns no checksum headers.
+- pail stores the part numbers and sizes of a completed multipart object. A multipart object that was completed before pail kept them is one part. This is pail's choice, not AWS behavior.
+- An empty object returns `206` for `partNumber=1` without `Content-Range`. This is unverified.
+
+## GetObjectAttributes
+
+`GET /bucket/key?attributes` returns the attributes that `x-amz-object-attributes` names. The header is a comma-separated list of `ETag`, `Checksum`, `ObjectParts`, `StorageClass`, and `ObjectSize`.
+
+- The response holds only the requested elements, in this order: `ETag`, `Checksum`, `ObjectParts`, `StorageClass`, `ObjectSize`. The `ETag` has no quotes. The `Last-Modified` header is set.
+- `Checksum` holds the object's checksum and `ChecksumType`. A composite value has no `-<parts>` suffix.
+- `ObjectParts` appears only for a multipart object. It holds `PartsCount` and a page of `Part` entries with `PartNumber`, `Size`, and the part checksum. `x-amz-max-parts` (default and maximum 1,000) and `x-amz-part-number-marker` select the page.
+- A missing or empty `x-amz-object-attributes` header returns `400 InvalidRequest`. An unknown name returns `400 InvalidArgument`. A missing key returns `404 NoSuchKey`.
+- The response has no `Content-Type` header, as in the AWS recording.
+- pail ignores the `If-*` conditional headers on this operation. This is unverified.
+- `versionId=null` is accepted. There is no `x-amz-version-id` header, because pail has no versioning.
+- An anonymous request is denied, even if the object ACL is public.
+
 ## Version IDs
 
 pail has no versioning, so the only valid `versionId` is `null`. It names the current object, as on an unversioned AWS bucket.
 
-- `GetObject`, `HeadObject`, `DeleteObject`, and `GetObjectAcl` accept `versionId=null` and act as they do without it. `PutObjectAcl` accepts it too, but that is unverified against AWS.
+- `GetObject`, `HeadObject`, `GetObjectAttributes`, `DeleteObject`, and `GetObjectAcl` accept `versionId=null` and act as they do without it. `PutObjectAcl` accepts it too, but that is unverified against AWS.
 - Any other `versionId` on these operations fails with `400 InvalidArgument`, even when the key doesn't exist.
 - A `versionId` on any other operation fails with `501 NotImplemented`. `CopyObject` takes `versionId=null` in `x-amz-copy-source`.
 

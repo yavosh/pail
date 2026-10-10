@@ -310,6 +310,11 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		writeError(w, r, apiErr)
 		return
 	}
+	partNumber, hasPart, apiErr, ok := parsePartNumber(r)
+	if !ok {
+		writeError(w, r, apiErr)
+		return
+	}
 	var (
 		f    vfs.File
 		info store.ObjectInfo
@@ -361,14 +366,24 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	}
 
 	start, length, status := int64(0), info.Size, http.StatusOK
-	if spec := r.Header.Get("Range"); spec != "" {
-		first, last, ok, satisfiable := parseRange(spec, info.Size)
-		switch {
-		case ok && !satisfiable:
+	var first, last int64
+	ranged := false
+	if hasPart {
+		if first, last, ranged = partSpan(info, partNumber); !ranged {
+			writeError(w, r, errPartNumberRange)
+			return
+		}
+	} else if spec := r.Header.Get("Range"); spec != "" {
+		var satisfiable bool
+		first, last, ranged, satisfiable = parseRange(spec, info.Size)
+		if ranged && !satisfiable {
 			writeError(w, r, errInvalidRange) // AWS sends no Content-Range with it
 			return
-		case ok:
-			start, length, status = first, last-first+1, http.StatusPartialContent
+		}
+	}
+	if ranged {
+		start, length, status = first, last-first+1, http.StatusPartialContent
+		if length > 0 {
 			hdr.Set("Content-Range", "bytes "+strconv.FormatInt(first, 10)+"-"+strconv.FormatInt(last, 10)+"/"+strconv.FormatInt(info.Size, 10))
 		}
 	}
@@ -382,6 +397,9 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 
 	hdr.Set("ETag", etag)
 	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
+	if hasPart && len(info.Parts) > 0 {
+		hdr.Set("x-amz-mp-parts-count", strconv.Itoa(len(info.Parts)))
+	}
 	h.setExpiration(w, r, t.bucket, info)
 	setObjectHeaders(hdr, r, info)
 	setOptionHeaders(hdr, info.ObjectOptions)
@@ -401,6 +419,39 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		// Headers are sent, so the client sees a short body; log the cause.
 		clogS3api().Warn("object body copy failed", "bucket", t.bucket, "error", err)
 	}
+}
+
+// parsePartNumber reads the partNumber query of a read. A part number with a
+// Range header is an error, as is anything but a positive integer.
+func parsePartNumber(r *http.Request) (n int64, present bool, apiErr apiError, ok bool) {
+	values, present := r.URL.Query()["partNumber"]
+	if !present {
+		return 0, false, apiError{}, true
+	}
+	n, valid := parseDigits(values[0])
+	switch {
+	case !valid || n < 1:
+		return 0, true, errInvalidArgument, false
+	case r.Header.Get("Range") != "":
+		return 0, true, errPartWithRange, false
+	}
+	return n, true, apiError{}, true
+}
+
+// partSpan returns the first and last byte of part n. An object with no
+// stored layout is one part, so its whole body is part 1.
+func partSpan(info store.ObjectInfo, n int64) (first, last int64, ok bool) {
+	parts := info.Parts
+	if len(parts) == 0 {
+		parts = []store.ObjectPart{{PartNumber: 1, Size: info.Size}}
+	}
+	for _, p := range parts {
+		if int64(p.PartNumber) == n {
+			return first, first + p.Size - 1, true
+		}
+		first += p.Size
+	}
+	return 0, 0, false
 }
 
 // setObjectHeaders sets the stored headers, metadata, and response-* overrides.

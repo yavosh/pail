@@ -96,10 +96,11 @@ func normalize(st step, bucket string, r response) exchange {
 	ex := exchange{Step: st.name, Request: describe(st), Fingerprint: fingerprint(st), Status: r.status, Headers: map[string]string{}}
 	body := string(r.body)
 	// A successful object read is opaque data, even with an XML content type.
-	// GET with uploadId lists parts instead.
+	// GET with uploadId, acl, tagging, or attributes returns protocol XML instead.
 	q, _ := url.ParseQuery(st.query)
 	objectData := st.key != "" && (st.method == http.MethodGet || st.method == http.MethodHead) &&
-		(r.status == http.StatusOK || r.status == http.StatusPartialContent) && !q.Has("uploadId") && !q.Has("acl")
+		(r.status == http.StatusOK || r.status == http.StatusPartialContent) && !q.Has("uploadId") && !q.Has("acl") &&
+		!q.Has("tagging") && !q.Has("attributes")
 	if !objectData {
 		body = strings.ReplaceAll(body, bucket, "{bucket}")
 	}

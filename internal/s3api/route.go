@@ -38,6 +38,7 @@ const (
 	opPutObject               operation = "PutObject"
 	opCopyObject              operation = "CopyObject"
 	opGetObject               operation = "GetObject"
+	opGetObjectAttributes     operation = "GetObjectAttributes"
 	opHeadObject              operation = "HeadObject"
 	opDeleteObject            operation = "DeleteObject"
 	opCreateMultipartUpload   operation = "CreateMultipartUpload"
@@ -65,7 +66,7 @@ var subresources = map[string]bool{
 // versioned lists the operations that accept a versionId. pail has no
 // versioning, so only "null" is valid and it names the current object.
 var versioned = map[operation]bool{
-	opGetObject: true, opHeadObject: true, opDeleteObject: true,
+	opGetObject: true, opHeadObject: true, opDeleteObject: true, opGetObjectAttributes: true,
 	opGetObjectACL: true, opPutObjectACL: true,
 }
 
@@ -226,9 +227,11 @@ func resolveOperation(method string, t target, q url.Values, h http.Header) oper
 			return opPutObject
 		case method == http.MethodGet && only("uploadId"):
 			return opListParts
-		case method == http.MethodGet && only() && !part:
+		case method == http.MethodGet && only("attributes"):
+			return opGetObjectAttributes
+		case method == http.MethodGet && only():
 			return opGetObject
-		case method == http.MethodHead && only() && !part:
+		case method == http.MethodHead && only():
 			return opHeadObject
 		case method == http.MethodDelete && only("uploadId"):
 			return opAbortMultipartUpload

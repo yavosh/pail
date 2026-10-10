@@ -529,6 +529,9 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 
 		ObjectOptions: up.ObjectOptions,
 	}
+	for _, r := range records {
+		info.Parts = append(info.Parts, ObjectPart{PartNumber: r.PartNumber, Size: r.Size, ChecksumAlgorithm: r.ChecksumAlgorithm, Checksum: r.Checksum})
+	}
 	if full != nil {
 		fullSum := full.Sum(nil)
 		if opts.FullObjectChecksum != nil && !bytes.Equal(opts.FullObjectChecksum, fullSum) {

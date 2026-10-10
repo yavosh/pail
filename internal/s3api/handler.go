@@ -73,6 +73,7 @@ func (h *handler) routes() {
 		opGetBucketLocation:     h.handleGetBucketLocation,
 		opPutObject:             h.handlePutObject,
 		opGetObject:             h.handleGetObject,
+		opGetObjectAttributes:   h.handleGetObjectAttributes,
 		opHeadObject:            h.handleHeadObject,
 		opDeleteObject:          h.handleDeleteObject,
 		opDeleteObjects:         h.handleDeleteObjects,

@@ -137,6 +137,7 @@ func scenarios() []scenario {
 		copyConditionsOwnerScenario(),
 		multipartExtrasScenario(),
 		uploadPartCopyScenario(),
+		partReadsScenario(),
 		sqsAuthErrorsScenario(),
 		sqsQueueBasicsScenario(),
 		sqsMessageAttributesScenario(),

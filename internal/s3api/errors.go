@@ -68,6 +68,9 @@ var (
 	errInvalidPartOrder          = apiError{"InvalidPartOrder", http.StatusBadRequest, "The list of parts was not in ascending order. Parts must be ordered by part number."}
 	errEntityTooSmall            = apiError{"EntityTooSmall", http.StatusBadRequest, "Your proposed upload is smaller than the minimum allowed object size."}
 	errInvalidPartNumber         = apiError{"InvalidArgument", http.StatusBadRequest, "Part number must be an integer between 1 and 10000, inclusive"}
+	errPartNumberRange           = apiError{"InvalidPartNumber", http.StatusRequestedRangeNotSatisfiable, "The requested partnumber is not satisfiable"}
+	errPartWithRange             = apiError{"InvalidRequest", http.StatusBadRequest, "Cannot specify both Range header and partNumber query parameter"}
+	errMissingAttributes         = apiError{"InvalidRequest", http.StatusBadRequest, "The x-amz-object-attributes header specifying the attributes to be retrieved is either missing or empty"}
 	errChecksumAlgorithmMismatch = apiError{"InvalidRequest", http.StatusBadRequest, "The checksum algorithm you specified does not match the one the multipart upload was created with."}
 	errInvalidObjectSize         = apiError{"InvalidRequest", http.StatusBadRequest, "The provided 'x-amz-mp-object-size' header value does not match what was computed."}
 	errNoSuchVersion             = apiError{"NoSuchVersion", http.StatusNotFound, "The specified version does not exist."}

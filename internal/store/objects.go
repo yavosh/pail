@@ -43,6 +43,18 @@ type ObjectInfo struct {
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
 	Checksum          string `json:"checksum,omitempty"`
 	ChecksumType      string `json:"checksumType,omitempty"`
+	// Parts is the layout of a completed multipart object. A simple object, or
+	// one completed before pail kept the layout, has none.
+	Parts []ObjectPart `json:"parts,omitempty"`
+}
+
+// ObjectPart is one part of a completed multipart object, in object order.
+type ObjectPart struct {
+	PartNumber int   `json:"partNumber"`
+	Size       int64 `json:"size"`
+	// ChecksumAlgorithm and Checksum (base64) are empty when the part has none.
+	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
+	Checksum          string `json:"checksum,omitempty"`
 }
 
 // record is the metadata file: the object description plus its blob name.
