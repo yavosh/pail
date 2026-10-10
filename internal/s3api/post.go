@@ -15,6 +15,7 @@ import (
 	"github.com/yavosh/pail/internal/acl"
 	"github.com/yavosh/pail/internal/sigv4"
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/tag"
 )
 
 func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t target) {
@@ -67,9 +68,7 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 				switch {
 				case strings.HasPrefix(field, "x-amz-meta-"):
 					headers.Set(field, value)
-				case field == "tagging":
-					writeError(w, r, errNotImplemented)
-					return
+				case field == "tagging": // an XML document, parsed after the checks above
 				case field == "x-amz-storage-class", field == "x-amz-website-redirect-location",
 					strings.HasPrefix(field, "x-amz-server-side-encryption"), strings.HasPrefix(field, "x-amz-object-lock-"):
 					headers.Set(field, value)
@@ -130,6 +129,12 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 				return
 			}
 			opts.ObjectOptions = options
+			if doc := fields["tagging"]; doc != "" {
+				if opts.Tags, e, ok = parseTagging([]byte(doc), tag.MaxObject); !ok {
+					writeError(w, r, e)
+					return
+				}
+			}
 			algorithm, digest, trailer, e, valid := parseChecksum(headers)
 			if !valid || trailer || fields["x-amz-checksum-algorithm"] != "" && digest == nil {
 				writeError(w, r, cmp.Or(e, errInvalidChecksum))

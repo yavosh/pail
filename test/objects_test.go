@@ -308,44 +308,6 @@ func TestObjectHeadersAndLimits(t *testing.T) {
 	})
 }
 
-func TestRejectObjectTagging(t *testing.T) {
-	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
-		ctx := t.Context()
-		mustBucket(t, c, "tagging")
-		bucket, key := aws.String("tagging"), aws.String("k")
-		if _, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: bucket, Key: key, Body: strings.NewReader("original")}); err != nil {
-			t.Fatal(err)
-		}
-		for _, tt := range []struct {
-			name string
-			call func() error
-		}{
-			{"put", func() error {
-				_, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: bucket, Key: key, Body: strings.NewReader("replacement"), Tagging: aws.String("purpose=test")})
-				return err
-			}},
-			{"initiate multipart", func() error {
-				_, err := c.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{Bucket: bucket, Key: key, Tagging: aws.String("purpose=test")})
-				return err
-			}},
-			{"copy", func() error {
-				_, err := c.CopyObject(ctx, &s3.CopyObjectInput{Bucket: bucket, Key: aws.String("copy"), CopySource: aws.String("tagging/k"), Tagging: aws.String("purpose=test"), TaggingDirective: types.TaggingDirectiveReplace})
-				return err
-			}},
-		} {
-			if err := tt.call(); errorCode(err) != "NotImplemented" {
-				t.Errorf("%s error = %v, want NotImplemented", tt.name, err)
-			}
-		}
-		if body, _ := getBody(t, c, &s3.GetObjectInput{Bucket: bucket, Key: key}); body != "original" {
-			t.Errorf("body after rejected tagged write = %q, want original", body)
-		}
-		if uploads, err := c.ListMultipartUploads(ctx, &s3.ListMultipartUploadsInput{Bucket: bucket}); err != nil || len(uploads.Uploads) != 0 {
-			t.Errorf("uploads after rejected initiation = %v, %v, want none", uploads, err)
-		}
-	})
-}
-
 func TestNullVersionID(t *testing.T) {
 	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
 		ctx := context.Background()

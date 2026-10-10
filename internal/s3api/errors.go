@@ -10,6 +10,7 @@ import (
 
 	"github.com/yavosh/pail/internal/sigv4"
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/tag"
 )
 
 // apiError is an S3 error: the code clients match on, and its HTTP status.
@@ -101,6 +102,8 @@ var apiErrors = []struct {
 	{sigv4.ErrChunkTooSmall, errInvalidChunkSize},
 	{errBadTrailerChecksum, errInvalidChecksum},
 	{sigv4.ErrNotImplemented, errNotImplemented},
+	{tag.ErrInvalid, errInvalidTag},
+	{tag.ErrTooMany, errTooManyTags},
 	{store.ErrNoSuchBucket, errNoSuchBucket},
 	{store.ErrBucketExists, errBucketAlreadyOwnedByYou},
 	{store.ErrBucketNotEmpty, errBucketNotEmpty},

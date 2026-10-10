@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"path"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -80,7 +81,7 @@ func TestUploadLifecycle(t *testing.T) {
 	}
 
 	gotUp, parts, err := s.ListParts(ctx, "b", "dir/big", up.ID)
-	if err != nil || gotUp.ID != up.ID || len(parts) != 2 || parts[0] != p1 || parts[1] != p2 {
+	if err != nil || gotUp.ID != up.ID || len(parts) != 2 || !reflect.DeepEqual(parts[0], p1) || !reflect.DeepEqual(parts[1], p2) {
 		t.Errorf("ListParts = %+v, %+v, %v, want the upload and parts 1 and 2 in order", gotUp, parts, err)
 	}
 	uploads, err := s.ListUploads(ctx, "b")
@@ -229,7 +230,7 @@ func TestPutPartReplacesPart(t *testing.T) {
 	p := mustPart(t, s, "b", "k", up.ID, 1, []byte("second"), PartOptions{})
 
 	_, parts, err := s.ListParts(ctx, "b", "k", up.ID)
-	if err != nil || len(parts) != 1 || parts[0] != p || parts[0].Size != 6 {
+	if err != nil || len(parts) != 1 || !reflect.DeepEqual(parts[0], p) || parts[0].Size != 6 {
 		t.Errorf("ListParts = %+v, %v, want only the second upload of part 1", parts, err)
 	}
 	// upload.json, part-1.json, and the one data file.
@@ -449,7 +450,7 @@ func TestFailedPutPartLeavesNoTrace(t *testing.T) {
 	if _, err := s.PutPart(ctx, "b", "k", up.ID, 1, strings.NewReader("new"), PartOptions{ContentMD5: make([]byte, 16)}); !errors.Is(err, ErrBadDigest) {
 		t.Errorf("PutPart with a wrong MD5 error = %v, want ErrBadDigest", err)
 	}
-	if _, parts, err := s.ListParts(ctx, "b", "k", up.ID); err != nil || len(parts) != 1 || parts[0] != p {
+	if _, parts, err := s.ListParts(ctx, "b", "k", up.ID); err != nil || len(parts) != 1 || !reflect.DeepEqual(parts[0], p) {
 		t.Errorf("ListParts = %+v, %v, want the original part", parts, err)
 	}
 	if n := dirLen(t, fsys, path.Join("buckets/b/uploads", up.ID)); n != 3 {
@@ -605,7 +606,7 @@ func TestOpenKeepsUploadsAndRemovesOrphans(t *testing.T) {
 	if _, err := fsys.Stat(orphanFile); err == nil {
 		t.Errorf("orphan part file still exists after Open")
 	}
-	if _, parts, err := reopened.ListParts(ctx, "b", "k", up.ID); err != nil || len(parts) != 1 || parts[0] != p {
+	if _, parts, err := reopened.ListParts(ctx, "b", "k", up.ID); err != nil || len(parts) != 1 || !reflect.DeepEqual(parts[0], p) {
 		t.Errorf("ListParts after Open = %+v, %v, want the kept part", parts, err)
 	}
 	if _, err := reopened.CompleteUpload(ctx, "b", "k", up.ID, listed(p), CompleteOptions{}); err != nil {

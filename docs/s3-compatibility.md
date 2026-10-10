@@ -6,7 +6,7 @@ This page describes how pail implements the S3 operations it supports, and where
 
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
 - Virtual-hosted-style requests work when `--domain` is set. For example, with `--domain localhost`, pail serves `http://<bucket>.localhost:9000/<key>`.
-- An operation that pail doesn't support returns `501 NotImplemented` with an S3 XML error. Requests with `x-amz-tagging` or `x-amz-tagging-directive` also return `501 NotImplemented`.
+- An operation that pail doesn't support returns `501 NotImplemented` with an S3 XML error.
 - pail checks `x-amz-expected-bucket-owner` on every bucket and object request. See [Expected bucket owner](#expected-bucket-owner). The next section lists the object write options that pail checks.
 - A browser form field for an unsupported `x-amz-*` option returns `501 NotImplemented`.
 - Like AWS, pail answers a request path with a literal `..` segment with an empty `400 Bad Request`. For GET and DELETE requests, that response includes request IDs. AWS front ends vary in sending them.
@@ -119,7 +119,7 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 
 pail has no versioning, so the only valid `versionId` is `null`. It names the current object, as on an unversioned AWS bucket.
 
-- `GetObject`, `HeadObject`, `GetObjectAttributes`, `DeleteObject`, and `GetObjectAcl` accept `versionId=null` and act as they do without it. `PutObjectAcl` accepts it too, but that is unverified against AWS.
+- `GetObject`, `HeadObject`, `GetObjectAttributes`, `DeleteObject`, and `GetObjectAcl` accept `versionId=null` and act as they do without it. `PutObjectAcl` and the object tagging operations accept it too, but that is unverified against AWS.
 - Any other `versionId` on these operations fails with `400 InvalidArgument`, even when the key doesn't exist.
 - A `versionId` on any other operation fails with `501 NotImplemented`. `CopyObject` takes `versionId=null` in `x-amz-copy-source`.
 
@@ -177,6 +177,22 @@ Any other combination fails with `InvalidRequest`. For SHA-512, MD5, and XXHASH6
 - pail verifies and stores one checksum per object. Like AWS, it computes CRC64NVME when a client sends none.
 - Reads with `x-amz-checksum-mode: ENABLED` and listings return the checksum.
 
+## Tagging
+
+pail supports `PutObjectTagging`, `GetObjectTagging`, `DeleteObjectTagging`, `PutBucketTagging`, `GetBucketTagging`, and `DeleteBucketTagging`. AWS recordings verify the behavior below, except where noted.
+
+- `PutObjectTagging` replaces the tag set and returns `200`. `Content-MD5` is optional. It doesn't change the object's ETag or `Last-Modified`.
+- `GetObjectTagging` returns the tags in the order you stored them. An object with no tags returns an empty `TagSet`. A missing key returns `404 NoSuchKey`.
+- `DeleteObjectTagging` returns `204`.
+- `PutBucketTagging` and `DeleteBucketTagging` return `204`. `GetBucketTagging` returns `404 NoSuchTagSet` when the bucket has no tags, including after a `PutBucketTagging` with an empty tag set.
+- Limits: 10 tags for an object. A bucket allows 50 tags, which comes from the AWS documentation and isn't recorded. A key has 1 to 128 characters and a value has up to 256. A value can be empty.
+- A tag set with too many tags returns `400 BadRequest`. A duplicate key, an empty key, a key that starts with `aws:`, or a key or value over its limit returns `400 InvalidTag`. A malformed document returns `400 MalformedXML`. pail doesn't restrict the characters in a tag.
+- `x-amz-tagging` sets tags on `PutObject`, `CopyObject`, and `CreateMultipartUpload`. It uses URL query encoding, such as `a=1&b=2`. A key without `=` has an empty value. A multipart upload keeps its tags through `CompleteMultipartUpload`.
+- `CopyObject` takes `x-amz-tagging-directive`. `COPY`, the default, copies the source's tags. `REPLACE` takes the tags from `x-amz-tagging`. Any other value returns `400 InvalidArgument`.
+- A browser form sets tags with a `tagging` field that holds a `Tagging` XML document. This isn't recorded against AWS.
+- `GetObject` and `HeadObject` return `x-amz-tagging-count` when the object has tags and the request is signed. An anonymous read, allowed by an ACL, gets no count, because AWS returns it only to a caller allowed to read the tags. This is unverified.
+- `PutObject` and `CopyObject` replace the whole object, so an overwrite keeps no earlier tags.
+
 ## CORS
 
 pail supports `PutBucketCors`, `GetBucketCors`, and `DeleteBucketCors`.
@@ -189,10 +205,12 @@ pail supports `PutBucketCors`, `GetBucketCors`, and `DeleteBucketCors`.
 pail supports `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, and `DeleteBucketLifecycle`.
 
 - Enabled rules expire objects by age or date, and abort incomplete multipart uploads.
-- Filters support prefixes and exclusive size bounds, including `And`.
+- Filters support prefixes, tags, and exclusive size bounds, including `And`. An object matches only when it has every listed tag with the same value.
 - Cleanup runs at startup and every minute. Age rules round up to midnight UTC.
 - Reads and writes report `x-amz-expiration`.
-- Tag filters, transitions, and version actions return `501 NotImplemented`.
+- Tag filters aren't recorded against AWS. pail follows the AWS documentation.
+- A rule with a tag filter can't also abort multipart uploads. It returns `400 InvalidArgument`.
+- Transitions and version actions return `501 NotImplemented`.
 
 ## ACLs
 
@@ -230,7 +248,7 @@ pail supports `PutBucketOwnershipControls`, `GetBucketOwnershipControls`, and `D
 
 - `POST Object` accepts SigV4 policies from boto3 and aws-sdk-go-v2.
 - Policies enforce expiration, exact matches, prefixes, required fields, and file size bounds.
-- Forms support `${filename}`, metadata, ACLs, the object options above, MD5 and flexible checksums, redirects, and the success statuses `200`, `201`, and `204`.
+- Forms support `${filename}`, metadata, ACLs, the object options above, tags, MD5 and flexible checksums, redirects, and the success statuses `200`, `201`, and `204`.
 - The file field must come last.
 
 ## Authentication

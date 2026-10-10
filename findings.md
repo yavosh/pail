@@ -140,7 +140,7 @@ These are mostly intentional scope limitations rather than implementation bugs.
 | Reporting and advanced services | Inventory, analytics, metrics, S3 metadata configurations, SelectObjectContent. |
 | Specialized S3 products | Directory buckets/S3 Express sessions, append/rename semantics, access points, Object Lambda, multi-region access points, Outposts. |
 
-Status: no family has been added since the review. ACLs, CORS, and lifecycle expiration were already on `main` at the review. Tag filters, transitions, and version actions in lifecycle rules still return `501 NotImplemented`.
+Status: tagging is fixed on branch `feat/s3-object-tagging`: bucket and object tagging, tags on writes and copies, tag counts, and lifecycle tag filters. No other family has been added since the review. ACLs, CORS, and lifecycle expiration were already on `main` at the review. Transitions and version actions in lifecycle rules still return `501 NotImplemented`.
 
 For pail's local-development purpose, implementing everything would be excessive. Tagging, versioning, notifications, and selected policy controls are the most useful additions for broader application testing.
 

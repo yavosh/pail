@@ -56,7 +56,7 @@ func (s *Store) sweepBucket(ctx context.Context, bucket string, now time.Time) e
 		}
 		for _, rule := range rules.Rules {
 			deadline := rule.Expires(obj.LastModified)
-			if !rule.Matches(obj.Key, obj.Size) || deadline.IsZero() || now.Before(deadline) {
+			if !rule.Matches(obj.Key, obj.Size, obj.Tags) || deadline.IsZero() || now.Before(deadline) {
 				continue
 			}
 			if err := s.fs.Remove(metaFile(bucket, obj.Key)); err != nil {
@@ -75,7 +75,7 @@ func (s *Store) sweepBucket(ctx context.Context, bucket string, now time.Time) e
 			return err
 		}
 		for _, rule := range rules.Rules {
-			if rule.Abort == nil || !rule.Matches(up.Key, 0) || now.Before(lifecycle.Deadline(up.Initiated, rule.Abort.Days)) {
+			if rule.Abort == nil || !rule.Matches(up.Key, 0, nil) || now.Before(lifecycle.Deadline(up.Initiated, rule.Abort.Days)) {
 				continue
 			}
 			if err := s.markEnded(bucket, up.ID); err != nil {
