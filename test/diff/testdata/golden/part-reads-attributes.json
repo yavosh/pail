@@ -1,0 +1,356 @@
+{
+  "scenario": "part-reads-attributes",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-simple",
+      "request": "PUT /simple",
+      "fingerprint": "b7de56e5458bf8c9",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"5d41402abc4b2a76b9719d911017c592\"",
+        "X-Amz-Checksum-Crc64nvme": "M3eFcAZSQlc=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-simple-part1",
+      "request": "HEAD /simple?partNumber=1",
+      "fingerprint": "faee4cf9b383638d",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "5",
+        "Content-Range": "bytes 0-4/5",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"5d41402abc4b2a76b9719d911017c592\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-simple-part1",
+      "request": "GET /simple?partNumber=1",
+      "fingerprint": "15716b08ae947f85",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "5",
+        "Content-Range": "bytes 0-4/5",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"5d41402abc4b2a76b9719d911017c592\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "hello"
+    },
+    {
+      "step": "get-simple-part2",
+      "request": "GET /simple?partNumber=2",
+      "fingerprint": "957c13b2227ef465",
+      "status": 416,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidPartNumber\n"
+    },
+    {
+      "step": "create-multi",
+      "request": "POST /multi?uploads",
+      "fingerprint": "efa3c9bca416ad33",
+      "status": 200,
+      "headers": {
+        "X-Amz-Checksum-Type": "COMPOSITE",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: multi\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "put-part1",
+      "request": "PUT /multi?partNumber=1&uploadId={uploadId}",
+      "fingerprint": "9e897a8404bd9bc7",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"79b281060d337b9b2b84ccf390adcf74\"",
+        "X-Amz-Checksum-Crc32": "r/zBbw==",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-part2",
+      "request": "PUT /multi?partNumber=2&uploadId={uploadId}",
+      "fingerprint": "30956c7d08ffe689",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"7aea2552dfe7eb84b9443b6fc9ba6e01\"",
+        "X-Amz-Checksum-Crc32": "fDe0XQ==",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "complete-multi",
+      "request": "POST /multi?uploadId={uploadId}",
+      "fingerprint": "b710b434dc67133b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CompleteMultipartUploadResult\n  Location: <volatile>\n  Bucket: {bucket}\n  Key: multi\n  ETag: \"30dcfd3901d1c613b7fb532281748544-2\"\n  ChecksumCRC32: 4fn9rQ==-2\n  ChecksumType: COMPOSITE\n"
+    },
+    {
+      "step": "head-multi-part1",
+      "request": "HEAD /multi?partNumber=1",
+      "fingerprint": "4f2ef12028154769",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "5242880",
+        "Content-Range": "bytes 0-5242879/5242884",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"30dcfd3901d1c613b7fb532281748544-2\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Mp-Parts-Count": "2",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-multi-part2",
+      "request": "GET /multi?partNumber=2",
+      "fingerprint": "8bef06a6a521cf6c",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "4",
+        "Content-Range": "bytes 5242880-5242883/5242884",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"30dcfd3901d1c613b7fb532281748544-2\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Mp-Parts-Count": "2",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "tail"
+    },
+    {
+      "step": "head-multi-part3",
+      "request": "HEAD /multi?partNumber=3",
+      "fingerprint": "226ae16f38311896",
+      "status": 416,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-multi-part2-checksum",
+      "request": "HEAD /multi?partNumber=2",
+      "fingerprint": "ef0a62fe40d329d5",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "4",
+        "Content-Range": "bytes 5242880-5242883/5242884",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"30dcfd3901d1c613b7fb532281748544-2\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Checksum-Crc32": "fDe0XQ==",
+        "X-Amz-Checksum-Type": "COMPOSITE",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Mp-Parts-Count": "2",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-multi-part-10001",
+      "request": "GET /multi?partNumber=10001",
+      "fingerprint": "6c8ff271519efb12",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "get-multi-part-zero",
+      "request": "GET /multi?partNumber=0",
+      "fingerprint": "73d4b3181ba0de1e",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "get-part-with-range",
+      "request": "GET /multi?partNumber=2",
+      "fingerprint": "e10827e05e43275f",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "head-multi",
+      "request": "HEAD /multi",
+      "fingerprint": "1151c732355505c9",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "5242884",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"30dcfd3901d1c613b7fb532281748544-2\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "attributes-simple",
+      "request": "GET /simple?attributes",
+      "fingerprint": "e64f819011e476b2",
+      "status": 200,
+      "headers": {
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "GetObjectAttributesResponse\n  ETag: 5d41402abc4b2a76b9719d911017c592\n  Checksum\n    ChecksumCRC64NVME: M3eFcAZSQlc=\n    ChecksumType: FULL_OBJECT\n  StorageClass: STANDARD\n  ObjectSize: 5\n"
+    },
+    {
+      "step": "attributes-multi",
+      "request": "GET /multi?attributes",
+      "fingerprint": "1043472189bf8149",
+      "status": 200,
+      "headers": {
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "GetObjectAttributesResponse\n  ETag: 30dcfd3901d1c613b7fb532281748544-2\n  Checksum\n    ChecksumCRC32: 4fn9rQ==\n    ChecksumType: COMPOSITE\n  ObjectParts\n    PartsCount: 2\n    PartNumberMarker: 0\n    NextPartNumberMarker: 2\n    MaxParts: 1000\n    IsTruncated: false\n    Part\n      PartNumber: 1\n      Size: 5242880\n      ChecksumCRC32: r/zBbw==\n    Part\n      PartNumber: 2\n      Size: 4\n      ChecksumCRC32: fDe0XQ==\n  StorageClass: STANDARD\n  ObjectSize: 5242884\n"
+    },
+    {
+      "step": "attributes-multi-max-parts",
+      "request": "GET /multi?attributes",
+      "fingerprint": "f0505f2d86c5481c",
+      "status": 200,
+      "headers": {
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "GetObjectAttributesResponse\n  ObjectParts\n    PartsCount: 2\n    PartNumberMarker: 0\n    NextPartNumberMarker: 1\n    MaxParts: 1\n    IsTruncated: true\n    Part\n      PartNumber: 1\n      Size: 5242880\n      ChecksumCRC32: r/zBbw==\n"
+    },
+    {
+      "step": "attributes-multi-marker",
+      "request": "GET /multi?attributes",
+      "fingerprint": "df79085e4c5fa898",
+      "status": 200,
+      "headers": {
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "GetObjectAttributesResponse\n  ObjectParts\n    PartsCount: 2\n    PartNumberMarker: 1\n    NextPartNumberMarker: 2\n    MaxParts: 1000\n    IsTruncated: false\n    Part\n      PartNumber: 2\n      Size: 4\n      ChecksumCRC32: fDe0XQ==\n"
+    },
+    {
+      "step": "attributes-no-header",
+      "request": "GET /simple?attributes",
+      "fingerprint": "deb093c0061992b0",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "attributes-bogus",
+      "request": "GET /simple?attributes",
+      "fingerprint": "fa817c203f2d1982",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "attributes-missing-key",
+      "request": "GET /missing?attributes",
+      "fingerprint": "2fe24933a18f1518",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "delete-simple",
+      "request": "DELETE /simple",
+      "fingerprint": "9e7bec3ac1c60ffe",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-multi",
+      "request": "DELETE /multi",
+      "fingerprint": "49c3c2c1f3064d5e",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

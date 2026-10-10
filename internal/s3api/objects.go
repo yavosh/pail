@@ -286,6 +286,17 @@ func withoutAWSChunked(h http.Header) (string, bool) {
 	return strings.Join(codings, ","), found
 }
 
+// setPartChecksumHeaders names the checksum of one stored part, with the
+// object's checksum type, when the part has one.
+func setPartChecksumHeaders(h http.Header, info store.ObjectInfo, number int64) {
+	for _, p := range info.Parts {
+		if int64(p.PartNumber) == number && p.Checksum != "" {
+			h.Set(checksum.Header(p.ChecksumAlgorithm), p.Checksum)
+			h.Set("x-amz-checksum-type", info.ChecksumType)
+		}
+	}
+}
+
 // setChecksumHeaders names the object's checksum, when it has one.
 func setChecksumHeaders(h http.Header, info store.ObjectInfo) {
 	if info.Checksum == "" {
@@ -307,6 +318,11 @@ func (h *handler) handleHeadObject(w http.ResponseWriter, r *http.Request, t tar
 // and the object's stored headers only once the answer is a success.
 func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, withBody bool) {
 	if apiErr, ok := checkObjectTarget(t); !ok {
+		writeError(w, r, apiErr)
+		return
+	}
+	partNumber, hasPart, apiErr, ok := parsePartNumber(r)
+	if !ok {
 		writeError(w, r, apiErr)
 		return
 	}
@@ -361,14 +377,24 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	}
 
 	start, length, status := int64(0), info.Size, http.StatusOK
-	if spec := r.Header.Get("Range"); spec != "" {
-		first, last, ok, satisfiable := parseRange(spec, info.Size)
-		switch {
-		case ok && !satisfiable:
+	var first, last int64
+	ranged := false
+	if hasPart {
+		if first, last, ranged = partSpan(info, partNumber); !ranged {
+			writeError(w, r, errPartNumberRange)
+			return
+		}
+	} else if spec := r.Header.Get("Range"); spec != "" {
+		var satisfiable bool
+		first, last, ranged, satisfiable = parseRange(spec, info.Size)
+		if ranged && !satisfiable {
 			writeError(w, r, errInvalidRange) // AWS sends no Content-Range with it
 			return
-		case ok:
-			start, length, status = first, last-first+1, http.StatusPartialContent
+		}
+	}
+	if ranged {
+		start, length, status = first, last-first+1, http.StatusPartialContent
+		if length > 0 {
 			hdr.Set("Content-Range", "bytes "+strconv.FormatInt(first, 10)+"-"+strconv.FormatInt(last, 10)+"/"+strconv.FormatInt(info.Size, 10))
 		}
 	}
@@ -382,15 +408,24 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 
 	hdr.Set("ETag", etag)
 	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
+	if hasPart && len(info.Parts) > 0 {
+		hdr.Set("x-amz-mp-parts-count", strconv.Itoa(len(info.Parts)))
+	}
 	h.setExpiration(w, r, t.bucket, info)
 	setObjectHeaders(hdr, r, info)
 	setOptionHeaders(hdr, info.ObjectOptions)
 	if info.WebsiteRedirect != "" {
 		hdr.Set("x-amz-website-redirect-location", info.WebsiteRedirect)
 	}
-	// The stored checksum covers the whole object, so a range gets none.
-	if status == http.StatusOK && strings.EqualFold(r.Header.Get("x-amz-checksum-mode"), "ENABLED") {
-		setChecksumHeaders(hdr, info)
+	// The stored checksum covers the whole object, so a range gets none. A part
+	// read gets the part's checksum (recorded in part-reads-attributes).
+	if strings.EqualFold(r.Header.Get("x-amz-checksum-mode"), "ENABLED") {
+		switch {
+		case status == http.StatusOK:
+			setChecksumHeaders(hdr, info)
+		case hasPart:
+			setPartChecksumHeaders(hdr, info, partNumber)
+		}
 	}
 	hdr.Set("Content-Length", strconv.FormatInt(length, 10))
 	w.WriteHeader(status)
@@ -401,6 +436,39 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		// Headers are sent, so the client sees a short body; log the cause.
 		clogS3api().Warn("object body copy failed", "bucket", t.bucket, "error", err)
 	}
+}
+
+// parsePartNumber reads the partNumber query of a read. A part number with a
+// Range header is an error, as is anything but a positive integer.
+func parsePartNumber(r *http.Request) (n int64, present bool, apiErr apiError, ok bool) {
+	values, present := r.URL.Query()["partNumber"]
+	if !present {
+		return 0, false, apiError{}, true
+	}
+	n, valid := parseDigits(values[0])
+	switch {
+	case !valid || n < 1 || n > store.MaxParts:
+		return 0, true, errInvalidArgument, false
+	case r.Header.Get("Range") != "":
+		return 0, true, errPartWithRange, false
+	}
+	return n, true, apiError{}, true
+}
+
+// partSpan returns the first and last byte of part n. An object with no
+// stored layout is one part, so its whole body is part 1.
+func partSpan(info store.ObjectInfo, n int64) (first, last int64, ok bool) {
+	parts := info.Parts
+	if len(parts) == 0 {
+		parts = []store.ObjectPart{{PartNumber: 1, Size: info.Size}}
+	}
+	for _, p := range parts {
+		if int64(p.PartNumber) == n {
+			return first, first + p.Size - 1, true
+		}
+		first += p.Size
+	}
+	return 0, 0, false
 }
 
 // setObjectHeaders sets the stored headers, metadata, and response-* overrides.
