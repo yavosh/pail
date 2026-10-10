@@ -459,15 +459,11 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 		return ObjectInfo{}, ErrChecksumTypeMismatch
 	}
 
-	records, err := s.checkParts(bucket, up, parts)
+	records, size, err := s.checkParts(bucket, up, parts)
 	if err != nil {
 		return ObjectInfo{}, err
 	}
 	if opts.ExpectedSize != nil {
-		var size int64
-		for _, r := range records {
-			size += r.Size
-		}
 		if size != *opts.ExpectedSize {
 			return ObjectInfo{}, ErrSizeMismatch
 		}
@@ -562,14 +558,14 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 }
 
 // checkParts matches the client's list against the stored parts and returns
-// the stored records in list order.
-func (s *Store) checkParts(bucket string, up UploadInfo, parts []CompletePart) ([]partRecord, error) {
+// the stored records in list order, with their total size.
+func (s *Store) checkParts(bucket string, up UploadInfo, parts []CompletePart) ([]partRecord, int64, error) {
 	if len(parts) == 0 {
-		return nil, ErrInvalidPart
+		return nil, 0, ErrInvalidPart
 	}
 	for i := 1; i < len(parts); i++ {
 		if parts[i].PartNumber <= parts[i-1].PartNumber {
-			return nil, ErrInvalidPartOrder
+			return nil, 0, ErrInvalidPartOrder
 		}
 	}
 	var (
@@ -578,41 +574,41 @@ func (s *Store) checkParts(bucket string, up UploadInfo, parts []CompletePart) (
 	)
 	for i, cp := range parts {
 		if cp.PartNumber < 1 || cp.PartNumber > MaxParts {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		var r partRecord
 		err := s.readJSON(partFile(bucket, up.ID, cp.PartNumber), &r)
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read part %d: %w", cp.PartNumber, err)
+			return nil, 0, fmt.Errorf("read part %d: %w", cp.PartNumber, err)
 		}
 		if strings.Trim(cp.ETag, `"`) != r.ETag {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		if up.ChecksumType == checksum.Composite {
 			if cp.Checksum == "" {
-				return nil, ErrMissingPartChecksum
+				return nil, 0, ErrMissingPartChecksum
 			}
 			if cp.PartNumber != i+1 {
 				// AWS returns InternalError for nonconsecutive composite parts.
-				return nil, fmt.Errorf("checksum part number %d, want %d", cp.PartNumber, i+1)
+				return nil, 0, fmt.Errorf("checksum part number %d, want %d", cp.PartNumber, i+1)
 			}
 		}
 		if cp.Checksum != "" && (checksum.Canonical(cp.ChecksumAlgorithm) != r.ChecksumAlgorithm || cp.Checksum != r.Checksum) {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		if i < len(parts)-1 && r.Size < MinPartSize {
-			return nil, ErrEntityTooSmall
+			return nil, 0, ErrEntityTooSmall
 		}
 		total += r.Size
 		records = append(records, r)
 	}
 	if total > maxMultipartSize {
-		return nil, ErrEntityTooLarge
+		return nil, 0, ErrEntityTooLarge
 	}
-	return records, nil
+	return records, total, nil
 }
 
 // copyPart appends a part's data file to dst.

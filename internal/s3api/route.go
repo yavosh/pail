@@ -128,7 +128,7 @@ func resolveOperation(method string, t target, q url.Values, h http.Header) oper
 	}
 	var sub []string
 	for k := range q {
-		// versionId selects no operation, it narrows one. Operations that ignore it are filtered below.
+		// versionId selects no operation, it narrows one. Operations that ignore it are filtered in resolve.
 		if subresources[k] && k != "versionId" {
 			sub = append(sub, k)
 		}
