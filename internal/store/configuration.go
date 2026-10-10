@@ -15,10 +15,12 @@ var ErrNoSuchConfiguration = errors.New("no such bucket configuration")
 type BucketConfiguration struct {
 	XML               []byte `json:"xml"`
 	TransitionMinimum string `json:"transitionMinimum,omitempty"`
+	// Status is the versioning state, "Enabled" or "Suspended".
+	Status string `json:"status,omitempty"`
 }
 
 func configurationFile(bucket, kind string) (string, error) {
-	if kind != "cors" && kind != "lifecycle" && kind != "acl" && kind != "ownership" && kind != "tagging" && kind != "notification" {
+	if kind != "cors" && kind != "lifecycle" && kind != "acl" && kind != "ownership" && kind != "tagging" && kind != "versioning" && kind != "notification" {
 		return "", fmt.Errorf("unknown configuration %q", kind)
 	}
 	return path.Join(bucketDir(bucket), kind+".json"), nil

@@ -46,6 +46,10 @@ func (s *Store) sweepBucket(ctx context.Context, bucket string, now time.Time) e
 	if err := xml.Unmarshal(cfg.XML, &rules); err != nil {
 		return fmt.Errorf("decode lifecycle: %w", err)
 	}
+	status, err := s.versioningStatus(bucket)
+	if err != nil {
+		return err
+	}
 	objects, err := s.readAllObjects(ctx, bucket)
 	if err != nil {
 		return err
@@ -54,10 +58,21 @@ func (s *Store) sweepBucket(ctx context.Context, bucket string, now time.Time) e
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if obj.DeleteMarker {
+			continue
+		}
 		for _, rule := range rules.Rules {
 			deadline := rule.Expires(obj.LastModified)
 			if !rule.Matches(obj.Key, obj.Size, obj.Tags) || deadline.IsZero() || now.Before(deadline) {
 				continue
+			}
+			if status != "" {
+				// A versioned bucket keeps the object: expiry adds a delete marker.
+				marker := record{Key: obj.Key, LastModified: now.UTC(), DeleteMarker: true}
+				if err := s.install(bucket, status, obj, true, &marker); err != nil {
+					return fmt.Errorf("expire object: %w", err)
+				}
+				break
 			}
 			if err := s.fs.Remove(metaFile(bucket, obj.Key)); err != nil {
 				return fmt.Errorf("expire metadata: %w", err)

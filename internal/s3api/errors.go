@@ -108,6 +108,7 @@ var apiErrors = []struct {
 	{store.ErrBucketExists, errBucketAlreadyOwnedByYou},
 	{store.ErrBucketNotEmpty, errBucketNotEmpty},
 	{store.ErrNoSuchKey, errNoSuchKey},
+	{store.ErrNoSuchVersion, errNoSuchVersion},
 	{store.ErrPreconditionFailed, errPreconditionFailed},
 	{store.ErrBadDigest, errBadDigest},
 	{store.ErrChecksumMismatch, errChecksumMismatch},

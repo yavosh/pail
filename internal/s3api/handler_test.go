@@ -73,9 +73,9 @@ func TestNotImplementedError(t *testing.T) {
 	srv := httptest.NewServer(New(testOptions("")))
 	t.Cleanup(srv.Close)
 
-	status, header, body := do(t, srv, http.MethodGet, "/bkt?versioning", "")
+	status, header, body := do(t, srv, http.MethodGet, "/bkt?website", "")
 	if status != http.StatusNotImplemented {
-		t.Fatalf("GET /bkt?versioning status = %d, want %d", status, http.StatusNotImplemented)
+		t.Fatalf("GET /bkt?website status = %d, want %d", status, http.StatusNotImplemented)
 	}
 	if got := header.Get("Content-Type"); got != "application/xml" {
 		t.Errorf("Content-Type = %q, want application/xml", got)

@@ -243,8 +243,8 @@ func TestDeleteObjectsEntries(t *testing.T) {
 		for _, d := range out.Deleted {
 			deleted = append(deleted, aws.ToString(d.Key))
 		}
-		if strings.Join(deleted, ",") != "a,b c,missing" || len(out.Errors) != 1 || aws.ToString(out.Errors[0].Key) != "d" || aws.ToString(out.Errors[0].Code) != "NoSuchVersion" {
-			t.Errorf("DeleteObjects = Deleted %v, Errors %+v; want [a b c missing] and a NoSuchVersion error for d", deleted, out.Errors)
+		if strings.Join(deleted, ",") != "a,b c,missing" || len(out.Errors) != 1 || aws.ToString(out.Errors[0].Key) != "d" || aws.ToString(out.Errors[0].Code) != "InvalidArgument" {
+			t.Errorf("DeleteObjects = Deleted %v, Errors %+v; want [a b c missing] and an InvalidArgument error for d", deleted, out.Errors)
 		}
 
 		out, err = c.DeleteObjects(ctx, &s3.DeleteObjectsInput{Bucket: aws.String("docs"), Delete: &types.Delete{Quiet: aws.Bool(true), Objects: objectIDs([]string{"d"})}})

@@ -9,7 +9,7 @@ pail isn't a production object store:
 - It has no clustering, replication, or multi-tenant support.
 - It serves one access key pair and one region.
 - S3 event notifications go to SQS queues and SNS topics only, not to Lambda or EventBridge. See [Event notifications](docs/s3-compatibility.md#event-notifications).
-- It has no versioning, bucket policies, or storage tiers. It stores and returns encryption, storage class, and website redirect settings, but it doesn't encrypt, archive, or lock anything.
+- It has no MFA Delete, bucket policies, or storage tiers. It stores and returns encryption, storage class, and website redirect settings, but it doesn't encrypt, archive, or lock anything.
 - Unsupported S3 operations fail with `501 NotImplemented`.
 - SQS messages live in memory and are lost when pail restarts. Queue definitions persist.
 - SQS FIFO queues don't model high-throughput quotas, and `ReceiveRequestAttemptId` is ignored. Dead-letter queues move a message on the next receive, not in the background.
@@ -159,7 +159,8 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | --- | --- |
 | Buckets | `ListBuckets`, `CreateBucket`, `HeadBucket`, `DeleteBucket`, `GetBucketLocation` |
 | Objects | `PutObject`, `GetObject`, `HeadObject`, `GetObjectAttributes`, `DeleteObject`, `DeleteObjects`, `CopyObject` |
-| Listing | `ListObjectsV2`, `ListObjects` |
+| Listing | `ListObjectsV2`, `ListObjects`, `ListObjectVersions` |
+| Versioning | `PutBucketVersioning`, `GetBucketVersioning` |
 | Multipart uploads | `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`, `CompleteMultipartUpload`, `AbortMultipartUpload`, `ListParts`, `ListMultipartUploads` |
 | CORS | `PutBucketCors`, `GetBucketCors`, `DeleteBucketCors` |
 | Tagging | `PutObjectTagging`, `GetObjectTagging`, `DeleteObjectTagging`, `PutBucketTagging`, `GetBucketTagging`, `DeleteBucketTagging` |

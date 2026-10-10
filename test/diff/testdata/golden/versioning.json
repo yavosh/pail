@@ -1,0 +1,472 @@
+{
+  "scenario": "versioning",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-versioning-new",
+      "request": "GET /?versioning",
+      "fingerprint": "584975d628c14fff",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "VersioningConfiguration: \n"
+    },
+    {
+      "step": "put-pre",
+      "request": "PUT /pre",
+      "fingerprint": "270de47fd779a446",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"6bf9e70a1f928aba143ef1eebe2720b5\"",
+        "X-Amz-Checksum-Crc64nvme": "wrUF3N2T40k=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "enable",
+      "request": "PUT /?versioning",
+      "fingerprint": "3bf52516ed3757fc",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-versioning-enabled",
+      "request": "GET /?versioning",
+      "fingerprint": "584975d628c14fff",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "VersioningConfiguration\n  Status: Enabled\n"
+    },
+    {
+      "step": "put-v1",
+      "request": "PUT /k",
+      "fingerprint": "7376fabb8e412718",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"f97c5d29941bfb1b2fdab0874906ab82\"",
+        "X-Amz-Checksum-Crc64nvme": "sUmeCqrLO7M=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      }
+    },
+    {
+      "step": "put-v2",
+      "request": "PUT /k",
+      "fingerprint": "33a458896876c9ab",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"b8a9f715dbb64fd5c56e7783c6820a61\"",
+        "X-Amz-Checksum-Crc64nvme": "ybgaXgkx3JA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      }
+    },
+    {
+      "step": "get-latest",
+      "request": "GET /k",
+      "fingerprint": "2a69786d5813425a",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"b8a9f715dbb64fd5c56e7783c6820a61\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "two"
+    },
+    {
+      "step": "get-previous",
+      "request": "GET /k?versionId={previousVersionId}",
+      "fingerprint": "526fcd441a9975dc",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"f97c5d29941bfb1b2fdab0874906ab82\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "one"
+    },
+    {
+      "step": "head-previous",
+      "request": "HEAD /k?versionId={previousVersionId}",
+      "fingerprint": "e8687ccb4cb3e7ac",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"f97c5d29941bfb1b2fdab0874906ab82\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      }
+    },
+    {
+      "step": "get-bogus-version",
+      "request": "GET /k?versionId=bogus",
+      "fingerprint": "fe2ca1f0cccde463",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "list-versions",
+      "request": "GET /?versions",
+      "fingerprint": "aa8257394c63229c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListVersionsResult\n  Name: {bucket}\n  Prefix: \n  KeyMarker: \n  VersionIdMarker: \n  MaxKeys: 1000\n  IsTruncated: false\n  Version\n    Key: k\n    VersionId: <version>\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"b8a9f715dbb64fd5c56e7783c6820a61\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: k\n    VersionId: <version>\n    IsLatest: false\n    LastModified: <volatile>\n    ETag: \"f97c5d29941bfb1b2fdab0874906ab82\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: pre\n    VersionId: null\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"6bf9e70a1f928aba143ef1eebe2720b5\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "list-versions-page",
+      "request": "GET /?max-keys=1&prefix=k&versions",
+      "fingerprint": "d68412d15c4108db",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListVersionsResult\n  Name: {bucket}\n  Prefix: k\n  KeyMarker: \n  VersionIdMarker: \n  NextKeyMarker: k\n  NextVersionIdMarker: <version>\n  MaxKeys: 1\n  IsTruncated: true\n  Version\n    Key: k\n    VersionId: <version>\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"b8a9f715dbb64fd5c56e7783c6820a61\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "list-objects",
+      "request": "GET /?list-type=2",
+      "fingerprint": "57cb7d1e9075e05d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  KeyCount: 2\n  MaxKeys: 1000\n  IsTruncated: false\n  Contents\n    Key: k\n    LastModified: <volatile>\n    ETag: \"b8a9f715dbb64fd5c56e7783c6820a61\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    StorageClass: STANDARD\n  Contents\n    Key: pre\n    LastModified: <volatile>\n    ETag: \"6bf9e70a1f928aba143ef1eebe2720b5\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "delete-latest",
+      "request": "DELETE /k",
+      "fingerprint": "615c2d23faf06ccb",
+      "status": 204,
+      "headers": {
+        "X-Amz-Delete-Marker": "true",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      }
+    },
+    {
+      "step": "get-deleted",
+      "request": "GET /k",
+      "fingerprint": "2a69786d5813425a",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Delete-Marker": "true",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "head-deleted",
+      "request": "HEAD /k",
+      "fingerprint": "07428cbb9e709fed",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Delete-Marker": "true",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      }
+    },
+    {
+      "step": "get-v2-under-marker",
+      "request": "GET /k?versionId={previousVersionId}",
+      "fingerprint": "526fcd441a9975dc",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"b8a9f715dbb64fd5c56e7783c6820a61\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "two"
+    },
+    {
+      "step": "list-versions-with-marker",
+      "request": "GET /?versions",
+      "fingerprint": "aa8257394c63229c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListVersionsResult\n  Name: {bucket}\n  Prefix: \n  KeyMarker: \n  VersionIdMarker: \n  MaxKeys: 1000\n  IsTruncated: false\n  DeleteMarker\n    Key: k\n    VersionId: <version>\n    IsLatest: true\n    LastModified: <volatile>\n    Owner\n      ID: <volatile>\n  Version\n    Key: k\n    VersionId: <version>\n    IsLatest: false\n    LastModified: <volatile>\n    ETag: \"b8a9f715dbb64fd5c56e7783c6820a61\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: k\n    VersionId: <version>\n    IsLatest: false\n    LastModified: <volatile>\n    ETag: \"f97c5d29941bfb1b2fdab0874906ab82\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: pre\n    VersionId: null\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"6bf9e70a1f928aba143ef1eebe2720b5\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "get-marker",
+      "request": "GET /k?versionId={versionId}",
+      "fingerprint": "706dd3dff99899e2",
+      "status": 405,
+      "headers": {
+        "Content-Type": "application/xml",
+        "Last-Modified": "<present>",
+        "X-Amz-Delete-Marker": "true",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "Error\n  Code: MethodNotAllowed\n"
+    },
+    {
+      "step": "delete-marker",
+      "request": "DELETE /k?versionId={versionId}",
+      "fingerprint": "e93d0b5b2c22d4d5",
+      "status": 204,
+      "headers": {
+        "X-Amz-Delete-Marker": "true",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      }
+    },
+    {
+      "step": "get-restored",
+      "request": "GET /k",
+      "fingerprint": "2a69786d5813425a",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"b8a9f715dbb64fd5c56e7783c6820a61\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "two"
+    },
+    {
+      "step": "delete-v2",
+      "request": "DELETE /k?versionId={previousVersionId}",
+      "fingerprint": "a3be35ccd1adf63d",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      }
+    },
+    {
+      "step": "get-after-v2-delete",
+      "request": "GET /k",
+      "fingerprint": "2a69786d5813425a",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"f97c5d29941bfb1b2fdab0874906ab82\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "one"
+    },
+    {
+      "step": "copy-null-version",
+      "request": "PUT /pre-copy",
+      "fingerprint": "0c9131a85f4adc20",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Copy-Source-Version-Id": "null",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "<version>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"6bf9e70a1f928aba143ef1eebe2720b5\"\n  ChecksumCRC64NVME: wrUF3N2T40k=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "get-pre-null",
+      "request": "GET /pre?versionId=null",
+      "fingerprint": "11082356f7e8ad3f",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"6bf9e70a1f928aba143ef1eebe2720b5\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "null"
+      },
+      "body": "pre"
+    },
+    {
+      "step": "suspend",
+      "request": "PUT /?versioning",
+      "fingerprint": "ba5b790b27602fc8",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-versioning-suspended",
+      "request": "GET /?versioning",
+      "fingerprint": "584975d628c14fff",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "VersioningConfiguration\n  Status: Suspended\n"
+    },
+    {
+      "step": "put-suspended",
+      "request": "PUT /k",
+      "fingerprint": "cc8de86beed1d3e0",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"35d6d33467aae9a2e3dccb4b6b027878\"",
+        "X-Amz-Checksum-Crc64nvme": "rjRGkQfpw8Y=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "list-versions-suspended",
+      "request": "GET /?versions",
+      "fingerprint": "aa8257394c63229c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListVersionsResult\n  Name: {bucket}\n  Prefix: \n  KeyMarker: \n  VersionIdMarker: \n  MaxKeys: 1000\n  IsTruncated: false\n  Version\n    Key: k\n    VersionId: null\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"35d6d33467aae9a2e3dccb4b6b027878\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 5\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: k\n    VersionId: <version>\n    IsLatest: false\n    LastModified: <volatile>\n    ETag: \"f97c5d29941bfb1b2fdab0874906ab82\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: pre\n    VersionId: null\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"6bf9e70a1f928aba143ef1eebe2720b5\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: pre-copy\n    VersionId: <version>\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"6bf9e70a1f928aba143ef1eebe2720b5\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "delete-suspended",
+      "request": "DELETE /k",
+      "fingerprint": "615c2d23faf06ccb",
+      "status": 204,
+      "headers": {
+        "X-Amz-Delete-Marker": "true",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Version-Id": "null"
+      }
+    },
+    {
+      "step": "versioning-bogus",
+      "request": "PUT /?versioning",
+      "fingerprint": "bd6ae52b67870448",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: MalformedXML\n"
+    },
+    {
+      "step": "versioning-mfa",
+      "request": "PUT /?versioning",
+      "fingerprint": "7138aff5bebb1ad6",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "delete-batch",
+      "request": "POST /?delete",
+      "fingerprint": "11a7ce4e8091667e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Deleted\n    Key: gone\n    DeleteMarker: true\n    DeleteMarkerVersionId: null\n  Deleted\n    Key: pre\n    VersionId: null\n"
+    },
+    {
+      "step": "list-versions-final",
+      "request": "GET /?versions",
+      "fingerprint": "aa8257394c63229c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListVersionsResult\n  Name: {bucket}\n  Prefix: \n  KeyMarker: \n  VersionIdMarker: \n  MaxKeys: 1000\n  IsTruncated: false\n  DeleteMarker\n    Key: gone\n    VersionId: null\n    IsLatest: true\n    LastModified: <volatile>\n    Owner\n      ID: <volatile>\n  DeleteMarker\n    Key: k\n    VersionId: null\n    IsLatest: true\n    LastModified: <volatile>\n    Owner\n      ID: <volatile>\n  Version\n    Key: k\n    VersionId: <version>\n    IsLatest: false\n    LastModified: <volatile>\n    ETag: \"f97c5d29941bfb1b2fdab0874906ab82\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n  Version\n    Key: pre-copy\n    VersionId: <version>\n    IsLatest: true\n    LastModified: <volatile>\n    ETag: \"6bf9e70a1f928aba143ef1eebe2720b5\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 3\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n"
+    }
+  ]
+}

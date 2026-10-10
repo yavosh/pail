@@ -43,10 +43,11 @@ func TestParseCopySource(t *testing.T) {
 		{"bkt/a%20b", target{bucket: "bkt", key: "a b"}, 0, ""},
 		{"bkt/a+b", target{bucket: "bkt", key: "a+b"}, 0, ""},
 		{"bkt/a%3Fb", target{bucket: "bkt", key: "a?b"}, 0, ""},
-		{"bkt/key?versionId=null", target{bucket: "bkt", key: "key"}, 0, ""},
-		{"bkt/key?versionId=v1", target{}, http.StatusNotImplemented, "NotImplemented"},
-		{"bkt/key?versionId=null&versionId=v1", target{}, http.StatusNotImplemented, "NotImplemented"},
-		{"bkt/key?versionId=null&versionId=null", target{bucket: "bkt", key: "key"}, 0, ""},
+		{"bkt/key?versionId=null", target{bucket: "bkt", key: "key", versionID: "null"}, 0, ""},
+		{"bkt/key?versionId=" + goodID, target{bucket: "bkt", key: "key", versionID: goodID}, 0, ""},
+		{"bkt/key?versionId=v1", target{}, http.StatusBadRequest, "InvalidArgument"},
+		{"bkt/key?versionId=null&versionId=v1", target{}, http.StatusBadRequest, "InvalidArgument"},
+		{"bkt/key?versionId=null&versionId=null", target{bucket: "bkt", key: "key", versionID: "null"}, 0, ""},
 		{"bkt/key?other=1", target{}, http.StatusBadRequest, "InvalidArgument"},
 		{"bkt/key?%zz", target{}, http.StatusBadRequest, "InvalidArgument"},
 		{"bkt", target{}, http.StatusBadRequest, "InvalidArgument"},
@@ -130,15 +131,16 @@ func TestCopyObject(t *testing.T) {
 		{"encoded space and question mark", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/" + url.PathEscape("a b?c")}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"unencoded question mark is a query", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/a b?c"}, 400, "InvalidArgument", "", "", "", ""},
 		{"versionId null", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=null"}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
-		{"other versionId", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=v1"}, 501, "NotImplemented", "", "", "", ""},
+		{"malformed versionId", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=v1"}, 400, "InvalidArgument", "", "", "", ""},
+		{"unknown versionId", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=" + goodID}, 404, "NoSuchVersion", "", "", "", ""},
 		{"checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "SHA256"}, 200, "", "text/plain", "blue", "attachment", "SHA256"},
 		{"xxhash128 checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "XXHASH128"}, 501, "NotImplemented", "", "", "", ""},
 		{"unknown checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "BOGUS"}, 400, "InvalidRequest", "", "", "", ""},
 	}
 	for _, tt := range tests {
 		put("bkt", "src") // the onto-itself REPLACE case overwrites it
-		_ = st.DeleteObject(ctx, "bkt", "dst", store.DeleteOptions{})
-		_ = st.DeleteObject(ctx, "other", "dst", store.DeleteOptions{})
+		_, _ = st.DeleteObject(ctx, "bkt", "dst", store.DeleteOptions{})
+		_, _ = st.DeleteObject(ctx, "other", "dst", store.DeleteOptions{})
 		// {now} is read after the put above, so it is never before the source's Last-Modified.
 		header := maps.Clone(tt.header)
 		for k, v := range header {

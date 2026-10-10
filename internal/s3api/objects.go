@@ -119,6 +119,7 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	w.Header().Set("ETag", quoteETag(info.ETag))
 	setChecksumHeaders(w.Header(), info)
 	setOptionHeaders(w.Header(), info.ObjectOptions)
+	setWriteVersion(w, info)
 	h.notify(w, r, t, createdEvent("ObjectCreated:Put", t.key, info))
 	w.WriteHeader(http.StatusOK)
 }
@@ -327,18 +328,19 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		writeError(w, r, apiErr)
 		return
 	}
+	versionID := r.URL.Query().Get("versionId")
 	var (
 		f    vfs.File
 		info store.ObjectInfo
 		err  error
 	)
 	if withBody {
-		f, info, err = h.opts.Store.GetObject(r.Context(), t.bucket, t.key)
+		f, info, err = h.opts.Store.GetObjectVersion(r.Context(), t.bucket, t.key, versionID)
 	} else {
-		info, err = h.opts.Store.HeadObject(r.Context(), t.bucket, t.key)
+		info, err = h.opts.Store.HeadObjectVersion(r.Context(), t.bucket, t.key, versionID)
 	}
 	if err != nil {
-		writeError(w, r, toAPIError(err))
+		writeReadError(w, r, err)
 		return
 	}
 	if f != nil {
@@ -409,6 +411,7 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 
 	hdr.Set("ETag", etag)
 	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
+	h.setVersionHeader(w, r, t.bucket, info)
 	if hasPart && len(info.Parts) > 0 {
 		hdr.Set("x-amz-mp-parts-count", strconv.Itoa(len(info.Parts)))
 	}
@@ -517,11 +520,19 @@ func (h *handler) handleDeleteObject(w http.ResponseWriter, r *http.Request, t t
 		}
 		opts.IfMatch = new(values[0])
 	}
-	if err := h.opts.Store.DeleteObject(r.Context(), t.bucket, t.key, opts); err != nil {
+	opts.VersionID = r.URL.Query().Get("versionId")
+	res, err := h.opts.Store.DeleteObject(r.Context(), t.bucket, t.key, opts)
+	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}
-	h.notify(w, r, t, removedEvent(t.key))
+	if res.Versioned {
+		w.Header().Set("x-amz-version-id", versionLabel(res.VersionID))
+		if res.DeleteMarker {
+			w.Header().Set("x-amz-delete-marker", "true")
+		}
+	}
+	h.notify(w, r, t, removedEvent(t.key, opts.VersionID, res))
 	w.WriteHeader(http.StatusNoContent)
 }
 

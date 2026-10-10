@@ -33,7 +33,10 @@ func (h *handler) handleDeleteObjects(w http.ResponseWriter, r *http.Request, t 
 		Objects []object `xml:"Object"`
 	}
 	type deleted struct {
-		Key string `xml:"Key"`
+		Key                   string `xml:"Key"`
+		VersionID             string `xml:"VersionId,omitempty"`
+		DeleteMarker          bool   `xml:"DeleteMarker,omitempty"`
+		DeleteMarkerVersionID string `xml:"DeleteMarkerVersionId,omitempty"`
 	}
 	type failure struct {
 		Key     string `xml:"Key"`
@@ -110,24 +113,36 @@ func (h *handler) handleDeleteObjects(w http.ResponseWriter, r *http.Request, t 
 	resp := response{Xmlns: s3Namespace}
 	for _, o := range req.Objects {
 		apiErr := apiError{}
+		var res store.DeleteResult
 		switch {
-		case o.VersionID != "" && o.VersionID != "null":
-			apiErr = errNoSuchVersion
+		case o.VersionID != "" && !validVersionID(o.VersionID):
+			apiErr = errInvalidArgument
 		default:
+			var err error
 			if e, ok := checkObjectTarget(target{bucket: t.bucket, key: o.Key}); !ok {
 				apiErr = e
-			} else if err := h.opts.Store.DeleteObject(r.Context(), t.bucket, o.Key, store.DeleteOptions{IfMatch: o.ETag}); err != nil {
+			} else if res, err = h.opts.Store.DeleteObject(r.Context(), t.bucket, o.Key, store.DeleteOptions{IfMatch: o.ETag, VersionID: o.VersionID}); err != nil {
 				apiErr = toAPIError(err)
 			}
 		}
 		if apiErr == (apiError{}) {
-			h.notify(w, r, t, removedEvent(o.Key))
+			h.notify(w, r, t, removedEvent(o.Key, o.VersionID, res))
 		}
 		switch {
 		case apiErr != (apiError{}):
 			resp.Errors = append(resp.Errors, failure{Key: o.Key, Code: apiErr.Code, Message: apiErr.Message})
 		case !req.Quiet:
-			resp.Deleted = append(resp.Deleted, deleted{Key: o.Key})
+			d := deleted{Key: o.Key}
+			if res.Versioned {
+				id := versionLabel(res.VersionID)
+				if o.VersionID != "" {
+					d.VersionID = id
+				}
+				if res.DeleteMarker {
+					d.DeleteMarker, d.DeleteMarkerVersionID = true, id
+				}
+			}
+			resp.Deleted = append(resp.Deleted, d)
 		}
 	}
 	writeXML(w, r, http.StatusOK, resp)

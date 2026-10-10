@@ -104,11 +104,12 @@ func (h *handler) handleGetObjectAttributes(w http.ResponseWriter, r *http.Reque
 		writeError(w, r, errInvalidArgument)
 		return
 	}
-	info, err := h.opts.Store.HeadObject(r.Context(), t.bucket, t.key)
+	info, err := h.opts.Store.HeadObjectVersion(r.Context(), t.bucket, t.key, r.URL.Query().Get("versionId"))
 	if err != nil {
-		writeError(w, r, toAPIError(err))
+		writeReadError(w, r, err)
 		return
 	}
+	h.setVersionHeader(w, r, t.bucket, info)
 
 	resp := response{Xmlns: s3Namespace}
 	if want["ETag"] {

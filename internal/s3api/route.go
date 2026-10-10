@@ -25,6 +25,9 @@ const (
 	opGetBucketTagging        operation = "GetBucketTagging"
 	opPutBucketTagging        operation = "PutBucketTagging"
 	opDeleteBucketTagging     operation = "DeleteBucketTagging"
+	opGetBucketVersioning     operation = "GetBucketVersioning"
+	opPutBucketVersioning     operation = "PutBucketVersioning"
+	opListObjectVersions      operation = "ListObjectVersions"
 	opGetObjectTagging        operation = "GetObjectTagging"
 	opPutObjectTagging        operation = "PutObjectTagging"
 	opDeleteObjectTagging     operation = "DeleteObjectTagging"
@@ -71,18 +74,17 @@ var subresources = map[string]bool{
 	"versionId": true, "versioning": true, "versions": true, "website": true,
 }
 
-// versioned lists the operations that accept a versionId. pail has no
-// versioning, so only "null" is valid and it names the current object.
+// versioned lists the operations that accept a versionId.
 var versioned = map[operation]bool{
 	opGetObject: true, opHeadObject: true, opDeleteObject: true, opGetObjectAttributes: true,
 	opGetObjectACL: true, opPutObjectACL: true,
 	opGetObjectTagging: true, opPutObjectTagging: true, opDeleteObjectTagging: true,
 }
 
-// checkVersionID rejects a versionId other than "null" on a versioned
-// operation. A versioning PR changes only this function and resolve.
+// checkVersionID rejects a versionId that is not "null" or an ID in the form
+// pail issues. The store decides whether a well-formed ID exists.
 func checkVersionID(op operation, q url.Values) (apiError, bool) {
-	if !versioned[op] || !slices.ContainsFunc(q["versionId"], func(v string) bool { return v != "null" }) {
+	if !versioned[op] || !slices.ContainsFunc(q["versionId"], func(v string) bool { return !validVersionID(v) }) {
 		return apiError{}, true
 	}
 	return errInvalidArgument, false
@@ -93,6 +95,8 @@ type target struct {
 	bucket      string
 	key         string
 	virtualHost bool
+	// versionID is the ?versionId of a copy source.
+	versionID string
 }
 
 // parseTarget reads the bucket from the host when it is a subdomain of domain,
@@ -204,6 +208,15 @@ func resolveOperation(method string, t target, q url.Values, h http.Header) oper
 			case http.MethodPut:
 				return opPutBucketNotification
 			}
+		case only("versioning"):
+			switch method {
+			case http.MethodGet:
+				return opGetBucketVersioning
+			case http.MethodPut:
+				return opPutBucketVersioning
+			}
+		case method == http.MethodGet && only("versions"):
+			return opListObjectVersions
 		case only("ownershipControls"):
 			switch method {
 			case http.MethodGet:

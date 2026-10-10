@@ -419,7 +419,7 @@ func TestPutObjectStreaming(t *testing.T) {
 		if err := signer.SignHTTP(ctx, creds, req, "STREAMING-UNSIGNED-PAYLOAD-TRAILER", "s3", "us-east-1", time.Now()); err != nil {
 			t.Fatal(err)
 		}
-		_ = st.DeleteObject(ctx, "bkt", "k", store.DeleteOptions{})
+		_, _ = st.DeleteObject(ctx, "bkt", "k", store.DeleteOptions{})
 		status, code := send(t, req)
 		if status != tt.wantStatus || code != tt.wantCode {
 			t.Errorf("%s: PUT = %d %q, want %d %q", tt.name, status, code, tt.wantStatus, tt.wantCode)

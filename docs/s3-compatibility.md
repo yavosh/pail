@@ -68,7 +68,7 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
   - `If-Match` returns `412 PreconditionFailed` when the destination's ETag differs, and `404 NoSuchKey` when the destination doesn't exist.
   - `If-None-Match` with an ETag returns `501 NotImplemented`, as `PutObject` does.
 - A copy from a source larger than 5 GiB fails.
-- pail has no versioning, so it accepts only `versionId=null`.
+- `x-amz-copy-source` accepts `versionId`, including `null`. See [Versioning](#versioning). A source that is a delete marker named by its version ID returns `400 InvalidRequest`, and a source whose latest version is a delete marker returns `404 NoSuchKey`.
 
 ### Conditional deletes
 
@@ -80,7 +80,7 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 
 ### Batch delete
 
-- `DeleteObjects` takes 1 to 1,000 keys and supports `Quiet`.
+- `DeleteObjects` takes 1 to 1,000 keys and supports `Quiet`. Each `Object` can carry a `VersionId`. See [Versioning](#versioning).
 - The response has a `Deleted` or `Error` entry for each key. `Quiet` suppresses successes, but not failed preconditions.
 - The request needs a checksum: `Content-MD5` or an `x-amz-checksum-*` header. The checksum can also arrive in an `aws-chunked` trailer. The SDKs send `x-amz-checksum-crc32` by default.
 
@@ -112,16 +112,60 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 - A missing or empty `x-amz-object-attributes` header returns `400 InvalidRequest`. An unknown name returns `400 InvalidArgument`. A missing key returns `404 NoSuchKey`.
 - The response has no `Content-Type` header, as in the AWS recording.
 - pail ignores the `If-*` conditional headers on this operation. This is unverified.
-- `versionId=null` is accepted. There is no `x-amz-version-id` header, because pail has no versioning.
+- `versionId` selects a version. See [Versioning](#versioning). The response has `x-amz-version-id` in a bucket that has versioning.
 - An anonymous request is denied, even if the object ACL is public.
 
-## Version IDs
+## Versioning
 
-pail has no versioning, so the only valid `versionId` is `null`. It names the current object, as on an unversioned AWS bucket.
+pail supports `PutBucketVersioning`, `GetBucketVersioning`, and `ListObjectVersions`. The AWS recording `versioning` covers the cases below unless this page marks them unverified.
 
-- `GetObject`, `HeadObject`, `GetObjectAttributes`, `DeleteObject`, and `GetObjectAcl` accept `versionId=null` and act as they do without it. `PutObjectAcl` and the object tagging operations accept it too, but that is unverified against AWS.
-- Any other `versionId` on these operations fails with `400 InvalidArgument`, even when the key doesn't exist.
-- A `versionId` on any other operation fails with `501 NotImplemented`. `CopyObject` takes `versionId=null` in `x-amz-copy-source`.
+### Bucket state
+
+- `GetBucketVersioning` returns an empty `VersioningConfiguration` for a bucket that never had versioning. `PutBucketVersioning` sets `Enabled` or `Suspended`. A bucket can't return to the never-versioned state.
+- Any other `Status` returns `400 MalformedXML`. `MfaDelete` set to `Enabled` returns `403 AccessDenied`, because pail has no MFA devices. `Content-MD5` is optional on `PutBucketVersioning`. This is unverified.
+- Version IDs have 32 lowercase hex characters, and the oldest sorts first. A request with any other `versionId` except `null` returns `400 InvalidArgument`, even when the key doesn't exist. A well-formed ID that doesn't exist returns `404 NoSuchVersion`. This is unverified.
+
+### Writes
+
+- With versioning enabled, `PutObject`, `CopyObject`, `CompleteMultipartUpload`, and browser forms create a version and return `x-amz-version-id`. The earlier current version becomes noncurrent.
+- With versioning suspended, a write creates the `null` version and replaces any earlier null version of the key. The response has no `x-amz-version-id`. Earlier versions with an ID stay.
+- An object that was written before versioning is the `null` version.
+- `If-Match` and `If-None-Match` on a write apply to the current version. A delete marker counts as a missing key. This is unverified.
+- ACLs, tags, storage class, and the other object options belong to one version. `PutObjectAcl`, `GetObjectAcl`, `PutObjectTagging`, `GetObjectTagging`, `DeleteObjectTagging`, and `GetObjectAttributes` take `versionId`. Writes to a version echo `x-amz-version-id`.
+- The ACL and tagging operations answer a delete marker as `GetObject` and `HeadObject` do: `404 NoSuchKey` with the marker headers for the current marker, and `405 MethodNotAllowed` for a marker named by its version ID. This is unverified against AWS.
+
+### Reads
+
+- `GetObject`, `HeadObject`, and `GetObjectAttributes` return `x-amz-version-id` for the version they serve. The null version is `null`. A bucket that never had versioning sends no header.
+- `versionId=null` names the null version. In a bucket that never had versioning, it names the current object.
+- `ListObjects` and `ListObjectsV2` hide a key whose current version is a delete marker.
+
+### Delete markers
+
+- `DeleteObject` without `versionId` adds a delete marker as the current version and returns `204` with `x-amz-delete-marker: true` and the marker's `x-amz-version-id`. While versioning is suspended, the marker is the null version and replaces the null version. A delete of a missing key adds a marker too.
+- `GetObject` and `HeadObject` of a key whose latest version is a delete marker return `404 NoSuchKey` with `x-amz-delete-marker: true` and `x-amz-version-id`.
+- `GetObject` or `HeadObject` with the marker's `versionId` returns `405 MethodNotAllowed` with the same two headers and `Last-Modified`.
+- `DeleteObject` with `versionId` removes that version for good. The response has `x-amz-version-id`, and `x-amz-delete-marker: true` when the version was a marker. Removing the current version makes the newest remaining version current. Removing a marker restores the object. Removing a version that doesn't exist succeeds. This is unverified.
+- `If-Match` on a delete with a `versionId` applies to that version. This is unverified.
+- `DeleteObjects` takes a `VersionId` in each `Object`. A `Deleted` entry has `VersionId` when the request named one. When a marker was created or removed, it has `DeleteMarker` and `DeleteMarkerVersionId`. A malformed `VersionId` returns an `Error` entry with `InvalidArgument`.
+- `DeleteBucket` returns `409 BucketNotEmpty` while the bucket holds any version or delete marker.
+
+### Copy
+
+- `x-amz-copy-source` takes `?versionId=<id>`. The response has `x-amz-copy-source-version-id` when the source bucket has versioning, and `x-amz-version-id` for the new version. `UploadPartCopy` takes the same source.
+
+### ListObjectVersions
+
+- The response lists `Version` and `DeleteMarker` entries in key order and, within a key, newest first. `IsLatest` marks the current one.
+- `prefix`, `key-marker`, `version-id-marker`, and `max-keys` page the result. A truncated response has `NextKeyMarker` and `NextVersionIdMarker`. A `version-id-marker` without `key-marker` returns `400 InvalidArgument`.
+- `delimiter` with `CommonPrefixes` and `encoding-type=url` follow `ListObjects`. These are unverified.
+- A bucket that never had versioning lists every object as a `null` version. This is unverified.
+
+### Differences from AWS
+
+- pail has no MFA Delete.
+- Lifecycle rules can't act on noncurrent versions. They return `501 NotImplemented`.
+- A `versionId` on an operation that doesn't take one returns `501 NotImplemented`.
 
 ## Multipart uploads
 
@@ -210,7 +254,8 @@ pail supports `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguratio
 - Reads and writes report `x-amz-expiration`.
 - Tag filters aren't recorded against AWS. pail follows the AWS documentation.
 - A rule with a tag filter can't also abort multipart uploads. It returns `400 InvalidArgument`.
-- Transitions and version actions return `501 NotImplemented`.
+- Transitions and noncurrent-version actions return `501 NotImplemented`.
+- In a bucket with versioning, expiration of the current version adds a delete marker, as on AWS. This is unverified. With versioning enabled, the data stays as a noncurrent version. When versioning is suspended, the marker is a null marker. It replaces a null current version, and pail then removes that version's data, as on AWS.
 
 ## Event notifications
 
@@ -219,7 +264,7 @@ pail supports `PutBucketNotificationConfiguration` and `GetBucketNotificationCon
 - A configuration is a list of `QueueConfiguration` and `TopicConfiguration` elements. Each has an optional `Id`, a destination ARN, one or more `Event` values, and an optional `Filter` with `prefix` and `suffix` rules. pail generates a missing `Id`.
 - `GetBucketNotificationConfiguration` returns an empty `NotificationConfiguration` when the bucket has none. It returns the topic configurations first, then the queue configurations. Filter rule names come back as `Prefix` and `Suffix`, as on AWS.
 - An empty `NotificationConfiguration` clears the configuration.
-- pail raises these events: `s3:ObjectCreated:*`, `Put`, `Post`, `Copy`, `CompleteMultipartUpload`, and `s3:ObjectRemoved:*`, `Delete`, `DeleteMarkerCreated`. `PutObject`, `POST Object`, `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, and each key that `DeleteObjects` removes raise an event after the write commits. `DeleteMarkerCreated` is configurable but pail raises it only when versioning exists.
+- pail raises these events: `s3:ObjectCreated:*`, `Put`, `Post`, `Copy`, `CompleteMultipartUpload`, and `s3:ObjectRemoved:*`, `Delete`, `DeleteMarkerCreated`. `PutObject`, `POST Object`, `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, and each key that `DeleteObjects` removes raise an event after the write commits. `DeleteMarkerCreated` needs versioning.
 - Validation errors:
   - An unknown event, a bad filter rule name, a repeated filter rule, or a repeated `Id` returns `400 InvalidArgument`.
   - A destination that doesn't exist in this pail, a FIFO queue, or a destination with the wrong service returns `400 InvalidArgument`. The ARN's region and account must be pail's.
@@ -232,7 +277,9 @@ pail supports `PutBucketNotificationConfiguration` and `GetBucketNotificationCon
 - The `sequencer` is a hex string that grows with every event in a pail process. Its format is unverified.
 - Difference from AWS: pail delivers before it answers the S3 request. AWS delivers in the background, usually within seconds. A failed delivery is logged and never fails the request. A queue or topic that disappears after the configuration is stored drops the events.
 - Difference from AWS: pail doesn't check queue or topic policies. AWS needs a policy that lets `s3.amazonaws.com` send. `PutBucketNotificationConfiguration` also doesn't fail when the test event can't be delivered.
-- A delete of a key that doesn't exist raises `ObjectRemoved:Delete`. This is unverified.
+- A delete of a key that doesn't exist raises `ObjectRemoved:Delete` in a bucket that never had versioning. This is unverified.
+- In a bucket with versioning enabled or suspended, an event for a write carries `s3.object.versionId`, the version the write created. A write to a suspended bucket creates the null version, which has no ID, so its event has none. This is from the AWS documentation and is unverified.
+- In a bucket with versioning enabled or suspended, a `DeleteObject` or `DeleteObjects` entry without a `versionId` raises `ObjectRemoved:DeleteMarkerCreated` with the marker's `versionId` (`null` when suspended). A delete with a `versionId` raises `ObjectRemoved:Delete` with that `versionId`. This is from the AWS documentation and is unverified. A bucket that never had versioning keeps the event shape above.
 - The configuration is stored with the bucket and removed with it.
 
 ## ACLs

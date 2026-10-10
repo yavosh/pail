@@ -152,6 +152,7 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 			w.Header().Set("ETag", etag)
 			setChecksumHeaders(w.Header(), info)
 			setOptionHeaders(w.Header(), info.ObjectOptions)
+			setWriteVersion(w, info)
 			if destination != nil {
 				q := destination.Query()
 				q.Set("bucket", t.bucket)
