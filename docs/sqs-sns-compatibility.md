@@ -95,7 +95,7 @@ Queue definitions, which are attributes and tags, persist in the data directory.
 AWS recordings in `sqs-fifo` verify these rules, except those marked unverified.
 
 - A name that ends in `.fifo` is a FIFO queue. `CreateQueue` for such a name needs the `FifoQueue` attribute set to `true`, and `FifoQueue` `true` needs a `.fifo` name. Otherwise it returns `InvalidParameterValue`. `FifoQueue` on a standard queue, even `false`, returns `InvalidAttributeName`, in `CreateQueue` and in `SetQueueAttributes`.
-- `FifoQueue` can't change after creation. `SetQueueAttributes` on a FIFO queue returns `InvalidAttributeValue` (unverified).
+- `FifoQueue` can't change after creation. `SetQueueAttributes` on a FIFO queue returns `InvalidAttributeValue`.
 - A FIFO queue has these attributes. They are not valid on a standard queue, which returns `InvalidAttributeName`.
 
   | Attribute | Default | Values |
@@ -120,12 +120,12 @@ AWS recordings in `sqs-dead-letter` verify these rules, except those marked unve
 
 - `RedrivePolicy` is a JSON object with `deadLetterTargetArn` and `maxReceiveCount`. `maxReceiveCount` is 1 to 1,000, as a JSON number or a decimal string. pail stores the canonical form `{"deadLetterTargetArn":"<arn>","maxReceiveCount":<n>}`, and returns it from `GetQueueAttributes`. Other fields are dropped.
 - `CreateQueue` and `SetQueueAttributes` check the policy. A bad shape returns `InvalidAttributeValue` (unverified). These cases return `InvalidParameterValue`: a `maxReceiveCount` outside 1 to 1000, a target that is not an existing queue of this account and region, a target of the other type (FIFO or standard), and a target whose `RedriveAllowPolicy` does not permit the source. An empty value removes the policy. A queue can name itself as its dead-letter target: AWS accepts it, and so does pail.
-- `RedriveAllowPolicy` is a JSON object with `redrivePermission`: `allowAll`, `denyAll`, or `byQueue`. `byQueue` needs `sourceQueueArns` with 1 to 10 ARNs. The other values must not have it. `byQueue` without ARNs and `allowAll` with ARNs return `InvalidParameterValue`, not `InvalidAttributeValue` (verified; `denyAll` with ARNs and a `byQueue` list of 11 or more ARNs are unverified). pail enforces the policy only when a source sets its `RedrivePolicy`. A later change does not affect existing sources. `allowAll`, `denyAll`, and `byQueue` are verified.
+- `RedriveAllowPolicy` is a JSON object with `redrivePermission`: `allowAll`, `denyAll`, or `byQueue`. `byQueue` needs `sourceQueueArns` with 1 to 10 ARNs. The other values must not have it. `byQueue` without ARNs and `allowAll` with ARNs return `InvalidParameterValue`, not `InvalidAttributeValue` (verified). `denyAll` with ARNs returns `InvalidParameterValue`, and a `byQueue` list of 11 or more ARNs returns `InvalidAttributeValue`; both are unverified. pail enforces the policy only when a source sets its `RedrivePolicy`. A later change does not affect existing sources. `allowAll`, `denyAll`, and `byQueue` are verified.
 - When a receive finds a visible message whose receive count is at least `maxReceiveCount`, it moves the message to the dead-letter queue instead of returning it. The move happens on that receive, not in the background. The message keeps its `MessageId`, body, attributes, send time, and receive count. A FIFO target gives it a new sequence number.
 - The moved message is visible at once in the target. A long poll on the target wakes. `ReceiveMessage` on the target returns `DeadLetterQueueSourceArn` as a system attribute. Its `ApproximateReceiveCount` continues from the source count.
 - If the target queue is deleted, the message is delivered from the source as usual (unverified).
 - `ListDeadLetterSourceQueues` returns the URLs of the queues whose `RedrivePolicy` targets the queue, as `queueUrls` (the non-empty shape is unverified, because AWS listed none in the recording). `MaxResults` and `NextToken` work as in `ListQueues` (unverified). An unknown queue returns `QueueDoesNotExist`. With no sources, the response is an empty object. AWS lists sources with eventual consistency, so a source created seconds earlier can be missing; pail lists it at once, and `test/diff` lists this as a known difference.
-- A cycle of redrive policies (a to b to a) moves a message back and forth, so neither queue delivers it, as on AWS. pail does not guard against a queue that targets itself; a message there moves back to the same queue on each receive (unverified on AWS).
+- A cycle of redrive policies (a to b to a) moves a message back and forth, so neither queue delivers it, as on AWS. AWS accepts a `RedrivePolicy` that targets its own queue (recorded). pail delivers such a queue's messages as usual instead of moving them, as it does for a deleted target. What AWS does on receive is unverified.
 - Message move tasks (`StartMessageMoveTask` and related operations) are not supported.
 
 ### Fair queues
@@ -154,7 +154,7 @@ AWS recordings in `test/diff` verify every row except those marked unverified. A
 | Batch rule broken | 400 | `com.amazonaws.sqs#<Batch error name>` | `AWS.SimpleQueueService.<Batch error name>` |
 | Malformed request body, including JSON that is not an object | 400 | `com.amazon.coral.service#SerializationException` | `MalformedInput` |
 
-A failed batch entry uses the code `InvalidParameterValue`, `MissingParameter`, `InvalidMessageContents`, `ReceiptHandleIsInvalid`, or `InternalError`. `InvalidMessageContents` and `ReceiptHandleIsInvalid` are verified. The others are unverified.
+A failed batch entry uses the code `InvalidParameterValue`, `MissingParameter`, `UnsupportedOperation`, `InvalidMessageContents`, `ReceiptHandleIsInvalid`, or `InternalError`. `InvalidMessageContents` and `ReceiptHandleIsInvalid` are verified. The others are unverified per entry.
 
 ### Differences from AWS
 

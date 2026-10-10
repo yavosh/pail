@@ -207,8 +207,8 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 }
 
 // checkFifoAttribute applies the FifoQueue rules of CreateQueue: a ".fifo"
-// name needs FifoQueue "true", and FifoQueue "true" needs a ".fifo" name. Any
-// FifoQueue on a standard queue, even "false", fails later as InvalidAttributeName.
+// name needs FifoQueue "true", and FifoQueue "true" needs a ".fifo" name. A
+// FifoQueue "false" on a standard queue fails later as InvalidAttributeName.
 func checkFifoAttribute(name string, attrs map[string]string) error {
 	v, ok := attrs["FifoQueue"]
 	switch {

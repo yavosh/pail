@@ -15,8 +15,9 @@ type apiError struct {
 	code   string
 }
 
-// Every entry except InternalError and AuthorizationError matches an AWS
-// recording in test/diff. Those two come from the service model and are unverified.
+// The entries match AWS recordings in test/diff, except RequestEntityTooLarge,
+// InternalError, and AuthorizationError. Those come from the service model and
+// are unverified.
 var (
 	errInvalidAction       = apiError{http.StatusBadRequest, "Sender", "InvalidAction"}
 	errMissingAuth         = apiError{http.StatusForbidden, "Sender", "MissingAuthenticationToken"}

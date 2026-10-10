@@ -146,6 +146,40 @@ func TestRedriveAllowPolicyARNMismatch(t *testing.T) {
 	}
 }
 
+// A queue that targets itself delivers its messages. A move to itself would
+// wake the other long polls forever; synctest.Wait would never return.
+func TestSelfRedriveDoesNotSpin(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEngine(t)
+		mustCreate(t, e, "self", nil)
+		if err := e.SetAttributes(t.Context(), "self", redrive("self", "1")); err != nil {
+			t.Fatalf("SetAttributes error = %v", err)
+		}
+		if _, err := e.Send(t.Context(), "self", []SendInput{{Body: "m"}}); err != nil {
+			t.Fatalf("Send error = %v", err)
+		}
+		if got := receive(t, e, "self", ReceiveInput{VisibilityTimeout: new(0)}); len(got) != 1 {
+			t.Fatalf("first Receive = %v, want one message", bodies(got))
+		}
+		waits := []func() ([]Message, error){
+			startReceive(t.Context(), e, "self", ReceiveInput{WaitTimeSeconds: new(20)}),
+			startReceive(t.Context(), e, "self", ReceiveInput{WaitTimeSeconds: new(20)}),
+		}
+		synctest.Wait()
+		delivered := 0
+		for _, wait := range waits {
+			got, err := wait()
+			if err != nil {
+				t.Fatalf("Receive error = %v", err)
+			}
+			delivered += len(got)
+		}
+		if delivered != 1 {
+			t.Errorf("concurrent Receives delivered %d messages, want 1", delivered)
+		}
+	})
+}
+
 func TestMoveToDeadLetterQueue(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEngine(t)

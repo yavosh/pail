@@ -467,7 +467,8 @@ func (e *Engine) take(q *queue, now time.Time, limit, timeout int) []Message {
 }
 
 // deadLetterTarget returns the queue that q redrives to and the receive count
-// that triggers it, or nil when q has no policy or its target is gone.
+// that triggers it, or nil when q has no policy, its target is gone, or it
+// targets itself. A self-move would wake every long poll on q again and again.
 func (e *Engine) deadLetterTarget(q *queue) (*queue, int) {
 	p, ok := parseRedrivePolicy(q.def.Attributes["RedrivePolicy"])
 	if !ok || p.MaxReceiveCount < 1 || p.MaxReceiveCount > 1000 {
@@ -475,6 +476,9 @@ func (e *Engine) deadLetterTarget(q *queue) (*queue, int) {
 	}
 	name, ok := strings.CutPrefix(p.TargetARN, e.ARN(""))
 	if !ok {
+		return nil, 0
+	}
+	if name == q.def.Name {
 		return nil, 0
 	}
 	return e.queues[name], p.MaxReceiveCount
