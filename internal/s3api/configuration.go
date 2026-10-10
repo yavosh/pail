@@ -16,6 +16,7 @@ import (
 	"github.com/yavosh/pail/internal/checksum"
 	"github.com/yavosh/pail/internal/lifecycle"
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/tag"
 )
 
 func (h *handler) handleBucketConfiguration(w http.ResponseWriter, r *http.Request, t target) {
@@ -187,7 +188,10 @@ func validateLifecycle(c lifecycle.Configuration) apiError {
 			if f.Greater != nil && *f.Greater < 0 || f.Less != nil && *f.Less < 0 || f.Greater != nil && f.Less != nil && *f.Greater >= *f.Less {
 				return errInvalidArgument
 			}
-			if rule.Abort != nil && (f.Greater != nil || f.Less != nil) {
+			if err := tag.Validate(f.Tags, tag.MaxObject); err != nil {
+				return toAPIError(err)
+			}
+			if rule.Abort != nil && (f.Greater != nil || f.Less != nil || len(f.Tags) > 0) {
 				return errInvalidArgument
 			}
 		}
@@ -227,7 +231,7 @@ func filterCount(f *lifecycle.Filter) int {
 			n++
 		}
 	}
-	return n
+	return n + len(f.Tags)
 }
 
 // corsConfiguration follows the S3 CORS XML schema.

@@ -414,6 +414,9 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	h.setExpiration(w, r, t.bucket, info)
 	setObjectHeaders(hdr, r, info)
 	setOptionHeaders(hdr, info.ObjectOptions)
+	if n := len(info.Tags); n > 0 {
+		hdr.Set("x-amz-tagging-count", strconv.Itoa(n))
+	}
 	if info.WebsiteRedirect != "" {
 		hdr.Set("x-amz-website-redirect-location", info.WebsiteRedirect)
 	}

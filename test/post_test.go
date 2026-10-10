@@ -182,7 +182,9 @@ func TestPostIntegrity(t *testing.T) {
 			{"bad-sha256", map[string]string{"x-amz-checksum-algorithm": "SHA256", "x-amz-checksum-sha256": base64.StdEncoding.EncodeToString(make([]byte, 32))}, 400},
 			{"missing-checksum", map[string]string{"x-amz-checksum-algorithm": "SHA256"}, 400},
 			{"malformed-md5", map[string]string{"Content-MD5": "broken"}, 400},
-			{"tagging", map[string]string{"tagging": "<Tagging><TagSet/></Tagging>"}, 501},
+			{"tagging", map[string]string{"tagging": "<Tagging><TagSet><Tag><Key>a</Key><Value>1</Value></Tag></TagSet></Tagging>"}, 204},
+			{"tagging-aws-prefix", map[string]string{"tagging": "<Tagging><TagSet><Tag><Key>aws:a</Key><Value>1</Value></Tag></TagSet></Tagging>"}, 400},
+			{"tagging-malformed", map[string]string{"tagging": "<Tagging>"}, 400},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				conditions := []any{}
@@ -217,6 +219,12 @@ func TestPostIntegrity(t *testing.T) {
 				data, err = io.ReadAll(obj.Body)
 				if err != nil || string(data) != body {
 					t.Fatalf("checksummed object = %q, %v", data, err)
+				}
+				if tc.name == "tagging" {
+					got, err := c.GetObjectTagging(t.Context(), &s3.GetObjectTaggingInput{Bucket: bucket, Key: aws.String(tc.name)})
+					if err != nil || len(got.TagSet) != 1 || *got.TagSet[0].Key != "a" || *got.TagSet[0].Value != "1" {
+						t.Fatalf("tags after POST = %v, %v, want a=1", got, err)
+					}
 				}
 			})
 		}

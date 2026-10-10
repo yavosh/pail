@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/tag"
 )
 
 var (
@@ -26,8 +27,8 @@ var (
 const defaultEncryption = "AES256"
 
 // parseObjectOptions reads the encryption, storage class, and website redirect
-// of a write request. SSE-C and Object Lock headers are rejected, as AWS does
-// on a new bucket. pail stores the values and does not act on them.
+// and tags of a write request. SSE-C and Object Lock headers are rejected, as AWS does
+// on a new bucket. pail stores the values and acts only on the tags.
 func parseObjectOptions(h http.Header) (store.ObjectOptions, apiError, bool) {
 	var opts store.ObjectOptions
 	if apiErr, ok := rejectSSEC(h); !ok {
@@ -60,6 +61,11 @@ func parseObjectOptions(h http.Header) (store.ObjectOptions, apiError, bool) {
 		}
 		opts.WebsiteRedirect = v
 	}
+	tags, err := tag.ParseHeader(h.Get("x-amz-tagging"), tag.MaxObject)
+	if err != nil {
+		return opts, toAPIError(err), false
+	}
+	opts.Tags = tags
 	return opts, apiError{}, true
 }
 
