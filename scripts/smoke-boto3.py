@@ -316,4 +316,20 @@ with Step("sqs send_message_batch"):
 with Step("sqs delete_queue"):
     sqs.delete_queue(QueueUrl=queue_url)
 
+with Step("sqs FIFO queue"):
+    fifo_url = sqs.create_queue(
+        QueueName=queue_name + ".fifo",
+        Attributes={"FifoQueue": "true", "ContentBasedDeduplication": "true"},
+    )["QueueUrl"]
+    sent = sqs.send_message(QueueUrl=fifo_url, MessageBody="ordered", MessageGroupId="g")
+    check(sent.get("SequenceNumber"), f"send result has no SequenceNumber: {sent}")
+    messages = sqs.receive_message(
+        QueueUrl=fifo_url, MessageSystemAttributeNames=["MessageGroupId"], WaitTimeSeconds=1,
+    ).get("Messages", [])
+    check(len(messages) == 1, f"received {len(messages)} messages, want 1")
+    check(messages[0]["Attributes"]["MessageGroupId"] == "g",
+          f"unexpected attributes: {messages[0]['Attributes']}")
+    sqs.delete_message(QueueUrl=fifo_url, ReceiptHandle=messages[0]["ReceiptHandle"])
+    sqs.delete_queue(QueueUrl=fifo_url)
+
 tmp.cleanup()

@@ -82,6 +82,7 @@ type sendBatchResult struct {
 	MD5OfMessageBody             string
 	MD5OfMessageAttributes       string `json:",omitempty"`
 	MD5OfMessageSystemAttributes string `json:",omitempty"`
+	SequenceNumber               string `json:",omitempty"`
 }
 
 func (h *handler) sendMessageBatch(r *http.Request, in sendMessageBatchRequest) (any, error) {
@@ -130,6 +131,7 @@ func (h *handler) sendMessageBatch(r *http.Request, in sendMessageBatchRequest) 
 			MD5OfMessageBody:             results[i].MD5OfBody,
 			MD5OfMessageAttributes:       results[i].MD5OfAttributes,
 			MD5OfMessageSystemAttributes: results[i].MD5OfSystemAttributes,
+			SequenceNumber:               results[i].SequenceNumber,
 		}
 	}), nil
 }

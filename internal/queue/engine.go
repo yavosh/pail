@@ -30,7 +30,10 @@ const (
 	purgeInterval = 60 * time.Second
 )
 
-var queueNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
+var (
+	queueNameRE     = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
+	fifoQueueNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,75}\.fifo$`)
+)
 
 // Engine holds the queues. Definitions persist on a vfs.FS; messages do not.
 type Engine struct {
@@ -58,7 +61,11 @@ type queue struct {
 	messages  []*message // arrival order
 	lastPurge time.Time
 	wake      chan struct{}
+	nextSeq   uint64                // last FIFO sequence number issued
+	dedup     map[string]dedupEntry // FIFO sends in the deduplication window
 }
+
+func (q *queue) fifo() bool { return isFIFOName(q.def.Name) }
 
 // notify wakes every long poll on q.
 func (q *queue) notify() {
@@ -97,14 +104,14 @@ func Open(ctx context.Context, fsys vfs.FS, region string) (*Engine, error) {
 			return nil, fmt.Errorf("read queue %s: %w", ent.Name(), err)
 		}
 		// A file under another name would resurrect a queue deleted by name.
-		if err := errors.Join(checkQueueName(def.Name), validateAttrs(def.Attributes)); err != nil {
+		if err := errors.Join(checkQueueName(def.Name), validateAttrs(def.Attributes, isFIFOName(def.Name))); err != nil {
 			return nil, fmt.Errorf("queue file %s: %w", ent.Name(), err)
 		}
 		if file != queueFile(def.Name) {
 			return nil, fmt.Errorf("queue file %s: name %q does not match the file name", ent.Name(), def.Name)
 		}
-		def.Attributes = defaultAttrs(canonicalAttrs(def.Attributes))
-		e.queues[def.Name] = &queue{def: def, wake: make(chan struct{})}
+		def.Attributes = defaultAttrs(canonicalAttrs(def.Attributes), isFIFOName(def.Name))
+		e.queues[def.Name] = newQueue(def)
 	}
 	clogQueue().Info("queues loaded", "count", len(e.queues))
 	return e, nil
@@ -134,11 +141,16 @@ func (e *Engine) persist(def definition) error {
 	return nil
 }
 
+func newQueue(def definition) *queue {
+	return &queue{def: def, wake: make(chan struct{}), dedup: map[string]dedupEntry{}}
+}
+
 func checkQueueName(name string) error {
-	if strings.HasSuffix(name, ".fifo") {
-		return fmt.Errorf("queue %q: fifo queues are not supported: %w", name, ErrUnsupported)
+	re := queueNameRE
+	if isFIFOName(name) {
+		re = fifoQueueNameRE
 	}
-	if !queueNameRE.MatchString(name) {
+	if !re.MatchString(name) {
 		return fmt.Errorf("queue name %q: %w", name, ErrInvalidName)
 	}
 	return nil
@@ -153,10 +165,16 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 	if err := checkQueueName(name); err != nil {
 		return err
 	}
-	if err := validateAttrs(attrs); err != nil {
+	fifo := isFIFOName(name)
+	attrs, err := checkFifoAttribute(name, attrs)
+	if err != nil {
+		return err
+	}
+	if err := validateAttrs(attrs, fifo); err != nil {
 		return err
 	}
 	attrs = canonicalAttrs(attrs)
+	maps.DeleteFunc(attrs, func(k, v string) bool { return v == "" && slices.Contains(clearable, k) })
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if q, ok := e.queues[name]; ok {
@@ -170,10 +188,13 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 	if len(tags) > maxTags {
 		return fmt.Errorf("%d tags: %w", len(tags), ErrTooManyTags)
 	}
+	if err := e.checkRedrive(name, attrs); err != nil {
+		return err
+	}
 	now := time.Now().Unix()
 	def := definition{
 		Name:         name,
-		Attributes:   defaultAttrs(attrs),
+		Attributes:   defaultAttrs(attrs, fifo),
 		Tags:         maps.Clone(tags),
 		Created:      now,
 		LastModified: now,
@@ -181,7 +202,52 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 	if err := e.persist(def); err != nil {
 		return err
 	}
-	e.queues[name] = &queue{def: def, wake: make(chan struct{})}
+	e.queues[name] = newQueue(def)
+	return nil
+}
+
+// checkFifoAttribute applies the FifoQueue rules of CreateQueue: a ".fifo"
+// name needs FifoQueue "true", and FifoQueue "true" needs a ".fifo" name. It
+// returns attrs without a FifoQueue "false", which a standard queue does not store.
+func checkFifoAttribute(name string, attrs map[string]string) (map[string]string, error) {
+	v, ok := attrs["FifoQueue"]
+	switch {
+	case ok && !isBool(v):
+		return nil, fmt.Errorf("attribute FifoQueue value %q: %w", v, ErrInvalidAttributeValue)
+	case isFIFOName(name) && v != "true":
+		return nil, fmt.Errorf("queue %q ends in .fifo, so FifoQueue must be true: %w", name, ErrInvalidParameterValue)
+	case !isFIFOName(name) && v == "true":
+		return nil, fmt.Errorf("FifoQueue true needs a queue name that ends in .fifo: %w", ErrInvalidParameterValue)
+	}
+	if v == "false" {
+		attrs = maps.Clone(attrs)
+		delete(attrs, "FifoQueue")
+	}
+	return attrs, nil
+}
+
+// checkRedrive checks the RedrivePolicy in attrs against the other queues: the
+// target must be an existing queue of this account and region, of the same
+// type, and its RedriveAllowPolicy must permit name. The caller holds e.mu.
+func (e *Engine) checkRedrive(name string, attrs map[string]string) error {
+	v := attrs["RedrivePolicy"]
+	if v == "" {
+		return nil
+	}
+	p, _ := parseRedrivePolicy(v)
+	target, ok := strings.CutPrefix(p.TargetARN, e.ARN(""))
+	tq := e.queues[target]
+	switch {
+	case !ok || tq == nil:
+		return fmt.Errorf("dead letter target %q does not exist: %w", p.TargetARN, ErrInvalidParameterValue)
+	case target == name:
+		return fmt.Errorf("a queue cannot be its own dead letter target: %w", ErrInvalidParameterValue)
+	case tq.fifo() != isFIFOName(name):
+		return fmt.Errorf("dead letter target %q is not the same queue type: %w", target, ErrInvalidParameterValue)
+	}
+	if allow, ok := parseRedriveAllowPolicy(tq.def.Attributes["RedriveAllowPolicy"]); ok && !allow.permits(e.ARN(name)) {
+		return fmt.Errorf("dead letter target %q does not allow queue %q: %w", target, name, ErrInvalidParameterValue)
+	}
 	return nil
 }
 
@@ -239,13 +305,43 @@ func (e *Engine) ListQueues(ctx context.Context, prefix string, limit int, after
 	}
 	e.mu.Unlock()
 	slices.Sort(names)
+	names, next = paginate(names, limit)
+	return names, next, nil
+}
+
+// paginate cuts sorted names to one page. With limit 0 it returns up to 1000
+// names and no next. Otherwise next is the last name when more remain.
+func paginate(names []string, limit int) (page []string, next string) {
 	if limit == 0 {
-		return names[:min(len(names), maxListQueues)], "", nil
+		return names[:min(len(names), maxListQueues)], ""
 	}
 	if len(names) > limit {
 		names = names[:limit]
 		next = names[limit-1]
 	}
+	return names, next
+}
+
+// DeadLetterSourceQueues returns the names of the queues whose RedrivePolicy
+// targets the queue called name, in sorted order. Paging works as in ListQueues.
+func (e *Engine) DeadLetterSourceQueues(ctx context.Context, name string, limit int, after string) (names []string, next string, err error) {
+	if err = ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	e.mu.Lock()
+	if _, err = e.find(name); err != nil {
+		e.mu.Unlock()
+		return nil, "", err
+	}
+	arn := e.ARN(name)
+	for n, q := range e.queues {
+		if p, ok := parseRedrivePolicy(q.def.Attributes["RedrivePolicy"]); ok && p.TargetARN == arn && (after == "" || n > after) {
+			names = append(names, n)
+		}
+	}
+	e.mu.Unlock()
+	slices.Sort(names)
+	names, next = paginate(names, limit)
 	return names, next, nil
 }
 
@@ -305,7 +401,10 @@ func (e *Engine) SetAttributes(ctx context.Context, name string, attrs map[strin
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validateAttrs(attrs); err != nil {
+	if _, ok := attrs["FifoQueue"]; ok {
+		return fmt.Errorf("attribute FifoQueue cannot be changed: %w", ErrInvalidAttributeValue)
+	}
+	if err := validateAttrs(attrs, isFIFOName(name)); err != nil {
 		return err
 	}
 	attrs = canonicalAttrs(attrs)
@@ -315,9 +414,18 @@ func (e *Engine) SetAttributes(ctx context.Context, name string, attrs map[strin
 	if err != nil {
 		return err
 	}
+	if err := e.checkRedrive(name, attrs); err != nil {
+		return err
+	}
 	def := q.def
 	def.Attributes = maps.Clone(def.Attributes)
-	maps.Copy(def.Attributes, attrs)
+	for k, v := range attrs {
+		if v == "" && slices.Contains(clearable, k) {
+			delete(def.Attributes, k)
+			continue
+		}
+		def.Attributes[k] = v
+	}
 	def.LastModified = time.Now().Unix()
 	return e.update(q, def)
 }

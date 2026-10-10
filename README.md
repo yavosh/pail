@@ -11,7 +11,7 @@ pail isn't a production object store:
 - It has no versioning, bucket policies, or storage tiers.
 - Unsupported S3 operations fail with `501 NotImplemented`. So do requests with `x-amz-tagging` or `x-amz-tagging-directive`.
 - SQS messages live in memory and are lost when pail restarts. Queue definitions persist.
-- SQS FIFO queues and dead-letter queues aren't supported yet.
+- SQS FIFO queues don't model high-throughput quotas, and `ReceiveRequestAttemptId` is ignored. Dead-letter queues move a message on the next receive, not in the background.
 - SQS uses the AWS JSON protocol only, which current SDKs and the AWS CLI send. It doesn't support the legacy query protocol.
 
 ## Install
@@ -162,6 +162,8 @@ Point the client at the same endpoint as S3. SQS requests use the signing scope 
   sqs = boto3.client("sqs", endpoint_url="http://127.0.0.1:9000", region_name="us-east-1")
   ```
 
+pail supports FIFO queues (names that end in `.fifo`, with `FifoQueue=true`) and dead-letter queues (`RedrivePolicy` and `RedriveAllowPolicy`). See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
+
 Queue URLs use account `000000000000` and the host of the request that returned them, for example `http://127.0.0.1:9000/000000000000/demo`. A queue URL works with any host name that reaches pail.
 
 ### Browser form uploads
@@ -214,7 +216,7 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | Lifecycle | `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, `DeleteBucketLifecycle` |
 | ACLs | `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, `PutObjectAcl` |
 | Browser forms | `POST Object` |
-| SQS | `CreateQueue`, `GetQueueUrl`, `DeleteQueue`, `PurgeQueue`, `ListQueues`, `GetQueueAttributes`, `SetQueueAttributes`, `TagQueue`, `UntagQueue`, `ListQueueTags`, `SendMessage`, `SendMessageBatch`, `ReceiveMessage`, `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
+| SQS | `CreateQueue`, `GetQueueUrl`, `DeleteQueue`, `PurgeQueue`, `ListQueues`, `ListDeadLetterSourceQueues`, `GetQueueAttributes`, `SetQueueAttributes`, `TagQueue`, `UntagQueue`, `ListQueueTags`, `SendMessage`, `SendMessageBatch`, `ReceiveMessage`, `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
 
 pail also verifies checksums, honors conditional headers, and accepts `aws-chunked` streaming uploads. For limits and exact behavior, see [S3 compatibility](docs/s3-compatibility.md) and [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 

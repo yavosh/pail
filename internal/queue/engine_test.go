@@ -133,11 +133,14 @@ func TestCreateQueue(t *testing.T) {
 		{"80 characters", strings.Repeat("a", 80), nil, nil},
 		{"space", "a b", nil, ErrInvalidName},
 		{"dot", "a.b", nil, ErrInvalidName},
-		{"fifo name", "q.fifo", nil, ErrUnsupported},
-		{"fifo attribute", "n1", map[string]string{"FifoQueue": "true"}, ErrUnsupported},
-		{"content dedup", "n2", map[string]string{"ContentBasedDeduplication": "true"}, ErrUnsupported},
-		{"redrive policy", "n3", map[string]string{"RedrivePolicy": "{}"}, ErrUnsupported},
-		{"redrive allow policy", "n4", map[string]string{"RedriveAllowPolicy": "{}"}, ErrUnsupported},
+		{"fifo name without FifoQueue", "q.fifo", nil, ErrInvalidParameterValue},
+		{"fifo name with FifoQueue false", "q2.fifo", map[string]string{"FifoQueue": "false"}, ErrInvalidParameterValue},
+		{"FifoQueue on a standard name", "n1", map[string]string{"FifoQueue": "true"}, ErrInvalidParameterValue},
+		{"FifoQueue false on a standard name", "n1b", map[string]string{"FifoQueue": "false"}, nil},
+		{"FifoQueue bad value", "n1c", map[string]string{"FifoQueue": "yes"}, ErrInvalidAttributeValue},
+		{"content dedup on a standard queue", "n2", map[string]string{"ContentBasedDeduplication": "true"}, ErrInvalidAttributeName},
+		{"redrive policy without a target", "n3", map[string]string{"RedrivePolicy": "{}"}, ErrInvalidAttributeValue},
+		{"redrive allow policy without a permission", "n4", map[string]string{"RedriveAllowPolicy": "{}"}, ErrInvalidAttributeValue},
 		{"unknown attribute", "n5", map[string]string{"Bogus": "1"}, ErrInvalidAttributeName},
 		{"bad value", "n6", map[string]string{"DelaySeconds": "901"}, ErrInvalidAttributeValue},
 	}
@@ -261,8 +264,8 @@ func TestSetAttributesValidation(t *testing.T) {
 	if err := e.SetAttributes(t.Context(), "q", map[string]string{"Bogus": "1"}); !errors.Is(err, ErrInvalidAttributeName) {
 		t.Errorf("SetAttributes(Bogus) error = %v, want ErrInvalidAttributeName", err)
 	}
-	if err := e.SetAttributes(t.Context(), "q", map[string]string{"FifoQueue": "true"}); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("SetAttributes(FifoQueue) error = %v, want ErrUnsupported", err)
+	if err := e.SetAttributes(t.Context(), "q", map[string]string{"FifoQueue": "true"}); !errors.Is(err, ErrInvalidAttributeValue) {
+		t.Errorf("SetAttributes(FifoQueue) error = %v, want ErrInvalidAttributeValue", err)
 	}
 	if err := e.SetAttributes(t.Context(), "nope", nil); !errors.Is(err, ErrQueueDoesNotExist) {
 		t.Errorf("SetAttributes(nope) error = %v, want ErrQueueDoesNotExist", err)

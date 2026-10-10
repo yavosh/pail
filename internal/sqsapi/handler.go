@@ -27,6 +27,7 @@ type Queues interface {
 	DeleteQueue(ctx context.Context, name string) error
 	Lookup(ctx context.Context, name string) error
 	ListQueues(ctx context.Context, prefix string, limit int, after string) (names []string, next string, err error)
+	DeadLetterSourceQueues(ctx context.Context, name string, limit int, after string) (names []string, next string, err error)
 	Attributes(ctx context.Context, name string, names []string) (map[string]string, error)
 	SetAttributes(ctx context.Context, name string, attrs map[string]string) error
 	Purge(ctx context.Context, name string) error
@@ -50,7 +51,7 @@ type Options struct {
 // does not implement. Any other name outside the table is not an SQS operation.
 var modelOnly = []string{
 	"AddPermission", "RemovePermission", "StartMessageMoveTask", "CancelMessageMoveTask",
-	"ListMessageMoveTasks", "ListDeadLetterSourceQueues",
+	"ListMessageMoveTasks",
 }
 
 // opFunc runs one operation. It returns the response value, or nil for an empty body.
@@ -76,6 +77,7 @@ func New(opts Options) http.Handler {
 		"DeleteQueue":                  operation(h.deleteQueue),
 		"PurgeQueue":                   operation(h.purgeQueue),
 		"ListQueues":                   operation(h.listQueues),
+		"ListDeadLetterSourceQueues":   operation(h.listDeadLetterSourceQueues),
 		"GetQueueAttributes":           operation(h.getQueueAttributes),
 		"SetQueueAttributes":           operation(h.setQueueAttributes),
 		"TagQueue":                     operation(h.tagQueue),

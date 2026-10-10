@@ -359,3 +359,104 @@ func TestSQSQueueURLHost(t *testing.T) {
 		t.Errorf("GetQueueUrl via 127.0.0.1 = %v, %v; want %s", got, err, want)
 	}
 }
+
+func TestSQSFifo(t *testing.T) {
+	c := startPail(t).sqsClient()
+	ctx := t.Context()
+	out, err := c.CreateQueue(ctx, &sqs.CreateQueueInput{
+		QueueName:  aws.String("orders.fifo"),
+		Attributes: map[string]string{"FifoQueue": "true"},
+	})
+	if err != nil {
+		t.Fatalf("CreateQueue(orders.fifo) error = %v", err)
+	}
+	url := aws.ToString(out.QueueUrl)
+	send := func(body, group, dedup string) *sqs.SendMessageOutput {
+		t.Helper()
+		got, err := c.SendMessage(ctx, &sqs.SendMessageInput{QueueUrl: &url, MessageBody: aws.String(body), MessageGroupId: aws.String(group), MessageDeduplicationId: aws.String(dedup)})
+		if err != nil {
+			t.Fatalf("SendMessage(%q) error = %v", body, err)
+		}
+		return got
+	}
+	first := send("a1", "a", "1")
+	dup := send("a1", "a", "1")
+	send("a2", "a", "2")
+	send("b1", "b", "3")
+	if aws.ToString(first.SequenceNumber) == "" || aws.ToString(dup.MessageId) != aws.ToString(first.MessageId) || aws.ToString(dup.SequenceNumber) != aws.ToString(first.SequenceNumber) {
+		t.Errorf("duplicate SendMessage = %+v, want the first result %+v", dup, first)
+	}
+
+	all := []types.MessageSystemAttributeName{types.MessageSystemAttributeNameAll}
+	a1 := mustReceive(t, c, &sqs.ReceiveMessageInput{QueueUrl: &url, MessageSystemAttributeNames: all})
+	if aws.ToString(a1.Body) != "a1" || a1.Attributes["MessageGroupId"] != "a" || a1.Attributes["SequenceNumber"] != aws.ToString(first.SequenceNumber) {
+		t.Errorf("first ReceiveMessage = %q %v, want a1 in group a", aws.ToString(a1.Body), a1.Attributes)
+	}
+	// Group a is locked, so the next message comes from group b.
+	b1 := mustReceive(t, c, &sqs.ReceiveMessageInput{QueueUrl: &url})
+	if aws.ToString(b1.Body) != "b1" {
+		t.Errorf("second ReceiveMessage = %q, want b1 while a1 is in flight", aws.ToString(b1.Body))
+	}
+	empty, err := c.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: &url, MaxNumberOfMessages: 10})
+	if err != nil || len(empty.Messages) != 0 {
+		t.Fatalf("ReceiveMessage with both groups locked = %v, %v; want none", empty, err)
+	}
+	if _, err := c.DeleteMessage(ctx, &sqs.DeleteMessageInput{QueueUrl: &url, ReceiptHandle: a1.ReceiptHandle}); err != nil {
+		t.Fatal(err)
+	}
+	if a2 := mustReceive(t, c, &sqs.ReceiveMessageInput{QueueUrl: &url}); aws.ToString(a2.Body) != "a2" {
+		t.Errorf("ReceiveMessage after deleting a1 = %q, want a2", aws.ToString(a2.Body))
+	}
+
+	_, err = c.SendMessage(ctx, &sqs.SendMessageInput{QueueUrl: &url, MessageBody: aws.String("x"), MessageDeduplicationId: aws.String("d")})
+	if err == nil {
+		t.Error("SendMessage without MessageGroupId error = nil, want an error")
+	}
+	_, err = c.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("plain.fifo")})
+	if err == nil {
+		t.Error("CreateQueue(plain.fifo) without FifoQueue error = nil, want an error")
+	}
+}
+
+func TestSQSDeadLetterQueue(t *testing.T) {
+	c := startPail(t).sqsClient()
+	ctx := t.Context()
+	dlq := mustQueue(t, c, "dead")
+	attrs, err := c.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{QueueUrl: &dlq, AttributeNames: []types.QueueAttributeName{"QueueArn"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := `{"deadLetterTargetArn":"` + attrs.Attributes["QueueArn"] + `","maxReceiveCount":1}`
+	out, err := c.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("source"), Attributes: map[string]string{"RedrivePolicy": policy}})
+	if err != nil {
+		t.Fatalf("CreateQueue(source) error = %v", err)
+	}
+	src := aws.ToString(out.QueueUrl)
+
+	if _, err := c.SendMessage(ctx, &sqs.SendMessageInput{QueueUrl: &src, MessageBody: aws.String("poison")}); err != nil {
+		t.Fatal(err)
+	}
+	first := mustReceive(t, c, &sqs.ReceiveMessageInput{QueueUrl: &src})
+	if _, err := c.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{QueueUrl: &src, ReceiptHandle: first.ReceiptHandle, VisibilityTimeout: 0}); err != nil {
+		t.Fatal(err)
+	}
+	gone, err := c.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: &src})
+	if err != nil || len(gone.Messages) != 0 {
+		t.Fatalf("ReceiveMessage after maxReceiveCount = %v, %v; want none", gone, err)
+	}
+	m := mustReceive(t, c, &sqs.ReceiveMessageInput{QueueUrl: &dlq, MessageSystemAttributeNames: []types.MessageSystemAttributeName{"DeadLetterQueueSourceArn"}})
+	if aws.ToString(m.Body) != "poison" || m.Attributes["DeadLetterQueueSourceArn"] != "arn:aws:sqs:us-east-1:000000000000:source" {
+		t.Errorf("dead-letter message = %q %v, want poison from source", aws.ToString(m.Body), m.Attributes)
+	}
+
+	list, err := c.ListDeadLetterSourceQueues(ctx, &sqs.ListDeadLetterSourceQueuesInput{QueueUrl: &dlq})
+	if err != nil || !slices.Equal(list.QueueUrls, []string{src}) {
+		t.Errorf("ListDeadLetterSourceQueues = %v, %v; want [%s]", list, err, src)
+	}
+	_, err = c.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("bad"), Attributes: map[string]string{
+		"RedrivePolicy": `{"deadLetterTargetArn":"` + attrs.Attributes["QueueArn"] + `-missing","maxReceiveCount":1}`,
+	}})
+	if err == nil {
+		t.Error("CreateQueue with a missing dead-letter target error = nil, want an error")
+	}
+}

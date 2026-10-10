@@ -159,7 +159,7 @@ func TestUnsupportedAndMalformed(t *testing.T) {
 	e := newEnv(t)
 	const unsupported = "com.amazonaws.sqs#UnsupportedOperation"
 	e.fail("Bogus", `{}`, 400, "com.amazon.coral.service#UnknownOperationException", "InvalidAction")
-	for _, op := range []string{"AddPermission", "RemovePermission", "StartMessageMoveTask", "CancelMessageMoveTask", "ListMessageMoveTasks", "ListDeadLetterSourceQueues"} {
+	for _, op := range []string{"AddPermission", "RemovePermission", "StartMessageMoveTask", "CancelMessageMoveTask", "ListMessageMoveTasks"} {
 		e.fail(op, `{}`, 400, unsupported, "AWS.SimpleQueueService.UnsupportedOperation")
 	}
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{}`))
@@ -262,7 +262,7 @@ func TestQueueLifecycle(t *testing.T) {
 	e.fail("CreateQueue", `{}`, 400, invalid, "InvalidParameterValue")
 	e.fail("CreateQueue", `{"QueueName":"q","Attributes":{"Bogus":"1"}}`, 400, "com.amazonaws.sqs#InvalidAttributeName", "InvalidAttributeName")
 	e.fail("CreateQueue", `{"QueueName":"q","Attributes":{"VisibilityTimeout":"x"}}`, 400, "com.amazonaws.sqs#InvalidAttributeValue", "InvalidAttributeValue")
-	e.fail("CreateQueue", `{"QueueName":"q.fifo"}`, 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation")
+	e.fail("CreateQueue", `{"QueueName":"q.fifo"}`, 400, invalid, "InvalidParameterValue")
 
 	e.okEmpty("DeleteQueue", body)
 	const missing = "com.amazonaws.sqs#QueueDoesNotExist"

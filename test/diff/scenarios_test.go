@@ -136,6 +136,9 @@ func scenarios() []scenario {
 		sqsVisibilityScenario(),
 		sqsBatchesScenario(),
 		sqsErrorsScenario(),
+		sqsFifoScenario(),
+		sqsDeadLetterScenario(),
+		sqsFairQueueScenario(),
 		snsAuthErrorsScenario(),
 		snsTopicBasicsScenario(),
 		{name: "auth-errors", steps: []step{
