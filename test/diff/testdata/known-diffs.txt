@@ -9,3 +9,4 @@ sns-auth-errors/no-credentials header:Content-Type pail routes requests by SigV4
 sns-auth-errors/no-credentials header:X-Amz-Id-2 pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55
 sns-auth-errors/no-credentials header:X-Amz-Request-Id pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55
 sns-auth-errors/no-credentials header:X-Amzn-Requestid pail routes requests by SigV4 scope and never reads bodies, so an unsigned SNS form POST reaches S3; real clients always sign https://github.com/yavosh/pail/pull/55
+sqs-dead-letter/list-dlq-sources body AWS lists dead-letter source queues with eventual consistency, and the recording ran seconds after create-source; pail lists the source at once https://github.com/yavosh/pail/pull/59

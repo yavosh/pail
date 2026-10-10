@@ -134,7 +134,7 @@ func TestDeadLetterQueue(t *testing.T) {
 	badArn := `{"QueueName":"bad","Attributes":{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:000000000000:none\",\"maxReceiveCount\":1}"}}`
 	e.fail("CreateQueue", badArn, 400, invalidParam, "InvalidParameterValue")
 	badCount := `{"QueueName":"bad","Attributes":{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:000000000000:dlq\",\"maxReceiveCount\":0}"}}`
-	e.fail("CreateQueue", badCount, 400, "com.amazonaws.sqs#InvalidAttributeValue", "InvalidAttributeValue")
+	e.fail("CreateQueue", badCount, 400, invalidParam, "InvalidParameterValue")
 
 	e.ok("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"poison"}`, src), nil)
 	var got receivedBody
@@ -181,8 +181,8 @@ func TestListDeadLetterSourceQueues(t *testing.T) {
 		t.Errorf("second page = %+v, want %v and no token", rest, want[2:])
 	}
 	w := e.send(testHost, testSecret, "ListDeadLetterSourceQueues", fmt.Sprintf(`{"QueueUrl":%q}`, e.createQueue("lonely")))
-	if w.Body.String() != `{"queueUrls":[]}` {
-		t.Errorf("empty ListDeadLetterSourceQueues = %s, want {\"queueUrls\":[]}", w.Body)
+	if w.Body.String() != `{}` {
+		t.Errorf("empty ListDeadLetterSourceQueues = %s, want {}", w.Body)
 	}
 	e.fail("ListDeadLetterSourceQueues", fmt.Sprintf(`{"QueueUrl":%q,"MaxResults":0}`, dlq), 400, invalidParam, "InvalidParameterValue")
 	e.fail("ListDeadLetterSourceQueues", fmt.Sprintf(`{"QueueUrl":%q,"NextToken":"!"}`, dlq), 400, invalidParam, "InvalidParameterValue")

@@ -20,7 +20,7 @@ func parseRedrivePolicy(v string) (redrivePolicy, bool) {
 		TargetARN       string      `json:"deadLetterTargetArn"`
 		MaxReceiveCount json.Number `json:"maxReceiveCount"`
 	}
-	if !isJSONObject(v) || json.Unmarshal([]byte(v), &in) != nil || in.TargetARN == "" || !intRange(1, 1000)(in.MaxReceiveCount.String()) {
+	if !isJSONObject(v) || json.Unmarshal([]byte(v), &in) != nil || in.TargetARN == "" || !intRange(0, 999999999)(in.MaxReceiveCount.String()) {
 		return redrivePolicy{}, false
 	}
 	n, _ := strconv.Atoi(in.MaxReceiveCount.String())

@@ -239,6 +239,9 @@ func (e *Engine) checkRedrive(name string, attrs map[string]string) error {
 	target, ok := strings.CutPrefix(p.TargetARN, e.ARN(""))
 	tq := e.queues[target]
 	switch {
+	case p.MaxReceiveCount < 1 || p.MaxReceiveCount > 1000:
+		// AWS answers a valid policy shape with an out-of-range count this way.
+		return fmt.Errorf("maxReceiveCount %d is not between 1 and 1000: %w", p.MaxReceiveCount, ErrInvalidParameterValue)
 	case !ok || tq == nil:
 		return fmt.Errorf("dead letter target %q does not exist: %w", p.TargetARN, ErrInvalidParameterValue)
 	case target == name:

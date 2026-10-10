@@ -159,7 +159,7 @@ type listDeadLetterSourceQueuesRequest struct {
 
 // The model names this member in lower case.
 type listDeadLetterSourceQueuesResponse struct {
-	QueueURLs []string `json:"queueUrls"`
+	QueueURLs []string `json:"queueUrls,omitempty"`
 	NextToken string   `json:",omitempty"`
 }
 
@@ -177,9 +177,6 @@ func (h *handler) listDeadLetterSourceQueues(r *http.Request, in listDeadLetterS
 		return nil, err
 	}
 	urls, token := queueURLs(r, names, next)
-	if urls == nil {
-		urls = []string{} // the model lists queueUrls as required (unverified until recorded)
-	}
 	return listDeadLetterSourceQueuesResponse{urls, token}, nil
 }
 
