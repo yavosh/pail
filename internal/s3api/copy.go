@@ -54,6 +54,15 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, errUnknownDirective)
 		return
 	}
+	var replaceTags bool
+	switch r.Header.Get("x-amz-tagging-directive") {
+	case "", "COPY":
+	case "REPLACE":
+		replaceTags = true
+	default:
+		writeError(w, r, errUnknownTagDirective)
+		return
+	}
 	options, apiErr, ok := parseObjectOptions(r.Header)
 	if !ok {
 		writeError(w, r, apiErr)
@@ -117,6 +126,9 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 	}
 	if !replace {
 		opts.Metadata = maps.Clone(info.Metadata)
+	}
+	if !replaceTags {
+		opts.Tags = info.Tags
 	}
 	if opts.ChecksumAlgorithm == "" {
 		opts.ChecksumAlgorithm = info.ChecksumAlgorithm

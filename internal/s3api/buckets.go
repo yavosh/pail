@@ -16,12 +16,14 @@ import (
 
 	"github.com/yavosh/pail/internal/acl"
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/tag"
 	"github.com/yavosh/pail/internal/vfs"
 )
 
 // Store is the storage the S3 handlers need. *store.Store implements it.
 type Store interface {
 	PutObjectACL(ctx context.Context, bucket, key string, policy acl.Policy) error
+	PutObjectTags(ctx context.Context, bucket, key string, tags []tag.Tag) error
 	GetBucketConfiguration(ctx context.Context, bucket, kind string) (store.BucketConfiguration, error)
 	PutBucketConfiguration(ctx context.Context, bucket, kind string, cfg *store.BucketConfiguration) error
 	CreateBucket(ctx context.Context, name string) error

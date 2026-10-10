@@ -1,0 +1,446 @@
+{
+  "scenario": "object-tagging",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-with-tagging",
+      "request": "PUT /k",
+      "fingerprint": "efc44d5e42bddbcd",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "head-tag-count",
+      "request": "HEAD /k",
+      "fingerprint": "9649ea94d5f63aac",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "1",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Tagging-Count": "2"
+      }
+    },
+    {
+      "step": "get-tag-count",
+      "request": "GET /k",
+      "fingerprint": "bdbb06b3fc873cbc",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "1",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Tagging-Count": "2"
+      },
+      "body": "x"
+    },
+    {
+      "step": "get-tagging",
+      "request": "GET /k?tagging",
+      "fingerprint": "d3c785c407e32177",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet\n    Tag\n      Key: color\n      Value: blue\n    Tag\n      Key: size\n      Value: large\n"
+    },
+    {
+      "step": "put-tagging",
+      "request": "PUT /k?tagging",
+      "fingerprint": "b6d71b3525bd4a06",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-tagging-after",
+      "request": "GET /k?tagging",
+      "fingerprint": "d3c785c407e32177",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet\n    Tag\n      Key: a\n      Value: 1\n    Tag\n      Key: b\n      Value: \n"
+    },
+    {
+      "step": "put-tagging-too-many",
+      "request": "PUT /k?tagging",
+      "fingerprint": "fece25c903ff562b",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadRequest\n"
+    },
+    {
+      "step": "put-tagging-duplicate",
+      "request": "PUT /k?tagging",
+      "fingerprint": "d7888f874bea640e",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidTag\n"
+    },
+    {
+      "step": "put-tagging-aws-prefix",
+      "request": "PUT /k?tagging",
+      "fingerprint": "e659484747dacccc",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidTag\n"
+    },
+    {
+      "step": "put-tagging-long-key",
+      "request": "PUT /k?tagging",
+      "fingerprint": "0f0ac482597ec8cc",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidTag\n"
+    },
+    {
+      "step": "put-tagging-long-value",
+      "request": "PUT /k?tagging",
+      "fingerprint": "30d2a0ebfcf7b7bb",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidTag\n"
+    },
+    {
+      "step": "put-tagging-no-md5",
+      "request": "PUT /k?tagging",
+      "fingerprint": "6ebdd93e89f912b6",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-tagging-malformed",
+      "request": "PUT /k?tagging",
+      "fingerprint": "b018e6516dd8622a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: MalformedXML\n"
+    },
+    {
+      "step": "put-header-aws-prefix",
+      "request": "PUT /bad",
+      "fingerprint": "59036b2e2b249294",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidTag\n"
+    },
+    {
+      "step": "put-header-no-value",
+      "request": "PUT /novalue",
+      "fingerprint": "63e2859e971f8e86",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-tagging-novalue",
+      "request": "GET /novalue?tagging",
+      "fingerprint": "3b5421bcabbf547d",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet\n    Tag\n      Key: a\n      Value: \n"
+    },
+    {
+      "step": "copy-default",
+      "request": "PUT /k2",
+      "fingerprint": "dfe5972ef2a95d94",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"9dd4e461268c8034f5c8564e155c67a6\"\n  ChecksumCRC64NVME: Lb1nAmRU5LE=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "get-tagging-copy",
+      "request": "GET /k2?tagging",
+      "fingerprint": "05154d11e5f846d9",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet\n    Tag\n      Key: c\n      Value: 3\n"
+    },
+    {
+      "step": "copy-replace",
+      "request": "PUT /k3",
+      "fingerprint": "31e63d3c7f5a7dc2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"9dd4e461268c8034f5c8564e155c67a6\"\n  ChecksumCRC64NVME: Lb1nAmRU5LE=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "get-tagging-replace",
+      "request": "GET /k3?tagging",
+      "fingerprint": "cd4b89729526ef61",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet\n    Tag\n      Key: x\n      Value: y\n"
+    },
+    {
+      "step": "copy-bad-directive",
+      "request": "PUT /k4",
+      "fingerprint": "ba6f5df8574d047d",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "delete-tagging",
+      "request": "DELETE /k?tagging",
+      "fingerprint": "5a57121be62909fd",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-tagging-deleted",
+      "request": "GET /k?tagging",
+      "fingerprint": "d3c785c407e32177",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet: \n"
+    },
+    {
+      "step": "head-after-delete-tagging",
+      "request": "HEAD /k",
+      "fingerprint": "9649ea94d5f63aac",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "1",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-tagging-missing-key",
+      "request": "GET /missing?tagging",
+      "fingerprint": "1957a96344f8d811",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "create-upload-tagged",
+      "request": "POST /mpu?uploads",
+      "fingerprint": "2d754a09876afbb0",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: mpu\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "put-part",
+      "request": "PUT /mpu?partNumber=1&uploadId={uploadId}",
+      "fingerprint": "489855b9a24b3082",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"8a97a2266a2751fb4967e9ccc4f50157\"",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "complete-upload",
+      "request": "POST /mpu?uploadId={uploadId}",
+      "fingerprint": "740c7f7562e73110",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CompleteMultipartUploadResult\n  Location: <volatile>\n  Bucket: {bucket}\n  Key: mpu\n  ETag: \"6633e137017b5843f3e1819a65007a4b-1\"\n  ChecksumCRC64NVME: QFsXHn4QiKk=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "get-tagging-upload",
+      "request": "GET /mpu?tagging",
+      "fingerprint": "7a687b4b109a3716",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet\n    Tag\n      Key: m\n      Value: 1\n"
+    },
+    {
+      "step": "get-bucket-tagging-none",
+      "request": "GET /?tagging",
+      "fingerprint": "2d658f99a0e16960",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchTagSet\n"
+    },
+    {
+      "step": "put-bucket-tagging",
+      "request": "PUT /?tagging",
+      "fingerprint": "4441f882649886a6",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-bucket-tagging",
+      "request": "GET /?tagging",
+      "fingerprint": "2d658f99a0e16960",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Tagging\n  TagSet\n    Tag\n      Key: team\n      Value: storage\n"
+    },
+    {
+      "step": "delete-bucket-tagging",
+      "request": "DELETE /?tagging",
+      "fingerprint": "7da5ef103b1ce72a",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-bucket-tagging-deleted",
+      "request": "GET /?tagging",
+      "fingerprint": "2d658f99a0e16960",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchTagSet\n"
+    },
+    {
+      "step": "delete-objects",
+      "request": "POST /?delete",
+      "fingerprint": "1c7c61a4e2684ba5",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Deleted\n    Key: k\n  Deleted\n    Key: k2\n  Deleted\n    Key: k3\n  Deleted\n    Key: mpu\n  Deleted\n    Key: novalue\n"
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

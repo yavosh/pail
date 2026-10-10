@@ -22,6 +22,12 @@ const (
 	opGetBucketLifecycle      operation = "GetBucketLifecycleConfiguration"
 	opPutBucketLifecycle      operation = "PutBucketLifecycleConfiguration"
 	opDeleteBucketLifecycle   operation = "DeleteBucketLifecycle"
+	opGetBucketTagging        operation = "GetBucketTagging"
+	opPutBucketTagging        operation = "PutBucketTagging"
+	opDeleteBucketTagging     operation = "DeleteBucketTagging"
+	opGetObjectTagging        operation = "GetObjectTagging"
+	opPutObjectTagging        operation = "PutObjectTagging"
+	opDeleteObjectTagging     operation = "DeleteObjectTagging"
 	opGetBucketOwnership      operation = "GetBucketOwnershipControls"
 	opPutBucketOwnership      operation = "PutBucketOwnershipControls"
 	opDeleteBucketOwnership   operation = "DeleteBucketOwnershipControls"
@@ -68,6 +74,7 @@ var subresources = map[string]bool{
 var versioned = map[operation]bool{
 	opGetObject: true, opHeadObject: true, opDeleteObject: true, opGetObjectAttributes: true,
 	opGetObjectACL: true, opPutObjectACL: true,
+	opGetObjectTagging: true, opPutObjectTagging: true, opDeleteObjectTagging: true,
 }
 
 // checkVersionID rejects a versionId other than "null" on a versioned
@@ -125,9 +132,6 @@ func resolve(method string, t target, q url.Values, h http.Header) operation {
 // resolveOperation is pail's whole S3 operation table. It returns "" for
 // anything unsupported, so the caller answers NotImplemented.
 func resolveOperation(method string, t target, q url.Values, h http.Header) operation {
-	if len(h.Values("x-amz-tagging")) > 0 || len(h.Values("x-amz-tagging-directive")) > 0 {
-		return ""
-	}
 	var sub []string
 	for k := range q {
 		// versionId selects no operation, it narrows one. Operations that ignore it are filtered in resolve.
@@ -182,6 +186,15 @@ func resolveOperation(method string, t target, q url.Values, h http.Header) oper
 			case http.MethodDelete:
 				return opDeleteBucketLifecycle
 			}
+		case only("tagging"):
+			switch method {
+			case http.MethodGet:
+				return opGetBucketTagging
+			case http.MethodPut:
+				return opPutBucketTagging
+			case http.MethodDelete:
+				return opDeleteBucketTagging
+			}
 		case only("ownershipControls"):
 			switch method {
 			case http.MethodGet:
@@ -217,6 +230,15 @@ func resolveOperation(method string, t target, q url.Values, h http.Header) oper
 			return opGetObjectACL
 		case method == http.MethodPut && only("acl"):
 			return opPutObjectACL
+		case only("tagging"):
+			switch method {
+			case http.MethodGet:
+				return opGetObjectTagging
+			case http.MethodPut:
+				return opPutObjectTagging
+			case http.MethodDelete:
+				return opDeleteObjectTagging
+			}
 		case method == http.MethodPut && only("uploadId") && part && !copySource:
 			return opUploadPart
 		case method == http.MethodPut && only("uploadId") && part && copySource:

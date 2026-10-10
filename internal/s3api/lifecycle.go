@@ -22,7 +22,7 @@ func (h *handler) setExpiration(w http.ResponseWriter, r *http.Request, bucket s
 	var earliest time.Time
 	id := ""
 	for _, rule := range c.Rules {
-		if !rule.Matches(info.Key, info.Size) {
+		if !rule.Matches(info.Key, info.Size, info.Tags) {
 			continue
 		}
 		deadline := rule.Expires(info.LastModified)

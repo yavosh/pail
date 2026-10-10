@@ -16,16 +16,18 @@ import (
 
 	"github.com/yavosh/pail/internal/acl"
 	"github.com/yavosh/pail/internal/checksum"
+	"github.com/yavosh/pail/internal/tag"
 	"github.com/yavosh/pail/internal/vfs"
 )
 
-// ObjectOptions are write options that the store keeps and returns but does
-// not act on. An empty field means the client set none.
+// ObjectOptions are write options that the store keeps and returns. Only Tags
+// have an effect: lifecycle rules match them. An empty field means the client set none.
 type ObjectOptions struct {
 	ServerSideEncryption string `json:"serverSideEncryption,omitempty"`
 	// StorageClass is empty for STANDARD.
-	StorageClass    string `json:"storageClass,omitempty"`
-	WebsiteRedirect string `json:"websiteRedirect,omitempty"`
+	StorageClass    string    `json:"storageClass,omitempty"`
+	WebsiteRedirect string    `json:"websiteRedirect,omitempty"`
+	Tags            []tag.Tag `json:"tags,omitempty"`
 }
 
 // ObjectInfo describes a stored object.

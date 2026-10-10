@@ -5,6 +5,8 @@ import (
 	"encoding/xml"
 	"strings"
 	"time"
+
+	"github.com/yavosh/pail/internal/tag"
 )
 
 // Configuration is an S3 lifecycle document.
@@ -26,9 +28,11 @@ type Rule struct {
 	Unknown    []xml.Name  `xml:",any"`
 }
 
-// Filter selects keys and exclusive object size bounds.
+// Filter selects keys, tags, and exclusive object size bounds. A direct Tag
+// holds at most one tag; And holds the combinations.
 type Filter struct {
 	Prefix  *string    `xml:"Prefix,omitempty"`
+	Tags    []tag.Tag  `xml:"Tag"`
 	Greater *int64     `xml:"ObjectSizeGreaterThan,omitempty"`
 	Less    *int64     `xml:"ObjectSizeLessThan,omitempty"`
 	And     *Filter    `xml:"And,omitempty"`
@@ -48,8 +52,8 @@ type Abort struct {
 	Unknown []xml.Name `xml:",any"`
 }
 
-// Matches reports whether an enabled rule selects key and size.
-func (r *Rule) Matches(key string, size int64) bool {
+// Matches reports whether an enabled rule selects key, size, and tags.
+func (r *Rule) Matches(key string, size int64, tags []tag.Tag) bool {
 	if r.Status != "Enabled" {
 		return false
 	}
@@ -63,7 +67,7 @@ func (r *Rule) Matches(key string, size int64) bool {
 	if f.And != nil {
 		f = f.And
 	}
-	return (f.Prefix == nil || strings.HasPrefix(key, *f.Prefix)) &&
+	return (f.Prefix == nil || strings.HasPrefix(key, *f.Prefix)) && tag.Has(tags, f.Tags) &&
 		(f.Greater == nil || size > *f.Greater) && (f.Less == nil || size < *f.Less)
 }
 

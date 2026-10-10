@@ -64,6 +64,8 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 ## Bucket settings and browser uploads
 
+- `internal/tag` holds tags and their limits. Object tags persist in `store.ObjectOptions.Tags` with the metadata, and `store.PutObjectTags` changes only them under the key lock. Bucket tags persist as the `tagging` bucket configuration. A lifecycle tag filter matches through `tag.Has`.
+
 - `internal/s3api/configuration.go` validates CORS and lifecycle XML and checks request checksums.
 - Bucket configurations persist atomically in `internal/store/configuration.go`.
 - `internal/lifecycle` holds expiration and multipart cleanup rules. The server owns the cleanup worker and stops it before closing storage.
@@ -76,7 +78,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Anonymous GET and HEAD check the ACL from the metadata snapshot used for the response.
 - Conditional deletes read current metadata under the object lock and hold it through deletion. `store.DeleteOptions.IfMatch` distinguishes an absent condition from an empty one. Single deletes use `If-Match`; batch deletes use each XML `ETag` and preserve errors in `Quiet` mode.
 - `internal/sigv4/post.go` verifies signed form policies. The file arrives last, and size checks finish before storage commits.
-- pail enables ACLs unless a bucket has `BucketOwnerEnforced` ownership controls (`internal/s3api/ownership.go`, stored as the `ownership` bucket configuration), and still authenticates one account. Tag filters, storage transitions, version actions, and email grantees remain unsupported.
+- pail enables ACLs unless a bucket has `BucketOwnerEnforced` ownership controls (`internal/s3api/ownership.go`, stored as the `ownership` bucket configuration), and still authenticates one account. Storage transitions, version actions, and email grantees remain unsupported.
 
 ## Client tests
 
