@@ -106,7 +106,7 @@ go test ./test/diff -record -run '^TestDiff/sqs-(fifo|dead-letter|fair-queue)$' 
 
 The recording identity also needs `sqs:ListDeadLetterSourceQueues`.
 
-The steps of `sns-topic-basics`, the four newer SQS scenarios, and these three scenarios start in `pending.txt`. After you record, remove each line whose step matches AWS.
+The steps of `sns-topic-basics` are still in `pending.txt`. After you record a new scenario, remove each line whose step matches AWS.
 
 ## What is compared
 

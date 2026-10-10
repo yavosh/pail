@@ -470,8 +470,8 @@ func (e *Engine) take(q *queue, now time.Time, limit, timeout int) []Message {
 // that triggers it, or nil when q has no policy or its target is gone.
 func (e *Engine) deadLetterTarget(q *queue) (*queue, int) {
 	p, ok := parseRedrivePolicy(q.def.Attributes["RedrivePolicy"])
-	if !ok {
-		return nil, 0
+	if !ok || p.MaxReceiveCount < 1 || p.MaxReceiveCount > 1000 {
+		return nil, 0 // only a hand-edited file can store an out-of-range count
 	}
 	name, ok := strings.CutPrefix(p.TargetARN, e.ARN(""))
 	if !ok {
