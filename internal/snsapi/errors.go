@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/yavosh/pail/internal/sigv4"
+	"github.com/yavosh/pail/internal/topic"
 )
 
 // apiError is one SNS error: the HTTP status, the fault type, and the code.
@@ -14,8 +15,9 @@ type apiError struct {
 	code   string
 }
 
-// The missing-auth, unknown-key, and bad-signature entries match the AWS
-// recordings in test/diff (sns-auth-errors). The others are from memory.
+// The auth entries, NotFound, and the InvalidAction status match the AWS
+// recordings in test/diff (sns-auth-errors, sns-topic-basics). The other codes
+// and statuses come from the service model and are unverified until recorded.
 var (
 	errInvalidAction       = apiError{http.StatusBadRequest, "Sender", "InvalidAction"}
 	errMissingAuth         = apiError{http.StatusForbidden, "Sender", "MissingAuthenticationToken"}
@@ -24,7 +26,47 @@ var (
 	errIncompleteSignature = apiError{http.StatusBadRequest, "Sender", "IncompleteSignature"}
 	errTooLarge            = apiError{http.StatusRequestEntityTooLarge, "Sender", "RequestEntityTooLarge"}
 	errInternalFailure     = apiError{http.StatusInternalServerError, "Receiver", "InternalFailure"}
+
+	errNotFound            = apiError{http.StatusNotFound, "Sender", "NotFound"}
+	errInvalidParameter    = apiError{http.StatusBadRequest, "Sender", "InvalidParameter"}
+	errResourceNotFound    = apiError{http.StatusNotFound, "Sender", "ResourceNotFound"}
+	errTagLimitExceeded    = apiError{http.StatusBadRequest, "Sender", "TagLimitExceeded"}
+	errEmptyBatchRequest   = apiError{http.StatusBadRequest, "Sender", "EmptyBatchRequest"}
+	errTooManyEntries      = apiError{http.StatusBadRequest, "Sender", "TooManyEntriesInBatchRequest"}
+	errEntryIDsNotDistinct = apiError{http.StatusBadRequest, "Sender", "BatchEntryIdsNotDistinct"}
+	errInvalidBatchEntryID = apiError{http.StatusBadRequest, "Sender", "InvalidBatchEntryId"}
+	errBatchRequestTooLong = apiError{http.StatusBadRequest, "Sender", "BatchRequestTooLong"}
+	errInternalError       = apiError{http.StatusInternalServerError, "Receiver", "InternalError"}
 )
+
+// mapping ties an error to its SNS error.
+var mappings = []struct {
+	target error
+	api    apiError
+}{
+	{topic.ErrNotFound, errNotFound},
+	{topic.ErrInvalidParameter, errInvalidParameter},
+	{topic.ErrResourceNotFound, errResourceNotFound},
+	{topic.ErrTagLimitExceeded, errTagLimitExceeded},
+	{errEmptyBatch, errEmptyBatchRequest},
+	{errTooManyInBatch, errTooManyEntries},
+	{errBatchIDsNotUniq, errEntryIDsNotDistinct},
+	{errBadBatchEntryID, errInvalidBatchEntryID},
+	{errBatchTooLong, errBatchRequestTooLong},
+}
+
+// mapError maps an engine or API error to an SNS error.
+func mapError(err error) apiError {
+	for _, m := range mappings {
+		if errors.Is(err, m.target) {
+			return m.api
+		}
+	}
+	return errInternalError
+}
+
+// entryCode returns the Code of a failed batch entry.
+func entryCode(err error) string { return mapError(err).code }
 
 // authError maps an error from the verifier to an SNS error.
 func authError(err error) apiError {

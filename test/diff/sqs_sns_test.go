@@ -2,6 +2,7 @@ package diff
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -251,6 +252,103 @@ func snsTopicBasicsScenario() scenario {
 		snsStep("publish", "Action=Publish&TopicArn={topicArn}&Message=hello&Version=2010-03-31"),
 		snsStep("delete-topic", "Action=DeleteTopic&TopicArn={topicArn}&Version=2010-03-31"),
 		snsStep("get-deleted-topic-attributes", attributes),
+	}}
+}
+
+// snsVersion ends every SNS form, as the SDKs send it.
+const snsVersion = "&Version=2010-03-31"
+
+func snsAttributesScenario() scenario {
+	const topic = "&TopicArn={topicArn}"
+	return scenario{name: "sns-topic-attributes", topics: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}&Attributes.entry.1.key=DisplayName&Attributes.entry.1.value=pail"+snsVersion),
+		snsStep("get-topic-attributes", "Action=GetTopicAttributes"+topic+snsVersion),
+		snsStep("set-display-name", "Action=SetTopicAttributes"+topic+"&AttributeName=DisplayName&AttributeValue=renamed"+snsVersion),
+		snsStep("get-after-set", "Action=GetTopicAttributes"+topic+snsVersion),
+		snsStep("create-topic-again", "Action=CreateTopic&Name={name}"+snsVersion),
+		snsStep("create-topic-conflict", "Action=CreateTopic&Name={name}&Attributes.entry.1.key=DisplayName&Attributes.entry.1.value=other"+snsVersion),
+		snsStep("create-invalid-name", "Action=CreateTopic&Name={name}+bad"+snsVersion),
+		snsStep("create-fifo-name", "Action=CreateTopic&Name={name}.fifo"+snsVersion),
+		snsStep("tag-resource", "Action=TagResource&ResourceArn={topicArn}&Tags.member.1.Key=env&Tags.member.1.Value=test"+snsVersion),
+		snsStep("list-tags", "Action=ListTagsForResource&ResourceArn={topicArn}"+snsVersion),
+		snsStep("untag-resource", "Action=UntagResource&ResourceArn={topicArn}&TagKeys.member.1=env"+snsVersion),
+		snsStep("list-tags-empty", "Action=ListTagsForResource&ResourceArn={topicArn}"+snsVersion),
+		snsStep("delete-topic", "Action=DeleteTopic"+topic+snsVersion),
+		snsStep("delete-topic-again", "Action=DeleteTopic"+topic+snsVersion),
+	}}
+}
+
+func snsSQSDeliveryScenario() scenario {
+	const topic = "&TopicArn={topicArn}"
+	const url = `"QueueUrl":"{queueUrl}"`
+	// The policy is a JSON string inside the JSON body, so its quotes are escaped. AWS
+	// delivers to an SQS queue only when the queue policy allows the topic.
+	policy := `{"QueueUrl":"{queueUrl}","Attributes":{"Policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",` +
+		`\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"{queueArn}\",` +
+		`\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"{topicArn}\"}}}]}"}}`
+	const attr = "&MessageAttributes.entry.1.Name=color&MessageAttributes.entry.1.Value.DataType=String&MessageAttributes.entry.1.Value.StringValue=blue"
+	return scenario{name: "sns-sqs-delivery", topics: []string{"{name}"}, queues: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
+		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
+		sqsStep("get-queue-arn", "GetQueueAttributes", `{`+url+`,"AttributeNames":["QueueArn"]}`),
+		sqsStep("set-queue-policy", "SetQueueAttributes", policy),
+		snsStep("subscribe", "Action=Subscribe"+topic+"&Protocol=sqs&Endpoint={queueArn}"+snsVersion),
+		snsStep("get-subscription-attributes", "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("list-subscriptions-by-topic", "Action=ListSubscriptionsByTopic"+topic+snsVersion),
+		snsStep("publish", "Action=Publish"+topic+"&Message=hello&Subject=greeting"+attr+snsVersion),
+		sqsStep("receive-envelope", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":10,"MaxNumberOfMessages":1}`),
+		sqsStep("delete-envelope", "DeleteMessage", `{`+url+`,"ReceiptHandle":"{receiptHandle}"}`),
+		snsStep("set-raw-delivery", "Action=SetSubscriptionAttributes&SubscriptionArn={subscriptionArn}&AttributeName=RawMessageDelivery&AttributeValue=true"+snsVersion),
+		snsStep("publish-raw", "Action=Publish"+topic+"&Message=raw"+attr+
+			"&MessageAttributes.entry.2.Name=tags&MessageAttributes.entry.2.Value.DataType=String.Array&MessageAttributes.entry.2.Value.StringValue=%5B%22a%22%2C%22b%22%5D"+snsVersion),
+		sqsStep("receive-raw", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":10,"MaxNumberOfMessages":1,"MessageAttributeNames":["All"]}`),
+		sqsStep("delete-raw", "DeleteMessage", `{`+url+`,"ReceiptHandle":"{receiptHandle}"}`),
+		snsStep("publish-structured", "Action=Publish"+topic+"&MessageStructure=json&Message=%7B%22default%22%3A%22d%22%2C%22sqs%22%3A%22s%22%7D"+snsVersion),
+		sqsStep("receive-structured", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":10,"MaxNumberOfMessages":1}`),
+		sqsStep("delete-structured", "DeleteMessage", `{`+url+`,"ReceiptHandle":"{receiptHandle}"}`),
+		snsStep("unsubscribe", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("list-subscriptions-after", "Action=ListSubscriptionsByTopic"+topic+snsVersion),
+		snsStep("delete-topic", "Action=DeleteTopic"+topic+snsVersion),
+		sqsStep("delete-queue", "DeleteQueue", `{`+url+`}`),
+	}}
+}
+
+func snsPublishBatchScenario() scenario {
+	const topic = "Action=PublishBatch&TopicArn={topicArn}"
+	const member = "&PublishBatchRequestEntries.member."
+	entry := func(n int, id, message string) string {
+		return fmt.Sprintf("%s%d.Id=%s%s%d.Message=%s", member, n, id, member, n, message)
+	}
+	var eleven string
+	for i := 1; i <= 11; i++ {
+		eleven += entry(i, fmt.Sprint("e", i), "fine")
+	}
+	return scenario{name: "sns-publish-batch", topics: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
+		snsStep("publish-batch", topic+entry(1, "a", "one")+entry(2, "b", "two")+snsVersion),
+		snsStep("publish-batch-partial", topic+entry(1, "ok", "fine")+entry(2, "empty", "")+snsVersion),
+		snsStep("publish-batch-empty", topic+snsVersion),
+		snsStep("publish-batch-too-many", topic+eleven+snsVersion),
+		snsStep("publish-batch-duplicate-ids", topic+entry(1, "a", "fine")+entry(2, "a", "fine")+snsVersion),
+		snsStep("publish-batch-invalid-id", topic+entry(1, "bad+id", "fine")+snsVersion),
+		snsStep("delete-topic", "Action=DeleteTopic&TopicArn={topicArn}"+snsVersion),
+	}}
+}
+
+func snsErrorsScenario() scenario {
+	const topic = "&TopicArn={topicArn}"
+	return scenario{name: "sns-errors", topics: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
+		snsStep("publish-no-message", "Action=Publish"+topic+snsVersion),
+		snsStep("publish-long-subject", "Action=Publish"+topic+"&Message=x&Subject="+strings.Repeat("s", 101)+snsVersion),
+		snsStep("publish-bad-structure", "Action=Publish"+topic+"&Message=%7B%22sqs%22%3A%22x%22%7D&MessageStructure=json"+snsVersion),
+		snsStep("publish-group-id-standard", "Action=Publish"+topic+"&Message=x&MessageGroupId=g"+snsVersion),
+		snsStep("subscribe-bad-protocol", "Action=Subscribe"+topic+"&Protocol=smoke&Endpoint=x"+snsVersion),
+		snsStep("subscribe-bad-endpoint", "Action=Subscribe"+topic+"&Protocol=sqs&Endpoint=not-an-arn"+snsVersion),
+		snsStep("get-missing-subscription-attributes", "Action=GetSubscriptionAttributes&SubscriptionArn={topicArn}:00000000-0000-0000-0000-000000000000"+snsVersion),
+		snsStep("unknown-action", "Action=Bogus"+snsVersion),
+		snsStep("delete-topic", "Action=DeleteTopic"+topic+snsVersion),
+		snsStep("publish-to-deleted", "Action=Publish"+topic+"&Message=x"+snsVersion),
 	}}
 }
 

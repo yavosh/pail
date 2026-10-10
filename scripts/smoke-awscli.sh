@@ -38,10 +38,11 @@ run() {
   fi
 }
 
-# s3, s3api, and sqs run the aws CLI against pail; every call passes --endpoint-url.
+# s3, s3api, sqs, and sns run the aws CLI against pail; every call passes --endpoint-url.
 s3() { run aws --endpoint-url "$SMOKE_ENDPOINT" s3 "$@"; }
 s3api() { run aws --endpoint-url "$SMOKE_ENDPOINT" s3api "$@"; }
 sqs() { run aws --endpoint-url "$SMOKE_ENDPOINT" sqs "$@"; }
+sns() { run aws --endpoint-url "$SMOKE_ENDPOINT" sns "$@"; }
 
 fail() {
   echo "FAILED: $*" >&2
@@ -128,4 +129,21 @@ sqs delete-message --queue-url "$queue_url" --receipt-handle "$handle"
 timeout=$(sqs get-queue-attributes --queue-url "$queue_url" --attribute-names All \
   --query Attributes.VisibilityTimeout --output text)
 [ "$timeout" = "30" ] || fail "VisibilityTimeout is $timeout, want 30"
+sqs delete-queue --queue-url "$queue_url"
+
+# SNS: publish to a topic with an SQS subscription, with the CLI's default settings.
+name=smoke-cli-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+topic_arn=$(sns create-topic --name "$name" --query TopicArn --output text)
+queue_url=$(sqs create-queue --queue-name "$name" --query QueueUrl --output text)
+queue_arn=$(sqs get-queue-attributes --queue-url "$queue_url" --attribute-names QueueArn \
+  --query Attributes.QueueArn --output text)
+sns subscribe --topic-arn "$topic_arn" --protocol sqs --notification-endpoint "$queue_arn"
+sns publish --topic-arn "$topic_arn" --message hello
+body=$(sqs receive-message --queue-url "$queue_url" --wait-time-seconds 1 \
+  --query 'Messages[0].Body' --output text)
+case $body in
+  '{'*'"Type":"Notification"'*'"Message":"hello"'*) ;;
+  *) fail "SNS delivery body is '$body'" ;;
+esac
+sns delete-topic --topic-arn "$topic_arn"
 sqs delete-queue --queue-url "$queue_url"

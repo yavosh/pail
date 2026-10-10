@@ -69,6 +69,12 @@ var volatileJSONKeys = map[string]bool{
 	"SenderId": true, // the recording identity's IAM unique ID; never store it
 }
 
+// envelopeVolatileKeys change on every run in an SNS envelope that an SQS
+// message carries as its Body. MessageId, TopicArn, and the other keys stay compared.
+var envelopeVolatileKeys = map[string]bool{
+	"Signature": true, "SigningCertURL": true, "Timestamp": true, "UnsubscribeURL": true, "SubscribeURL": true, "Token": true,
+}
+
 // droppedJSONKeys hold text that differs between servers, such as the Message of a
 // failed batch entry. Error bodies keep only __type, so this applies to successes.
 var droppedJSONKeys = map[string]bool{"Message": true}
@@ -300,9 +306,24 @@ func canonicalXML(body string) (string, bool, error) {
 	if root.name == "DeleteResult" {
 		slices.SortStableFunc(root.children, func(a, b *xmlNode) int { return strings.Compare(nodeText(a), nodeText(b)) })
 	}
+	dropFailedMessages(root)
 	var b strings.Builder
 	writeNode(&b, root, 0)
 	return b.String(), false, nil
+}
+
+// dropFailedMessages removes the Message of every failed batch entry, as the
+// SQS JSON normalization does: its text differs between servers.
+func dropFailedMessages(n *xmlNode) {
+	for _, c := range n.children {
+		dropFailedMessages(c)
+		if c.name != "Failed" {
+			continue
+		}
+		for _, member := range c.children {
+			member.children = slices.DeleteFunc(member.children, func(e *xmlNode) bool { return e.name == "Message" })
+		}
+	}
 }
 
 // canonicalJSON renders a JSON body as one "path: value" line per leaf. For an
@@ -345,6 +366,13 @@ func writeJSON(b *strings.Builder, path, key string, v any) {
 			if path != "" {
 				p = path + "." + k
 			}
+			// An envelope body carries a timestamp and a signature, so its checksum changes too.
+			if body, _ := v["Body"].(string); k == "MD5OfBody" && body != "" {
+				if _, ok := snsEnvelope(body); ok {
+					fmt.Fprintf(b, "%s: <volatile>\n", p)
+					continue
+				}
+			}
 			writeJSON(b, p, k, v[k])
 		}
 	case []any:
@@ -357,10 +385,48 @@ func writeJSON(b *strings.Builder, path, key string, v any) {
 	case nil:
 		fmt.Fprintf(b, "%s: null\n", path)
 	default:
+		if s, ok := v.(string); ok {
+			if env, ok := snsEnvelope(s); ok {
+				writeEnvelope(b, path, env)
+				return
+			}
+		}
 		if volatileJSONKeys[key] {
 			v = "<volatile>"
 		}
 		fmt.Fprintf(b, "%s: %v\n", path, v)
+	}
+}
+
+// snsEnvelope reports whether s is the JSON envelope of an SNS notification or
+// subscription confirmation, which SNS delivers as an SQS message body.
+func snsEnvelope(s string) (map[string]any, bool) {
+	if !strings.HasPrefix(s, "{") {
+		return nil, false
+	}
+	var env map[string]any
+	if json.Unmarshal([]byte(s), &env) != nil {
+		return nil, false
+	}
+	typ, _ := env["Type"].(string)
+	return env, typ == "Notification" || typ == "SubscriptionConfirmation"
+}
+
+// writeEnvelope writes an envelope as a nested object under path, so a golden
+// file shows Body.Message, and masks the keys that change on every run. Message
+// stays compared, unlike the Message of a failed batch entry.
+func writeEnvelope(b *strings.Builder, path string, env map[string]any) {
+	for _, k := range slices.Sorted(maps.Keys(env)) {
+		p := path + "." + k
+		switch v := env[k].(type) {
+		case map[string]any:
+			writeJSON(b, p, k, v)
+		default:
+			if envelopeVolatileKeys[k] {
+				v = "<volatile>"
+			}
+			fmt.Fprintf(b, "%s: %v\n", p, v)
+		}
 	}
 }
 

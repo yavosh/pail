@@ -9,13 +9,14 @@ import (
 	"github.com/yavosh/pail/internal/sigv4"
 	"github.com/yavosh/pail/internal/snsapi"
 	"github.com/yavosh/pail/internal/sqsapi"
+	"github.com/yavosh/pail/internal/topic"
 )
 
 // router sends each request to one service without reading the body.
 type router struct{ s3, sqs, sns http.Handler }
 
 // NewHandler returns the handler for one listener that serves S3, SQS, and SNS.
-func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues) http.Handler {
+func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics *topic.Engine) http.Handler {
 	return &router{
 		s3: s3api.New(s3api.Options{
 			Domain:          cfg.Domain,
@@ -23,10 +24,26 @@ func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues) http.Ha
 			SecretAccessKey: cfg.SecretAccessKey,
 			Region:          cfg.Region,
 			Store:           st,
+			Internal:        map[string]http.Handler{"GET /_pail/sns/signing-cert.pem": signingCert(topics)},
 		}),
 		sqs: sqsapi.New(sqsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Queues: queues}),
-		sns: snsapi.New(snsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey}),
+		sns: snsapi.New(snsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Topics: topics}),
 	}
+}
+
+// signingCert serves the certificate that verifies SNS notification signatures.
+// It needs no credentials, as on AWS.
+func signingCert(topics *topic.Engine) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pem, err := topics.CertPEM(r.Context())
+		if err != nil {
+			clogServer().Error("signing certificate", "error", err)
+			http.Error(w, "signing certificate unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-pem-file")
+		_, _ = w.Write(pem)
+	})
 }
 
 func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {

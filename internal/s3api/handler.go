@@ -24,6 +24,9 @@ type Options struct {
 	// Region is reported by GetBucketLocation and x-amz-bucket-region.
 	Region string
 	Store  Store
+	// Internal adds routes to the /_pail/ mux, keyed by a ServeMux pattern. The
+	// server uses it for endpoints that other services own, such as the SNS certificate.
+	Internal map[string]http.Handler
 }
 
 // opHandler serves one S3 operation for the bucket and key in t.
@@ -81,6 +84,9 @@ func (h *handler) routes() {
 		opListMultipartUploads:    h.handleListMultipartUploads,
 	}
 	h.internal.HandleFunc("GET /_pail/health", handleHealth)
+	for pattern, fn := range h.opts.Internal {
+		h.internal.Handle(pattern, fn)
+	}
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
