@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/yavosh/pail/internal/queue"
@@ -335,6 +336,12 @@ func verify(t *testing.T, cert []byte, body string) {
 		toSign += "Subject\n" + env.Subject + "\n"
 	}
 	toSign += "Timestamp\n" + env.Timestamp + "\nTopicArn\n" + env.TopicArn + "\nType\nNotification\n"
+	verifySignature(t, cert, env.SignatureVersion, toSign, env.Signature)
+}
+
+// verifySignature checks that signature signs toSign under the certificate.
+func verifySignature(t *testing.T, cert []byte, version, toSign, signature string) {
+	t.Helper()
 	block, _ := pem.Decode(cert)
 	if block == nil {
 		t.Fatal("certificate is not PEM")
@@ -343,13 +350,13 @@ func verify(t *testing.T, cert []byte, body string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := base64.StdEncoding.DecodeString(env.Signature)
+	sig, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
 		t.Fatal(err)
 	}
 	hash, sum := crypto.SHA1, sha1.Sum([]byte(toSign))
 	digest := sum[:]
-	if env.SignatureVersion == "2" {
+	if version == "2" {
 		s := sha256.Sum256([]byte(toSign))
 		hash, digest = crypto.SHA256, s[:]
 	}
@@ -358,7 +365,7 @@ func verify(t *testing.T, cert []byte, body string) {
 		t.Fatal("certificate key is not RSA")
 	}
 	if err := rsa.VerifyPKCS1v15(pub, hash, digest, sig); err != nil {
-		t.Errorf("signature of version %s does not verify: %v\n%s", env.SignatureVersion, err, toSign)
+		t.Errorf("signature of version %s does not verify: %v\n%s", version, err, toSign)
 	}
 }
 
@@ -478,6 +485,63 @@ func TestPublishFilterPolicy(t *testing.T) {
 			if !reflect.DeepEqual(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(want))) {
 				t.Errorf("Publish(%+v) delivered to %v, want %v", in, got, want)
 			}
+		})
+	}
+}
+
+func TestPublishMessageStructurePerProtocol(t *testing.T) {
+	tests := []struct {
+		name, message, sqs, http, https string
+	}{
+		{"own keys", `{"default":"d","sqs":"s","http":"h","https":"hs"}`, "s", "h", "hs"},
+		{"default fallback", `{"default":"d"}`, "d", "d", "d"},
+		{"only http", `{"default":"d","http":"h"}`, "d", "h", "d"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				e, fq := newEngine(t)
+				ep := startEndpoint(t, e, ok)
+				stop := runDeliveries(e)
+				defer stop()
+				arn := mustTopic(t, e, "per-protocol")
+				mustSubscribe(t, e, arn, "q1", map[string]string{"RawMessageDelivery": "true"})
+				for _, proto := range []string{"http", "https"} {
+					// The in-memory server speaks plain HTTP, so an https subscription uses an http URL
+					// that its protocol field marks as https.
+					sub, _ := subscribeHTTP(t, e, arn, "http://"+proto+".example.com/", map[string]string{"RawMessageDelivery": "true"})
+					e.subs[sub].Protocol = proto
+					e.subs[sub].Token = ""
+					e.subs[sub].Pending = false
+				}
+				synctest.Wait()
+				before := len(ep.got())
+				in := publishInput(arn)
+				in.MessageStructure, in.Message = "json", tt.message
+				if _, err := e.Publish(t.Context(), in); err != nil {
+					t.Fatal(err)
+				}
+				synctest.Wait()
+				got := map[string]string{}
+				for _, p := range ep.got()[before:] {
+					got[p.header.Get("X-Amz-Sns-Subscription-Arn")] = p.body
+				}
+				want := map[string]string{}
+				for _, s := range e.subs {
+					switch s.Protocol {
+					case "http":
+						want[s.ARN] = tt.http
+					case "https":
+						want[s.ARN] = tt.https
+					}
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("HTTP deliveries = %v, want %v", got, want)
+				}
+				if len(fq.sent) != 1 || fq.sent[0].In.Body != tt.sqs {
+					t.Errorf("SQS deliveries = %v, want one with body %q", fq.sent, tt.sqs)
+				}
+			})
 		})
 	}
 }

@@ -30,11 +30,17 @@ func TestHandler(t *testing.T) {
 		want     string
 		wantMsg  string // checked when set
 	}{
-		{"unimplemented action", testSecret, "Action=ConfirmSubscription&Version=2010-03-31", 400, "InvalidAction", "ConfirmSubscription is not supported"},
+		{"unimplemented action", testSecret, "Action=CreatePlatformApplication&Version=2010-03-31", 400, "InvalidAction", "CreatePlatformApplication is not supported"},
 		{"unknown action", testSecret, "Action=Bogus&Version=2010-03-31", 400, "InvalidAction", "Bogus is not supported"},
 		{"no action", testSecret, "Version=2010-03-31", 400, "InvalidAction", "the action is not supported"},
 		{"unsigned", "", listBody, 403, "MissingAuthenticationToken", ""},
 		{"wrong secret", "wrong", listBody, 403, "SignatureDoesNotMatch", ""},
+		// A missing Token or SubscriptionArn shows that the unsigned request reached the action.
+		{"unsigned ConfirmSubscription reaches the action", "", "Action=ConfirmSubscription&TopicArn=arn&Version=2010-03-31", 400, "ValidationError", "TopicArn and Token are required: validation error"},
+		{"unsigned Unsubscribe reaches the action", "", "Action=Unsubscribe&Version=2010-03-31", 400, "InvalidParameter", "SubscriptionArn is required: invalid parameter"},
+		{"unsigned Publish", "", "Action=Publish&TopicArn=arn&Message=m&Version=2010-03-31", 403, "MissingAuthenticationToken", ""},
+		{"unsigned unknown action", "", "Action=Bogus&Version=2010-03-31", 403, "MissingAuthenticationToken", ""},
+		{"ConfirmSubscription with a wrong secret", "wrong", "Action=ConfirmSubscription&TopicArn=arn&Token=t&Version=2010-03-31", 403, "SignatureDoesNotMatch", ""},
 		{"over the cap", testSecret, "Action=" + strings.Repeat("x", maxRequestBytes), 413, "RequestEntityTooLarge", ""},
 	}
 	h := New(Options{AccessKeyID: testKey, SecretAccessKey: testSecret})

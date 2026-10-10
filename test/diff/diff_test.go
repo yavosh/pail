@@ -120,7 +120,7 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 		name := strings.ReplaceAll(q, "{name}", bucket)
 		t.Cleanup(func() { cleanupQueue(t, tg, name) })
 	}
-	vars := map[string]string{"name": bucket}
+	vars := tg.startVars(bucket)
 	for _, topic := range sc.topics {
 		name := strings.ReplaceAll(topic, "{name}", bucket)
 		t.Cleanup(func() { cleanupTopic(t, tg, name, vars["topicArn"]) })
@@ -152,7 +152,7 @@ func runScenario(t *testing.T, tg *target, sc scenario, bucket string, vars map[
 		}
 		captureVars(vars, resp.body)
 		prev = st.name + " answered " + failure(resp, nil)
-		g.Exchanges = append(g.Exchanges, normalize(st, bucket, resp))
+		g.Exchanges = append(g.Exchanges, tg.normalize(st, bucket, resp))
 	}
 	return g
 }
@@ -168,7 +168,7 @@ func TestReplayIsDeterministic(t *testing.T) {
 	for _, sc := range scenarios() {
 		t.Run(sc.name, func(t *testing.T) {
 			name := newBucketName()
-			want := runScenario(t, tg, sc, name, map[string]string{"name": name})
+			want := runScenario(t, tg, sc, name, tg.startVars(name))
 			unexpected, seen := replayScenario(t, tg, sc, want, nil, nil)
 			for _, d := range unexpected {
 				t.Error(d)
@@ -187,7 +187,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 		t.Fatalf("golden file has %d steps, scenario has %d: record it again", len(want.Exchanges), len(sc.steps))
 	}
 	bucket := newBucketName()
-	vars := map[string]string{"name": bucket}
+	vars := tg.startVars(bucket)
 	for i, st := range sc.steps {
 		w := want.Exchanges[i]
 		if w.Step != st.name || w.Request != describe(st) || w.Fingerprint != fingerprint(st) {
@@ -204,7 +204,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 			t.Fatal(msg)
 		}
 		captureVars(vars, resp.body)
-		got := normalize(st, bucket, resp)
+		got := tg.normalize(st, bucket, resp)
 		diffs := compare(w, got)
 		stepKey := sc.name + "/" + st.name
 		for _, key := range slices.Sorted(maps.Keys(diffs)) {
@@ -266,6 +266,8 @@ func awsTarget(t *testing.T) *target {
 		scheme:      "https",
 		host:        func(bucket string) string { return bucket + ".s3." + region + ".amazonaws.com" },
 		serviceHost: func(service string) string { return service + "." + region + ".amazonaws.com" },
+		// AWS refuses internal endpoints, so this one is public. The maintainer owns it.
+		vars: map[string]string{"httpEndpoint": "https://nar.cy/pail-sns"},
 	}
 }
 
@@ -315,6 +317,8 @@ func pailTarget(t *testing.T) *target {
 		scheme:      "http",
 		host:        func(bucket string) string { return bucket + ".localhost:" + port },
 		serviceHost: func(string) string { return "localhost:" + port },
+		// pail posts confirmations here; the closed port keeps them on this machine.
+		vars: map[string]string{"httpEndpoint": "https://127.0.0.1:1/pail"},
 	}
 }
 

@@ -74,7 +74,7 @@ func queueARN(name string) string { return "arn:aws:sqs:us-east-1:000000000000:"
 
 func mustSubscribe(t *testing.T, e *Engine, topicARN, queueName string, attrs map[string]string) string {
 	t.Helper()
-	arn, err := e.Subscribe(t.Context(), topicARN, "sqs", queueARN(queueName), attrs)
+	arn, _, err := e.Subscribe(t.Context(), SubscribeInput{TopicARN: topicARN, Protocol: "sqs", Endpoint: queueARN(queueName), Attributes: attrs})
 	if err != nil {
 		t.Fatalf("Subscribe(%q, %q, %v) error = %v", topicARN, queueName, attrs, err)
 	}
@@ -377,7 +377,7 @@ func TestSubscribe(t *testing.T) {
 	}{
 		{"missing topic", arn + "x", "sqs", ep, nil, ErrNotFound},
 		{"not an ARN", "x", "sqs", ep, nil, ErrInvalidParameter},
-		{"http protocol", arn, "http", "http://example.com", nil, ErrInvalidParameter},
+		{"email protocol", arn, "email", "user@example.com", nil, ErrInvalidParameter},
 		{"unknown protocol", arn, "smoke", "x", nil, ErrInvalidParameter},
 		{"endpoint not an ARN", arn, "sqs", "not-an-arn", nil, ErrInvalidParameter},
 		{"endpoint in another region", arn, "sqs", "arn:aws:sqs:eu-west-1:000000000000:q", nil, ErrInvalidParameter},
@@ -394,7 +394,7 @@ func TestSubscribe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got, err := e.Subscribe(t.Context(), tt.topic, tt.protocol, tt.endpoint, tt.attrs); !errors.Is(err, tt.want) {
+			if got, _, err := e.Subscribe(t.Context(), SubscribeInput{TopicARN: tt.topic, Protocol: tt.protocol, Endpoint: tt.endpoint, Attributes: tt.attrs}); !errors.Is(err, tt.want) {
 				t.Errorf("Subscribe(%q, %q, %q, %v) = %q, %v; want error %v", tt.topic, tt.protocol, tt.endpoint, tt.attrs, got, err, tt.want)
 			}
 		})
@@ -438,13 +438,13 @@ func TestSubscribe(t *testing.T) {
 	if err := e.fs.Remove(subFile(first)); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Unsubscribe(t.Context(), first); err != nil {
+	if err := e.Unsubscribe(t.Context(), first, true); err != nil {
 		t.Fatalf("Unsubscribe error = %v", err)
 	}
-	if err := e.Unsubscribe(t.Context(), first); !errors.Is(err, ErrNotFound) {
+	if err := e.Unsubscribe(t.Context(), first, true); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Unsubscribe again error = %v, want %v", err, ErrNotFound)
 	}
-	if err := e.Unsubscribe(t.Context(), "x"); !errors.Is(err, ErrInvalidParameter) {
+	if err := e.Unsubscribe(t.Context(), "x", true); !errors.Is(err, ErrInvalidParameter) {
 		t.Errorf("Unsubscribe(x) error = %v, want %v", err, ErrInvalidParameter)
 	}
 }

@@ -1,0 +1,246 @@
+{
+  "scenario": "sns-http-subscriptions",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "6a33e4edc56aa74a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "subscribe-protocol-mismatch",
+      "request": "POST sns Subscribe",
+      "fingerprint": "aabd66ba52e4967b",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "subscribe-not-url",
+      "request": "POST sns Subscribe",
+      "fingerprint": "940795c8f2485363",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "subscribe-https",
+      "request": "POST sns Subscribe",
+      "fingerprint": "1fc34bed3c6a1c14",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: pending confirmation\n  ResponseMetadata\n"
+    },
+    {
+      "step": "subscribe-https-return-arn",
+      "request": "POST sns Subscribe",
+      "fingerprint": "72c31f04b39d2107",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-pending-attributes",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: {httpEndpoint}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"healthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"sicklyRetryPolicy\":null,\"throttlePolicy\":null,\"requestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"},\"guaranteed\":false}\n      entry\n        key: Protocol\n        value: https\n      entry\n        key: PendingConfirmation\n        value: true\n      entry\n        key: ConfirmationWasAuthenticated\n        value: false\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "list-pending",
+      "request": "POST sns ListSubscriptionsByTopic",
+      "fingerprint": "461a8416ed3aeae7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ListSubscriptionsByTopicResponse\n  ListSubscriptionsByTopicResult\n    Subscriptions\n      member\n        Owner: {account}\n        Protocol: https\n        Endpoint: {httpEndpoint}\n        SubscriptionArn: PendingConfirmation\n        TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "confirm-bad-token",
+      "request": "POST sns ConfirmSubscription",
+      "fingerprint": "6961ecb87397f703",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "confirm-missing-token",
+      "request": "POST sns ConfirmSubscription",
+      "fingerprint": "2decf51a2461a5db",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: ValidationError\n"
+    },
+    {
+      "step": "confirm-unsigned-bad-token",
+      "request": "GET sns ",
+      "fingerprint": "794b3f5673b51cbd",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "unsubscribe-unsigned-pending",
+      "request": "GET sns ",
+      "fingerprint": "ad923c4be20ac284",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "list-after-unsigned-pending",
+      "request": "POST sns ListSubscriptionsByTopic",
+      "fingerprint": "461a8416ed3aeae7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ListSubscriptionsByTopicResponse\n  ListSubscriptionsByTopicResult\n    Subscriptions\n      member\n        Owner: {account}\n        Protocol: https\n        Endpoint: {httpEndpoint}\n        SubscriptionArn: PendingConfirmation\n        TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "unsubscribe-pending",
+      "request": "POST sns Unsubscribe",
+      "fingerprint": "e1a64a7c34892c4a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "list-after-pending",
+      "request": "POST sns ListSubscriptionsByTopic",
+      "fingerprint": "461a8416ed3aeae7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ListSubscriptionsByTopicResponse\n  ListSubscriptionsByTopicResult\n    Subscriptions\n      member\n        Owner: {account}\n        Protocol: https\n        Endpoint: {httpEndpoint}\n        SubscriptionArn: PendingConfirmation\n        TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "get-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\n"
+    },
+    {
+      "step": "subscribe-sqs",
+      "request": "POST sns Subscribe",
+      "fingerprint": "acc96363bebb5ddb",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "unsubscribe-unsigned-sqs",
+      "request": "GET sns ",
+      "fingerprint": "ad923c4be20ac284",
+      "status": 403,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: AuthorizationError\n"
+    },
+    {
+      "step": "get-sqs-after-unsigned",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: arn:aws:sqs:us-east-1:{account}:{name}\n      entry\n        key: Protocol\n        value: sqs\n      entry\n        key: PendingConfirmation\n        value: false\n      entry\n        key: ConfirmationWasAuthenticated\n        value: true\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "subscribe-internal-endpoint",
+      "request": "POST sns Subscribe",
+      "fingerprint": "9655fe4fb95719fb",
+      "status": 403,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: AuthorizationError\n"
+    },
+    {
+      "step": "delete-topic",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

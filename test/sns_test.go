@@ -11,8 +11,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
@@ -366,5 +369,125 @@ func TestSNSFilterPolicy(t *testing.T) {
 	})
 	if _, ok := errors.AsType[*types.InvalidParameterException](err); !ok {
 		t.Errorf("SetSubscriptionAttributes with a bad policy error = %v, want *types.InvalidParameterException", err)
+	}
+}
+
+// snsPost is one request that an HTTP endpoint received from pail.
+type snsPost struct {
+	header http.Header
+	body   string
+}
+
+// startSNSEndpoint serves a real loopback endpoint, because pail posts with its
+// own HTTP client. Every POST goes to the returned channel.
+func startSNSEndpoint(t *testing.T) (string, <-chan snsPost) {
+	t.Helper()
+	posts := make(chan snsPost, 16)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		posts <- snsPost{r.Header.Clone(), string(body)}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/hook", posts
+}
+
+func nextSNSPost(t *testing.T, posts <-chan snsPost) snsPost {
+	t.Helper()
+	select {
+	case p := <-posts:
+		return p
+	case <-time.After(10 * time.Second):
+		t.Fatal("the endpoint received no request within 10 s")
+		return snsPost{}
+	}
+}
+
+// getUnsigned sends an unsigned GET through p and returns the status and body.
+func getUnsigned(t *testing.T, p *pail, rawURL string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rawURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s error = %v", rawURL, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+func TestSNSHTTPDelivery(t *testing.T) {
+	p := startPail(t)
+	sc := p.snsClient()
+	ctx := t.Context()
+	endpoint, posts := startSNSEndpoint(t)
+	topic, err := sc.CreateTopic(ctx, &sns.CreateTopicInput{Name: aws.String("webhook")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topicARN := aws.ToString(topic.TopicArn)
+	sub, err := sc.Subscribe(ctx, &sns.SubscribeInput{TopicArn: &topicARN, Protocol: aws.String("http"), Endpoint: aws.String(endpoint)})
+	if err != nil || aws.ToString(sub.SubscriptionArn) != "pending confirmation" {
+		t.Fatalf("Subscribe http = %v, %v; want pending confirmation", sub, err)
+	}
+
+	conf := nextSNSPost(t, posts)
+	var confirmation struct{ Type, Token, TopicArn, SubscribeURL string }
+	if err := json.Unmarshal([]byte(conf.body), &confirmation); err != nil {
+		t.Fatalf("confirmation %q is not JSON: %v", conf.body, err)
+	}
+	if confirmation.Type != "SubscriptionConfirmation" || confirmation.TopicArn != topicARN || conf.header.Get("x-amz-sns-message-type") != "SubscriptionConfirmation" {
+		t.Errorf("confirmation = %+v, headers %v; want SubscriptionConfirmation for %s", confirmation, conf.header, topicARN)
+	}
+	list, err := sc.ListSubscriptionsByTopic(ctx, &sns.ListSubscriptionsByTopicInput{TopicArn: &topicARN})
+	if err != nil || len(list.Subscriptions) != 1 || aws.ToString(list.Subscriptions[0].SubscriptionArn) != "PendingConfirmation" {
+		t.Fatalf("ListSubscriptionsByTopic = %v, %v; want one PendingConfirmation", list, err)
+	}
+
+	if status, body := getUnsigned(t, p, confirmation.SubscribeURL); status != http.StatusOK || !strings.Contains(body, "<SubscriptionArn>"+topicARN+":") {
+		t.Fatalf("GET SubscribeURL = %d %s, want 200 with the subscription ARN", status, body)
+	}
+	list, err = sc.ListSubscriptionsByTopic(ctx, &sns.ListSubscriptionsByTopicInput{TopicArn: &topicARN})
+	if err != nil || len(list.Subscriptions) != 1 {
+		t.Fatalf("ListSubscriptionsByTopic after confirmation = %v, %v; want one subscription", list, err)
+	}
+	subARN := aws.ToString(list.Subscriptions[0].SubscriptionArn)
+	attrs, err := sc.GetSubscriptionAttributes(ctx, &sns.GetSubscriptionAttributesInput{SubscriptionArn: &subARN})
+	if err != nil || attrs.Attributes["PendingConfirmation"] != "false" || attrs.Attributes["ConfirmationWasAuthenticated"] != "false" {
+		t.Fatalf("GetSubscriptionAttributes = %v, %v; want confirmed without authentication", attrs, err)
+	}
+
+	out, err := sc.Publish(ctx, &sns.PublishInput{TopicArn: &topicARN, Message: aws.String("hello"), Subject: aws.String("greeting")})
+	if err != nil {
+		t.Fatalf("Publish error = %v", err)
+	}
+	note := nextSNSPost(t, posts)
+	var env snsEnvelope
+	if err := json.Unmarshal([]byte(note.body), &env); err != nil {
+		t.Fatalf("notification %q is not JSON: %v", note.body, err)
+	}
+	wantHeaders := map[string]string{
+		"x-amz-sns-message-type": "Notification", "x-amz-sns-message-id": aws.ToString(out.MessageId),
+		"x-amz-sns-topic-arn": topicARN, "x-amz-sns-subscription-arn": subARN,
+		"user-agent": "Amazon Simple Notification Service Agent", "content-type": "text/plain; charset=UTF-8",
+	}
+	for k, v := range wantHeaders {
+		if got := note.header.Get(k); got != v {
+			t.Errorf("header %s = %q, want %q", k, got, v)
+		}
+	}
+	if env.Type != "Notification" || env.MessageID != aws.ToString(out.MessageId) || env.Message != "hello" || env.Subject != "greeting" {
+		t.Errorf("notification = %+v, want hello for message %s", env, aws.ToString(out.MessageId))
+	}
+	verifyEnvelope(t, p, env)
+
+	if status, body := getUnsigned(t, p, env.UnsubscribeURL); status != http.StatusOK {
+		t.Fatalf("GET UnsubscribeURL = %d %s, want 200", status, body)
+	}
+	list, err = sc.ListSubscriptionsByTopic(ctx, &sns.ListSubscriptionsByTopicInput{TopicArn: &topicARN})
+	if err != nil || len(list.Subscriptions) != 0 {
+		t.Errorf("ListSubscriptionsByTopic after unsubscribe = %v, %v; want none", list, err)
 	}
 }

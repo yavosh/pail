@@ -61,6 +61,25 @@ type target struct {
 	// serviceHost returns the host of a non-S3 service.
 	serviceHost func(service string) string
 	scheme      string
+	// vars holds placeholders whose value differs by target, such as an HTTP
+	// endpoint. Responses mask each value as its placeholder.
+	vars map[string]string
+}
+
+// startVars returns the variables a scenario starts with.
+func (tg *target) startVars(bucket string) map[string]string {
+	vars := map[string]string{"name": bucket}
+	maps.Copy(vars, tg.vars)
+	return vars
+}
+
+// normalize normalizes r and masks the values of the target's own variables.
+func (tg *target) normalize(st step, bucket string, r response) exchange {
+	ex := normalize(st, bucket, r)
+	for name, v := range tg.vars {
+		ex.Body = strings.ReplaceAll(ex.Body, v, "{"+name+"}")
+	}
+	return ex
 }
 
 // response is one raw HTTP answer.
@@ -84,7 +103,7 @@ func initiatedUploadID(body []byte) string {
 }
 
 // variables are the placeholders a step can use, besides "{name}".
-var variables = []string{"uploadId", "queueUrl", "queueArn", "receiptHandle", "messageId", "topicArn", "subscriptionArn"}
+var variables = []string{"uploadId", "queueUrl", "queueArn", "receiptHandle", "messageId", "topicArn", "subscriptionArn", "httpEndpoint"}
 
 // captureVars updates vars from one response. The latest value wins, and a
 // response without a value keeps the earlier one.
@@ -135,7 +154,8 @@ func captureVars(vars map[string]string, body []byte) {
 			continue
 		}
 		var text string
-		if dec.DecodeElement(&text, &start) == nil && text != "" {
+		// A pending subscription lists "PendingConfirmation" in place of its ARN.
+		if dec.DecodeElement(&text, &start) == nil && text != "" && (name != "subscriptionArn" || strings.HasPrefix(text, "arn:")) {
 			vars[name] = text
 		}
 	}

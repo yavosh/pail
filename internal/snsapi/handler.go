@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -26,8 +27,9 @@ type Topics interface {
 	ListTopics(ctx context.Context, next string) ([]string, string, error)
 	TopicAttributes(ctx context.Context, arn string) ([]topic.Attribute, error)
 	SetTopicAttribute(ctx context.Context, arn, name, value string) error
-	Subscribe(ctx context.Context, topicARN, protocol, endpoint string, attrs map[string]string) (string, error)
-	Unsubscribe(ctx context.Context, arn string) error
+	Subscribe(ctx context.Context, in topic.SubscribeInput) (arn string, pending bool, err error)
+	ConfirmSubscription(ctx context.Context, topicARN, token string, authenticated bool) (string, error)
+	Unsubscribe(ctx context.Context, arn string, signed bool) error
 	ListSubscriptions(ctx context.Context, next string) ([]topic.Subscription, string, error)
 	ListSubscriptionsByTopic(ctx context.Context, topicARN, next string) ([]topic.Subscription, string, error)
 	SubscriptionAttributes(ctx context.Context, arn string) ([]topic.Attribute, error)
@@ -49,9 +51,19 @@ type Options struct {
 // operation runs one action. It returns the XML inside the Result element.
 // hasResult is true when the action's output shape in the service model has
 // a result wrapper; DeleteTopic, for one, has none (verified by sns-topic-basics).
+// anonymous is true for an action that SNS endpoints call without a signature.
 type operation struct {
 	run       func(r *http.Request, p params) (string, error)
 	hasResult bool
+	anonymous bool
+}
+
+type signedKey struct{}
+
+// signed reports whether the request carried valid credentials.
+func signed(r *http.Request) bool {
+	v, _ := r.Context().Value(signedKey{}).(bool)
+	return v
 }
 
 type handler struct {
@@ -64,22 +76,23 @@ type handler struct {
 func New(opts Options) http.Handler {
 	h := &handler{verifier: sigv4.New(opts.AccessKeyID, opts.SecretAccessKey), topics: opts.Topics}
 	h.ops = map[string]operation{
-		"CreateTopic":               {h.createTopic, true},
-		"DeleteTopic":               {h.deleteTopic, false},
-		"ListTopics":                {h.listTopics, true},
-		"GetTopicAttributes":        {h.getTopicAttributes, true},
-		"SetTopicAttributes":        {h.setTopicAttributes, false},
-		"TagResource":               {h.tagResource, true},
-		"UntagResource":             {h.untagResource, true},
-		"ListTagsForResource":       {h.listTagsForResource, true},
-		"Subscribe":                 {h.subscribe, true},
-		"Unsubscribe":               {h.unsubscribe, false},
-		"ListSubscriptions":         {h.listSubscriptions, true},
-		"ListSubscriptionsByTopic":  {h.listSubscriptionsByTopic, true},
-		"GetSubscriptionAttributes": {h.getSubscriptionAttributes, true},
-		"SetSubscriptionAttributes": {h.setSubscriptionAttributes, false},
-		"Publish":                   {h.publish, true},
-		"PublishBatch":              {h.publishBatch, true},
+		"CreateTopic":               {run: h.createTopic, hasResult: true},
+		"DeleteTopic":               {run: h.deleteTopic},
+		"ListTopics":                {run: h.listTopics, hasResult: true},
+		"GetTopicAttributes":        {run: h.getTopicAttributes, hasResult: true},
+		"SetTopicAttributes":        {run: h.setTopicAttributes},
+		"TagResource":               {run: h.tagResource, hasResult: true},
+		"UntagResource":             {run: h.untagResource, hasResult: true},
+		"ListTagsForResource":       {run: h.listTagsForResource, hasResult: true},
+		"Subscribe":                 {run: h.subscribe, hasResult: true},
+		"ConfirmSubscription":       {run: h.confirmSubscription, hasResult: true, anonymous: true},
+		"Unsubscribe":               {run: h.unsubscribe, anonymous: true},
+		"ListSubscriptions":         {run: h.listSubscriptions, hasResult: true},
+		"ListSubscriptionsByTopic":  {run: h.listSubscriptionsByTopic, hasResult: true},
+		"GetSubscriptionAttributes": {run: h.getSubscriptionAttributes, hasResult: true},
+		"SetSubscriptionAttributes": {run: h.setSubscriptionAttributes},
+		"Publish":                   {run: h.publish, hasResult: true},
+		"PublishBatch":              {run: h.publishBatch, hasResult: true},
 	}
 	return h
 }
@@ -95,12 +108,17 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // serve answers the request and returns the action name and the status it wrote.
 func (h *handler) serve(w http.ResponseWriter, r *http.Request, requestID string) (string, int) {
-	if err := h.verifier.VerifyService(r, "sns"); err != nil {
-		return "", writeError(w, authError(err), err.Error(), requestID)
+	authErr := h.verifier.VerifyService(r, "sns")
+	if authErr != nil && !errors.Is(authErr, sigv4.ErrMissingAuth) {
+		return "", writeError(w, authError(authErr), authErr.Error(), requestID)
 	}
 	_ = r.ParseForm() // a parse error leaves Action empty
 	name := r.Form.Get("Action")
 	op, ok := h.ops[name]
+	if authErr != nil && (!ok || !op.anonymous) {
+		return "", writeError(w, authError(authErr), authErr.Error(), requestID)
+	}
+	r = r.WithContext(context.WithValue(r.Context(), signedKey{}, authErr == nil))
 	if !ok {
 		msg := "the action is not supported"
 		if name != "" {

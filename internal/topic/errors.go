@@ -8,4 +8,5 @@ var (
 	ErrInvalidParameter = errors.New("invalid parameter")
 	ErrResourceNotFound = errors.New("resource does not exist")
 	ErrTagLimitExceeded = errors.New("too many tags")
+	ErrAuthorization    = errors.New("not authorized")
 )

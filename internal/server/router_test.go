@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -16,21 +17,26 @@ func TestRouter(t *testing.T) {
 	rt := &router{s3: named("s3"), sqs: named("sqs"), sns: named("sns")}
 
 	tests := []struct {
-		name, target, authorization, amzTarget, want string
+		name, method, target, authorization, amzTarget, want string
 	}{
-		{"sqs scope", "/", fmt.Sprintf(auth, "sqs"), "", "sqs"},
-		{"sns scope", "/", fmt.Sprintf(auth, "sns"), "", "sns"},
-		{"s3 scope", "/b/k", fmt.Sprintf(auth, "s3"), "", "s3"},
-		{"other scope", "/", fmt.Sprintf(auth, "sts"), "", "s3"},
-		{"unsigned sqs target", "/", "", "AmazonSQS.ListQueues", "sqs"},
-		{"unsigned root", "/", "", "", "s3"},
-		{"presigned s3", "/b/k?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKID%2F20261009%2Fus-east-1%2Fs3%2Faws4_request", "", "", "s3"},
-		{"credential without algorithm", "/b/k?AWSAccessKeyId=AKID&Signature=x&Expires=1&X-Amz-Credential=a/b/c/sqs/d", "", "", "s3"},
-		{"health", "/_pail/health", "", "", "s3"},
+		{"sqs scope", "", "/", fmt.Sprintf(auth, "sqs"), "", "sqs"},
+		{"sns scope", "", "/", fmt.Sprintf(auth, "sns"), "", "sns"},
+		{"s3 scope", "", "/b/k", fmt.Sprintf(auth, "s3"), "", "s3"},
+		{"other scope", "", "/", fmt.Sprintf(auth, "sts"), "", "s3"},
+		{"unsigned sqs target", "", "/", "", "AmazonSQS.ListQueues", "sqs"},
+		{"unsigned root", "", "/", "", "", "s3"},
+		{"presigned s3", "", "/b/k?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKID%2F20261009%2Fus-east-1%2Fs3%2Faws4_request", "", "", "s3"},
+		{"credential without algorithm", "", "/b/k?AWSAccessKeyId=AKID&Signature=x&Expires=1&X-Amz-Credential=a/b/c/sqs/d", "", "", "s3"},
+		{"health", "", "/_pail/health", "", "", "s3"},
+		{"unsigned confirm link", "", "/?Action=ConfirmSubscription&TopicArn=a&Token=t", "", "", "sns"},
+		{"unsigned unsubscribe link", "", "/?Action=Unsubscribe&SubscriptionArn=a", "", "", "sns"},
+		{"unsigned publish link", "", "/?Action=Publish", "", "", "s3"},
+		{"unsigned POST with an action", http.MethodPost, "/?Action=Unsubscribe", "", "", "s3"},
+		{"unsigned bucket link", "", "/bucket?Action=Unsubscribe", "", "", "s3"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, tt.target, nil)
+			r := httptest.NewRequestWithContext(context.Background(), cmp.Or(tt.method, http.MethodGet), tt.target, nil)
 			if tt.authorization != "" {
 				r.Header.Set("Authorization", tt.authorization)
 			}

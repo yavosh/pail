@@ -55,7 +55,8 @@ Re-record it with `go test ./test/diff -record -run '^TestDiff/conditional-delet
 The `sqs-*` and `sns-*` scenarios cover the SQS JSON protocol and the SNS query protocol.
 
 - A step sets `service` (`sqs` or `sns`) and, for SQS, `target` (the `X-Amz-Target` value). The suite signs it for that service without `x-amz-content-sha256` and POSTs it to `/`.
-- `{name}` in a query, header, or body is the scenario's random `pail-diff-` name. The variables `{uploadId}`, `{queueUrl}`, `{queueArn}`, `{receiptHandle}`, `{messageId}`, `{topicArn}`, and `{subscriptionArn}` hold the latest value that a response returned. A response without a value keeps the earlier one.
+- `{name}` in a query, header, or body is the scenario's random `pail-diff-` name. The variables `{uploadId}`, `{queueUrl}`, `{queueArn}`, `{receiptHandle}`, `{messageId}`, `{topicArn}`, and `{subscriptionArn}` hold the latest value that a response returned. A response without a value keeps the earlier one. `{subscriptionArn}` ignores `pending confirmation` and `PendingConfirmation`.
+- `{httpEndpoint}` differs by target. Against AWS it is a public URL that the maintainer owns, because AWS refuses internal endpoints. Against pail it is `https://127.0.0.1:1/pail`, so pail's confirmation posts never leave the machine. Responses mask either value as `{httpEndpoint}`.
 - Recording creates only `pail-diff-` queues and topics, and deletes them afterward, also when a step fails.
 - Scenarios never call `ListTopics` or `ListSubscriptions`, and call `ListQueues` only with `QueueNamePrefix`. Golden files never contain your other resources.
 
@@ -113,6 +114,9 @@ The SNS scenarios are:
 - `sns-sqs-delivery`: a topic with an SQS subscription, in envelope, raw, and `MessageStructure` `json` delivery, with message attributes and `String.Array`.
 - `sns-publish-batch`: `PublishBatch` successes, a partial failure, and the batch validation errors.
 - `sns-errors`: `Publish` and `Subscribe` validation errors, a missing subscription, an unknown action, and a deleted topic.
+- `sns-filter-policies`: filter policies in attribute and body scope, their validation errors and limits, `{}`, and the attribute order.
+- `sns-filter-edge-cases`: `anything-but` on an absent attribute and on another type, `exists` `false` on a missing body path, body policies with `MessageStructure` `json`, and the key count of nested policies.
+- `sns-http-subscriptions`: HTTP endpoint errors, pending subscriptions, `ConfirmSubscription` errors, unsigned links, and `Unsubscribe` of pending and SQS subscriptions.
 
 AWS delivers to an SQS queue only when the queue policy allows the topic. The `sns-sqs-delivery` scenario sets a policy that lets the service `sns.amazonaws.com` send when `aws:SourceArn` equals the topic ARN. pail does not enforce queue policies.
 

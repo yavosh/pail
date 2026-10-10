@@ -70,10 +70,10 @@ func TestSNSRouting(t *testing.T) {
 	}
 
 	t.Run("unimplemented action", func(t *testing.T) {
-		_, err := startPail(t).snsClient().ConfirmSubscription(context.Background(), &sns.ConfirmSubscriptionInput{TopicArn: aws.String("arn"), Token: aws.String("t")})
+		_, err := startPail(t).snsClient().CreatePlatformApplication(context.Background(), &sns.CreatePlatformApplicationInput{Name: aws.String("app"), Platform: aws.String("GCM"), Attributes: map[string]string{"PlatformCredential": "x"}})
 		status, code, msg := apiFailureMessage(t, err)
-		if status != 400 || code != "InvalidAction" || msg != "ConfirmSubscription is not supported" {
-			t.Errorf("ConfirmSubscription: status %d, code %q, message %q, want 400 InvalidAction %q", status, code, msg, "ConfirmSubscription is not supported")
+		if status != 400 || code != "InvalidAction" || msg != "CreatePlatformApplication is not supported" {
+			t.Errorf("CreatePlatformApplication: status %d, code %q, message %q, want 400 InvalidAction %q", status, code, msg, "CreatePlatformApplication is not supported")
 		}
 	})
 
