@@ -139,6 +139,8 @@ func scenarios() []scenario {
 		uploadPartCopyScenario(),
 		partReadsScenario(),
 		taggingScenario(),
+		notificationsScenario(),
+		notificationsSNSScenario(),
 		sqsAuthErrorsScenario(),
 		sqsQueueBasicsScenario(),
 		sqsMessageAttributesScenario(),

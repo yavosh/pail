@@ -134,13 +134,13 @@ These are mostly intentional scope limitations rather than implementation bugs.
 | Public-access and ownership controls | Block Public Access APIs, ownership-controls APIs and enforcement. |
 | Encryption | Bucket default encryption, SSE-S3, SSE-KMS/DSSE-KMS, SSE-C, bucket keys. |
 | Object Lock | Configuration, retention, legal holds, governance bypass. |
-| Events | Bucket notifications and delivery to queues, topics, functions, or EventBridge. |
+| Events | Bucket notifications and delivery to queues, topics, functions, or EventBridge. Queue and topic delivery is fixed on branch `feat/s3-event-notifications`; Lambda and EventBridge remain. |
 | Storage management | Storage tiers, archive restore, lifecycle transitions/noncurrent-version actions, replication. |
 | Bucket services | Website hosting, access logging, Requester Pays, acceleration. |
 | Reporting and advanced services | Inventory, analytics, metrics, S3 metadata configurations, SelectObjectContent. |
 | Specialized S3 products | Directory buckets/S3 Express sessions, append/rename semantics, access points, Object Lambda, multi-region access points, Outposts. |
 
-Status: tagging is fixed on branch `feat/s3-object-tagging`: bucket and object tagging, tags on writes and copies, tag counts, and lifecycle tag filters. No other family has been added since the review. ACLs, CORS, and lifecycle expiration were already on `main` at the review. Transitions and version actions in lifecycle rules still return `501 NotImplemented`.
+Status: tagging is fixed on branch `feat/s3-object-tagging`: bucket and object tagging, tags on writes and copies, tag counts, and lifecycle tag filters. Event notifications to queues and topics are fixed on branch `feat/s3-event-notifications`; Lambda and EventBridge destinations remain unsupported. No other family has been added since the review. ACLs, CORS, and lifecycle expiration were already on `main` at the review. Transitions and version actions in lifecycle rules still return `501 NotImplemented`.
 
 For pail's local-development purpose, implementing everything would be excessive. Tagging, versioning, notifications, and selected policy controls are the most useful additions for broader application testing.
 

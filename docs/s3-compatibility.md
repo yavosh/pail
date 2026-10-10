@@ -212,6 +212,29 @@ pail supports `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguratio
 - A rule with a tag filter can't also abort multipart uploads. It returns `400 InvalidArgument`.
 - Transitions and version actions return `501 NotImplemented`.
 
+## Event notifications
+
+pail supports `PutBucketNotificationConfiguration` and `GetBucketNotificationConfiguration`. It delivers object events to SQS queues and SNS topics in the same pail.
+
+- A configuration is a list of `QueueConfiguration` and `TopicConfiguration` elements. Each has an optional `Id`, a destination ARN, one or more `Event` values, and an optional `Filter` with `prefix` and `suffix` rules. pail generates a missing `Id`.
+- `GetBucketNotificationConfiguration` returns an empty `NotificationConfiguration` when the bucket has none. It returns the topic configurations first, then the queue configurations. Filter rule names come back as `Prefix` and `Suffix`, as on AWS.
+- An empty `NotificationConfiguration` clears the configuration.
+- pail raises these events: `s3:ObjectCreated:*`, `Put`, `Post`, `Copy`, `CompleteMultipartUpload`, and `s3:ObjectRemoved:*`, `Delete`, `DeleteMarkerCreated`. `PutObject`, `POST Object`, `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, and each key that `DeleteObjects` removes raise an event after the write commits. `DeleteMarkerCreated` is configurable but pail raises it only when versioning exists.
+- Validation errors:
+  - An unknown event, a bad filter rule name, a repeated filter rule, or a repeated `Id` returns `400 InvalidArgument`.
+  - A destination that doesn't exist in this pail, or that has the wrong service, returns `400 InvalidArgument`. The ARN's region and account must be pail's.
+  - Two configurations that share an event type and have overlapping prefixes and suffixes return `400 InvalidArgument`.
+  - Malformed XML, or a queue configuration with a `Topic` element, returns `400 MalformedXML`.
+- `CloudFunctionConfiguration`, `LambdaFunctionConfiguration`, and `EventBridgeConfiguration` return `501 NotImplemented`. So do the AWS event types pail never raises: object restore, replication, lifecycle, intelligent tiering, tagging, and ACL events.
+- A `PutBucketNotificationConfiguration` that adds a destination sends it a test event: `{"Service":"Amazon S3","Event":"s3:TestEvent","Time":...,"Bucket":...,"RequestId":...,"HostId":...}`. pail sends it only to a destination that the old configuration lacked. Whether AWS also sends one for a changed filter or event list is unverified.
+- An event is a `Records` array with one record. It carries the AWS fields `eventVersion` `2.6`, `eventSource`, `awsRegion`, `eventTime`, `eventName`, `userIdentity`, `requestParameters.sourceIPAddress`, `responseElements`, and `s3` with `configurationId`, `bucket`, and `object`. The object key is URL-encoded, with `/` kept. A removal has no `size` or `eTag`. A copy adds `hasObjectAnnotation: false`. The AWS recording verifies this shape.
+- A queue destination gets the event as the message body. A topic destination gets it as the message, with the subject `Amazon S3 Notification`. The subject is from the AWS documentation and is unverified.
+- The `sequencer` is a hex string that grows with every event in a pail process. Its format is unverified.
+- Difference from AWS: pail delivers before it answers the S3 request. AWS delivers in the background, usually within seconds. A failed delivery is logged and never fails the request. A queue or topic that disappears after the configuration is stored drops the events.
+- Difference from AWS: pail doesn't check queue or topic policies. AWS needs a policy that lets `s3.amazonaws.com` send. `PutBucketNotificationConfiguration` also doesn't fail when the test event can't be delivered.
+- A delete of a key that doesn't exist raises `ObjectRemoved:Delete`. This is unverified.
+- The configuration is stored with the bucket and removed with it.
+
 ## ACLs
 
 pail supports `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, and `PutObjectAcl`.

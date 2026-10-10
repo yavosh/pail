@@ -318,6 +318,7 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 	}
 	h.setExpiration(w, r, t.bucket, info)
 	setEncryptionHeader(w.Header(), info.ServerSideEncryption)
+	h.notify(w, r, t, createdEvent("ObjectCreated:CompleteMultipartUpload", t.key, info))
 	writeXML(w, r, http.StatusOK, response{
 		Xmlns: s3Namespace, Location: location.String(), Bucket: t.bucket, Key: t.key, ETag: quoteETag(info.ETag),
 		checksumFields: newChecksumFields(info.ChecksumAlgorithm, info.Checksum), ChecksumType: info.ChecksumType,

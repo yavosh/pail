@@ -145,6 +145,7 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 	}
 	h.setExpiration(w, r, t.bucket, dst)
 	setEncryptionHeader(w.Header(), dst.ServerSideEncryption)
+	h.notify(w, r, t, createdEvent("ObjectCreated:Copy", t.key, dst))
 	writeXML(w, r, http.StatusOK, resp)
 }
 

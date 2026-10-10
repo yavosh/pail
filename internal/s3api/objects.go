@@ -119,6 +119,7 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	w.Header().Set("ETag", quoteETag(info.ETag))
 	setChecksumHeaders(w.Header(), info)
 	setOptionHeaders(w.Header(), info.ObjectOptions)
+	h.notify(w, r, t, createdEvent("ObjectCreated:Put", t.key, info))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -520,6 +521,7 @@ func (h *handler) handleDeleteObject(w http.ResponseWriter, r *http.Request, t t
 		writeError(w, r, toAPIError(err))
 		return
 	}
+	h.notify(w, r, t, removedEvent(t.key))
 	w.WriteHeader(http.StatusNoContent)
 }
 

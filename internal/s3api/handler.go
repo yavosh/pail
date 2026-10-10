@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/yavosh/pail/internal/account"
@@ -28,6 +29,9 @@ type Options struct {
 	// Internal adds routes to the /_pail/ mux, keyed by a ServeMux pattern. The
 	// server uses it for endpoints that other services own, such as the SNS certificate.
 	Internal map[string]http.Handler
+	// Notifier delivers bucket event notifications. Nil means notifications are
+	// unavailable, and a configuration with a destination answers NotImplemented.
+	Notifier Notifier
 }
 
 // opHandler serves one S3 operation for the bucket and key in t.
@@ -38,6 +42,7 @@ type handler struct {
 	verifier *sigv4.Verifier
 	ops      map[operation]opHandler
 	internal *http.ServeMux
+	sequence atomic.Uint64 // last event sequencer
 }
 
 // New returns the HTTP handler for the S3 API and pail's /_pail/ endpoints.
@@ -62,6 +67,8 @@ func (h *handler) routes() {
 		opGetBucketLifecycle:    h.handleBucketConfiguration,
 		opPutBucketLifecycle:    h.handleBucketConfiguration,
 		opDeleteBucketLifecycle: h.handleBucketConfiguration,
+		opGetBucketNotification: h.handleBucketNotification,
+		opPutBucketNotification: h.handleBucketNotification,
 		opGetBucketOwnership:    h.handleOwnershipControls,
 		opPutBucketOwnership:    h.handleOwnershipControls,
 		opDeleteBucketOwnership: h.handleOwnershipControls,

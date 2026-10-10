@@ -120,6 +120,9 @@ func (h *handler) handleDeleteObjects(w http.ResponseWriter, r *http.Request, t 
 				apiErr = toAPIError(err)
 			}
 		}
+		if apiErr == (apiError{}) {
+			h.notify(w, r, t, removedEvent(o.Key))
+		}
 		switch {
 		case apiErr != (apiError{}):
 			resp.Errors = append(resp.Errors, failure{Key: o.Key, Code: apiErr.Code, Message: apiErr.Message})
