@@ -117,8 +117,12 @@ func (h *handler) handleBucketTagging(w http.ResponseWriter, r *http.Request, t 
 			writeError(w, r, e)
 			return
 		}
-		cfg := store.BucketConfiguration{XML: marshalTagging(tags)}
-		if err := h.opts.Store.PutBucketConfiguration(r.Context(), t.bucket, "tagging", &cfg); err != nil {
+		// An empty tag set reads back as NoSuchTagSet (recorded in object-tagging).
+		var cfg *store.BucketConfiguration
+		if len(tags) > 0 {
+			cfg = &store.BucketConfiguration{XML: marshalTagging(tags)}
+		}
+		if err := h.opts.Store.PutBucketConfiguration(r.Context(), t.bucket, "tagging", cfg); err != nil {
 			writeError(w, r, toAPIError(err))
 			return
 		}

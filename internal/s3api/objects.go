@@ -414,7 +414,9 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	h.setExpiration(w, r, t.bucket, info)
 	setObjectHeaders(hdr, r, info)
 	setOptionHeaders(hdr, info.ObjectOptions)
-	if n := len(info.Tags); n > 0 {
+	// AWS sends the count only to a caller that may read the tags, which an
+	// ACL never grants to an anonymous reader.
+	if n := len(info.Tags); n > 0 && !anonymousRequest(r) {
 		hdr.Set("x-amz-tagging-count", strconv.Itoa(n))
 	}
 	if info.WebsiteRedirect != "" {
