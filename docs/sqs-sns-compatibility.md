@@ -184,10 +184,10 @@ pail supports these operations:
 
 - Topics: `CreateTopic`, `DeleteTopic`, `ListTopics`, `GetTopicAttributes`, `SetTopicAttributes`.
 - Tags: `TagResource`, `UntagResource`, `ListTagsForResource`.
-- Subscriptions: `Subscribe`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`.
+- Subscriptions: `Subscribe`, `ConfirmSubscription`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`.
 - Messages: `Publish`, `PublishBatch`.
 
-Every other action returns `InvalidAction` with the message `<Action> is not supported` (unverified for model actions such as `ConfirmSubscription`). A request without `Action` returns `InvalidAction`.
+Every other action returns `InvalidAction` with the message `<Action> is not supported` (unverified for model actions such as `CreatePlatformApplication`). A request without `Action` returns `InvalidAction`.
 
 ### Topics and ARNs
 
@@ -207,10 +207,10 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 | --- | --- |
 | `Policy` | AWS's default policy for the topic, or the policy that a client set. |
 | `Owner` | `000000000000`. |
-| `SubscriptionsPending` | `0`. |
+| `SubscriptionsPending` | The number of pending subscriptions (unverified: AWS updates the count with a delay). |
 | `TopicArn` | The topic ARN. |
 | `EffectiveDeliveryPolicy` | AWS's default delivery policy. pail returns it even when `DeliveryPolicy` is set (unverified). |
-| `SubscriptionsConfirmed` | The number of subscriptions. |
+| `SubscriptionsConfirmed` | The number of confirmed subscriptions (unverified: AWS updates the count with a delay). |
 | `DisplayName` | Empty by default. |
 | `SubscriptionsDeleted` | `0`. |
 
@@ -222,13 +222,19 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 
 ### Subscriptions
 
-- pail supports the protocol `sqs` only. Any other protocol returns `InvalidParameter` with the message `protocol is not supported`.
-- The endpoint must be the ARN of an SQS queue in the same region and account, `arn:aws:sqs:<region>:000000000000:<name>`. The queue need not exist when you subscribe. A delivery to a queue that does not exist is logged and dropped.
+- pail supports the protocols `sqs`, `http`, and `https`. Any other protocol returns `InvalidParameter` with the message `protocol is not supported`.
+- An `sqs` endpoint must be the ARN of an SQS queue in the same region and account, `arn:aws:sqs:<region>:000000000000:<name>`. The queue need not exist when you subscribe. A delivery to a queue that does not exist is logged and dropped.
 - An endpoint that names a FIFO queue returns `InvalidParameter`, because pail has no FIFO topics (unverified).
+- An `http` or `https` endpoint must be a URL whose scheme equals the protocol, with a host and no user info. Any other endpoint returns `InvalidParameter` (unverified).
 - pail confirms an SQS subscription at once. A subscription ARN is the topic ARN, a colon, and a lowercase UUID.
-- `Subscribe` is idempotent. The same topic, protocol, and endpoint return the existing ARN. Different attributes return `InvalidParameter` (unverified).
+- An HTTP or HTTPS subscription is pending until its endpoint confirms it. See [Delivery to HTTP and HTTPS](#delivery-to-http-and-https). While it is pending, `Subscribe` returns the `SubscriptionArn` `pending confirmation`, unless `ReturnSubscriptionArn` is `true`. Then it returns the real ARN (unverified).
+- `ListSubscriptions` and `ListSubscriptionsByTopic` show the `SubscriptionArn` of a pending subscription as `PendingConfirmation` (unverified).
+- `ConfirmSubscription` takes `TopicArn` and `Token`, and returns the `SubscriptionArn`. A missing topic returns `NotFound`. A token that no subscription of the topic holds returns `InvalidParameter` (unverified). Confirming a confirmed subscription again returns its ARN and changes nothing (unverified). `AuthenticateOnUnsubscribe` set to `true` on a signed call records the confirmation as authenticated.
+- An unsigned `Unsubscribe` removes only a subscription whose confirmation was not authenticated: a pending one, or one confirmed without `AuthenticateOnUnsubscribe`. Any other unsigned `Unsubscribe`, including every SQS subscription, returns `AuthorizationError` (unverified).
+- `Subscribe` is idempotent. The same topic, protocol, and endpoint return the existing ARN. Different attributes return `InvalidParameter` (unverified). A repeat `Subscribe` of a pending subscription sends the confirmation again with the same token (unverified).
+- Tokens never expire (unverified).
 - `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`), `FilterPolicy`, and `FilterPolicyScope`. `RedrivePolicy`, `DeliveryPolicy`, and `SubscriptionRoleArn` return `InvalidParameter`. An empty value for `FilterPolicy` or `FilterPolicyScope` unsets it. An empty policy object, `{}`, removes the policy too. pail checks a policy against its scope whenever either one changes, so a call that leaves them inconsistent returns `InvalidParameter`. See [Filter policies](#filter-policies).
-- `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `FilterPolicy`, `TopicArn`, `Endpoint`, `FilterPolicyScope`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. `FilterPolicy` (the text you set) and `FilterPolicyScope` (`MessageAttributes` by default) appear only when a policy is set, even when you set the scope. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
+- `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `FilterPolicy`, `TopicArn`, `Endpoint`, `FilterPolicyScope`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. `PendingConfirmation` and `ConfirmationWasAuthenticated` follow the confirmation state. An HTTP or HTTPS subscription adds `EffectiveDeliveryPolicy` after `SubscriptionArn`. The value and the position are unverified until the `sns-http-subscriptions` recording. `FilterPolicy` (the text you set) and `FilterPolicyScope` (`MessageAttributes` by default) appear only when a policy is set, even when you set the scope. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
 - `Unsubscribe` of a subscription that does not exist returns `NotFound` (unverified).
 - pail does not check the queue policy. AWS delivers only when the policy allows the topic.
 
@@ -258,6 +264,7 @@ The `sns-filter-policies` and `sns-filter-edge-cases` recordings verify the rule
 - In `MessageBody` scope, the message must be a JSON object. Any other message does not match. An array on the path fans out into its elements, and the key matches when any of them matches. An object at the end of the path is not a value. A missing path, or one whose parent object is missing, does not match, except `{"exists": false}`.
 - With `MessageStructure` set to `json`, a body policy matches the message that pail sends to SQS: the `sqs` value, or `default` when there is no `sqs` value. A policy that matches only the `default` value does not match when an `sqs` value exists.
 - pail filters before it signs. A publish that matches no subscription sends nothing.
+- Filter policies apply to HTTP and HTTPS subscriptions too. With `MessageStructure` `json`, an HTTP delivery uses the same `sqs` or `default` text as an SQS delivery (unverified).
 
 ### Publish
 
@@ -284,12 +291,41 @@ By default, the queue receives a JSON envelope as the message body. The keys are
 7. `SignatureVersion`: the topic's `SignatureVersion`, `1` by default.
 8. `Signature`: base64.
 9. `SigningCertURL`: `<scheme>://<host>/_pail/sns/signing-cert.pem`, from the request that published.
-10. `UnsubscribeURL`: `<scheme>://<host>/?Action=Unsubscribe&SubscriptionArn=<ARN>`. pail does not serve this URL yet.
+10. `UnsubscribeURL`: `<scheme>://<host>/?Action=Unsubscribe&SubscriptionArn=<ARN>`. See [Unsigned links](#unsigned-links).
 11. `MessageAttributes`, only when set: `{"<name>":{"Type":"String","Value":"..."}}`. A `Binary` value is base64.
 
 An envelope delivery sends no SQS message attributes.
 
 With `RawMessageDelivery` set to `true`, the queue receives the message text as the body, with no envelope. The message attributes become SQS message attributes of the same name and type, including `String.Array`, whose value stays the JSON array text.
+
+### Delivery to HTTP and HTTPS
+
+pail posts to an HTTP or HTTPS endpoint in the background. `Publish` does not wait for the endpoint and does not fail when a delivery fails. Everything on this page about HTTP delivery is unverified, because the recording cannot reach a public endpoint. The `sns-http-subscriptions` scenario records the subscription rules only.
+
+- `Subscribe` makes the subscription pending and sends a `SubscriptionConfirmation` to the endpoint. A pending subscription receives no notifications.
+- The confirmation body is a JSON object with these keys in this order: `Type` (`SubscriptionConfirmation`), `MessageId`, `Token`, `TopicArn`, `Message`, `SubscribeURL`, `Timestamp`, `SignatureVersion`, `Signature`, `SigningCertURL`.
+- `SubscribeURL` is `<scheme>://<host>/?Action=ConfirmSubscription&TopicArn=<escaped ARN>&Token=<token>`. The token is 64 hex characters.
+- The string to sign is the lines `Message`, `MessageId`, `SubscribeURL`, `Timestamp`, `Token`, `TopicArn`, and `Type`, each as a name line and a value line, in that order. The topic's `SignatureVersion` picks the hash, as for notifications.
+- The endpoint confirms with an unsigned `GET` of the `SubscribeURL`, or with a signed `ConfirmSubscription` call.
+- After confirmation, `Publish` posts the [envelope](#delivery-to-sqs) to the endpoint. With `RawMessageDelivery` set to `true`, it posts the message text only, with no message attributes.
+- Every request is a `POST` with these headers: `Content-Type: text/plain; charset=UTF-8`, `User-Agent: Amazon Simple Notification Service Agent`, `x-amz-sns-message-type` (`Notification` or `SubscriptionConfirmation`), `x-amz-sns-message-id`, and `x-amz-sns-topic-arn`. A notification also sends `x-amz-sns-subscription-arn`. A raw delivery also sends `x-amz-sns-rawdelivery: true`.
+- A `2xx` answer is a success. A network error, a `5xx`, and a `429` are retried. Any other status ends the delivery without a retry.
+- pail makes at most 4 attempts, 20 seconds apart. This is the default `healthyRetryPolicy` of AWS. A custom `DeliveryPolicy` is not applied.
+- Each attempt times out after 15 seconds. pail does not follow redirects.
+- pail verifies the TLS certificate of an HTTPS endpoint against the system roots. An endpoint with a self-signed certificate fails.
+- A waiting queue holds 1,000 deliveries. pail drops a delivery when the queue is full, and logs a warning.
+- A delivery is in memory. A restart loses the deliveries that wait, and a pending subscription stays pending.
+- Any client with credentials can make pail send a `POST` to any URL that pail can reach. Run pail only where that is acceptable.
+
+### Unsigned links
+
+An SNS message links to pail with an unsigned `GET`. pail routes a request to SNS when all of these hold:
+
+- It has no SigV4 signature.
+- Its method is `GET` and its path is `/`.
+- Its query has `Action` set to `ConfirmSubscription` or `Unsubscribe`.
+
+pail reads only the query to route. Every other unsigned request goes to S3, including a `POST` with `Action` in the query and a `GET` of a bucket path. SNS accepts these two actions without a signature. Any other unsigned action returns `MissingAuthenticationToken`, and a request with a bad signature still fails.
 
 ### Signatures
 
@@ -307,6 +343,7 @@ The recordings verify the auth rows, `NotFound`, `InvalidParameter`, `InvalidAct
 | --- | --- | --- | --- |
 | Missing signature, unknown key, or bad signature | 403 | `Sender` | `MissingAuthenticationToken`, `InvalidClientTokenId`, or `SignatureDoesNotMatch` |
 | Missing topic or subscription | 404 | `Sender` | `NotFound` |
+| Unsigned `Unsubscribe` of an authenticated subscription (unverified) | 403 | `Sender` | `AuthorizationError` |
 | Tag operation on a missing topic | 404 | `Sender` | `ResourceNotFound` |
 | Bad parameter, name, attribute, protocol, or endpoint | 400 | `Sender` | `InvalidParameter` |
 | More than 50 tags | 400 | `Sender` | `TagLimitExceeded` |
@@ -317,9 +354,11 @@ The recordings verify the auth rows, `NotFound`, `InvalidParameter`, `InvalidAct
 
 ### Differences from AWS
 
-- pail delivers to SQS queues only. HTTP and HTTPS delivery and `ConfirmSubscription` come in later versions. Filter policies support the operators in [Filter policies](#filter-policies) only.
+- pail delivers to SQS queues and to HTTP and HTTPS endpoints. Filter policies support the operators in [Filter policies](#filter-policies) only.
 - pail has no FIFO topics, SMS, email, Lambda, or mobile push.
 - pail does not enforce topic policies, queue policies, IAM, or KMS.
 - pail serves one account.
-- A delivery is synchronous and has no retries. AWS delivers in the background with retries.
+- An SQS delivery is synchronous and has no retries. AWS delivers in the background with retries. HTTP and HTTPS deliveries run in the background, with the retries above.
+- pail sends no `UnsubscribeConfirmation` message. Tokens never expire. pail ignores a custom `DeliveryPolicy`.
+- An unsigned form `POST` with `Action` in the query still goes to S3. Only the two unsigned `GET` links above reach SNS.
 - The signing certificate belongs to pail, not to AWS.

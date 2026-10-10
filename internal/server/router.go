@@ -54,7 +54,19 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.sns.ServeHTTP(w, r)
 	case service == "" && strings.HasPrefix(r.Header.Get("X-Amz-Target"), "AmazonSQS."):
 		rt.sqs.ServeHTTP(w, r)
+	case service == "" && snsLink(r):
+		rt.sns.ServeHTTP(w, r)
 	default:
 		rt.s3.ServeHTTP(w, r)
 	}
+}
+
+// snsLink reports whether r is a link from an SNS message: an unsigned GET of
+// "/" that confirms a subscription or unsubscribes. It reads only the query.
+func snsLink(r *http.Request) bool {
+	if r.Method != http.MethodGet || r.URL.Path != "/" {
+		return false
+	}
+	action := r.URL.Query().Get("Action")
+	return action == "ConfirmSubscription" || action == "Unsubscribe"
 }

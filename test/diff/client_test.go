@@ -135,7 +135,8 @@ func captureVars(vars map[string]string, body []byte) {
 			continue
 		}
 		var text string
-		if dec.DecodeElement(&text, &start) == nil && text != "" {
+		// A pending subscription lists "PendingConfirmation" in place of its ARN.
+		if dec.DecodeElement(&text, &start) == nil && text != "" && (name != "subscriptionArn" || strings.HasPrefix(text, "arn:")) {
 			vars[name] = text
 		}
 	}

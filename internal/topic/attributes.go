@@ -82,14 +82,23 @@ func (e *Engine) TopicAttributes(ctx context.Context, arn string) ([]Attribute, 
 	if err != nil {
 		return nil, err
 	}
+	confirmed, pending := 0, 0
+	for _, s := range e.topicSubs(arn) {
+		if s.Pending {
+			pending++
+		} else {
+			confirmed++
+		}
+	}
 	// The default delivery policy stays even when DeliveryPolicy is set (unverified).
+	// AWS updates the subscription counts with a delay (unverified).
 	out := []Attribute{
 		{"Policy", topicAttrValue(t, arn, "Policy")},
 		{"Owner", queue.Account},
-		{"SubscriptionsPending", "0"},
+		{"SubscriptionsPending", fmt.Sprint(pending)},
 		{"TopicArn", arn},
 		{"EffectiveDeliveryPolicy", defaultDeliveryPolicy},
-		{"SubscriptionsConfirmed", fmt.Sprint(len(e.topicSubs(arn)))},
+		{"SubscriptionsConfirmed", fmt.Sprint(confirmed)},
 		{"DisplayName", t.Attributes["DisplayName"]},
 		{"SubscriptionsDeleted", "0"},
 	}

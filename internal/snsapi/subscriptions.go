@@ -2,6 +2,7 @@ package snsapi
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/yavosh/pail/internal/topic"
 )
@@ -15,8 +16,31 @@ func (h *handler) subscribe(r *http.Request, p params) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// ReturnSubscriptionArn is ignored: SQS subscriptions are confirmed, so the ARN always returns.
-	sub, err := h.topics.Subscribe(r.Context(), arn, protocol, p.get("Endpoint"), p.attributes("Attributes"))
+	sub, pending, err := h.topics.Subscribe(r.Context(), topic.SubscribeInput{
+		TopicARN: arn, Protocol: protocol, Endpoint: p.get("Endpoint"), Attributes: p.attributes("Attributes"), BaseURL: baseURL(r),
+	})
+	if err != nil {
+		return "", err
+	}
+	if pending && p.get("ReturnSubscriptionArn") != "true" {
+		sub = "pending confirmation"
+	}
+	var x xmlBuf
+	x.elem("SubscriptionArn", sub)
+	return x.String(), nil
+}
+
+func (h *handler) confirmSubscription(r *http.Request, p params) (string, error) {
+	arn, err := p.required("TopicArn")
+	if err != nil {
+		return "", err
+	}
+	token, err := p.required("Token")
+	if err != nil {
+		return "", err
+	}
+	authenticated := signed(r) && strings.EqualFold(p.get("AuthenticateOnUnsubscribe"), "true")
+	sub, err := h.topics.ConfirmSubscription(r.Context(), arn, token, authenticated)
 	if err != nil {
 		return "", err
 	}
@@ -30,7 +54,7 @@ func (h *handler) unsubscribe(r *http.Request, p params) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "", h.topics.Unsubscribe(r.Context(), arn)
+	return "", h.topics.Unsubscribe(r.Context(), arn, signed(r))
 }
 
 func (h *handler) listSubscriptions(r *http.Request, p params) (string, error) {

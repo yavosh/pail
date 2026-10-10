@@ -481,6 +481,40 @@ func snsFilterEdgeCasesScenario() scenario {
 	}}
 }
 
+// snsHTTPSubscriptionsScenario covers HTTP subscriptions that stay pending. The
+// endpoint is in TEST-NET-1, so AWS's confirmation goes nowhere. Delivery,
+// retries, and headers need a public endpoint and are not recorded.
+func snsHTTPSubscriptionsScenario() scenario {
+	const endpoint = "http://192.0.2.1/pail"
+	subscribe := func(protocol, ep string) string {
+		return "Action=Subscribe&TopicArn={topicArn}&Protocol=" + protocol + "&Endpoint=" + url.QueryEscape(ep)
+	}
+	unsigned := func(name, query string) step {
+		return step{name: name, method: http.MethodGet, service: "sns", query: query + snsVersion, auth: authNone}
+	}
+	return scenario{name: "sns-http-subscriptions", topics: []string{"{name}"}, queues: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
+		snsStep("subscribe-protocol-mismatch", subscribe("http", "https://192.0.2.1/pail")+snsVersion),
+		snsStep("subscribe-not-url", subscribe("https", "not-a-url")+snsVersion),
+		snsStep("subscribe-http", subscribe("http", endpoint)+snsVersion),
+		snsStep("subscribe-http-return-arn", subscribe("http", endpoint)+"&ReturnSubscriptionArn=true"+snsVersion),
+		snsStep("get-pending-attributes", "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("list-pending", "Action=ListSubscriptionsByTopic&TopicArn={topicArn}"+snsVersion),
+		snsStep("confirm-bad-token", "Action=ConfirmSubscription&TopicArn={topicArn}&Token=bad"+snsVersion),
+		snsStep("confirm-missing-token", "Action=ConfirmSubscription&TopicArn={topicArn}"+snsVersion),
+		unsigned("confirm-unsigned-bad-token", "Action=ConfirmSubscription&TopicArn={topicArn}&Token=bad"),
+		unsigned("unsubscribe-unsigned-pending", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"),
+		snsStep("list-after-unsigned-pending", "Action=ListSubscriptionsByTopic&TopicArn={topicArn}"+snsVersion),
+		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
+		sqsStep("get-queue-arn", "GetQueueAttributes", `{"QueueUrl":"{queueUrl}","AttributeNames":["QueueArn"]}`),
+		snsStep("subscribe-sqs", "Action=Subscribe&TopicArn={topicArn}&Protocol=sqs&Endpoint={queueArn}"+snsVersion),
+		unsigned("unsubscribe-unsigned-sqs", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"),
+		snsStep("list-after-unsigned-sqs", "Action=ListSubscriptionsByTopic&TopicArn={topicArn}"+snsVersion),
+		snsStep("delete-topic", "Action=DeleteTopic&TopicArn={topicArn}"+snsVersion),
+		sqsStep("delete-queue", "DeleteQueue", `{"QueueUrl":"{queueUrl}"}`),
+	}}
+}
+
 func TestSQSStepBodiesAreJSON(t *testing.T) {
 	vars := map[string]string{"name": "pail-diff-1"}
 	for _, v := range variables {

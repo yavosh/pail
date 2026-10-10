@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"net/http"
 	"path"
 	"regexp"
 	"slices"
@@ -30,6 +31,8 @@ const (
 	maxTags       = 50
 	pageSize      = 100
 	protocolSQS   = "sqs"
+	protocolHTTP  = "http"
+	protocolHTTPS = "https"
 	attrRaw       = "RawMessageDelivery"
 	attrFilter    = "FilterPolicy"
 	attrScope     = "FilterPolicyScope"
@@ -53,6 +56,8 @@ type Engine struct {
 	topics map[string]*topicDef // by name
 	subs   map[string]*subDef   // by subscription ARN
 	sign   *signer              // nil until first needed
+	client *http.Client         // posts to HTTP and HTTPS endpoints
+	jobs   chan httpJob         // deliveries that RunDeliveries sends
 }
 
 // topicDef is the persisted part of a topic. Attributes holds only the ones a
@@ -72,6 +77,11 @@ type subDef struct {
 	Endpoint   string            `json:"endpoint"`
 	Attributes map[string]string `json:"attributes,omitempty"`
 	Created    int64             `json:"created"`
+	// Pending marks an HTTP or HTTPS subscription that awaits confirmation with
+	// Token. A file without these fields is confirmed and authenticated.
+	Pending         bool   `json:"pending,omitempty"`
+	Token           string `json:"token,omitempty"`
+	Unauthenticated bool   `json:"unauthenticated,omitempty"`
 }
 
 // Attribute is one entry of an attribute response. The order is part of the answer.
@@ -88,6 +98,11 @@ func Open(ctx context.Context, fsys vfs.FS, region string, queues Queues) (*Engi
 		return nil, err
 	}
 	e := &Engine{fs: fsys, region: region, queues: queues, topics: map[string]*topicDef{}, subs: map[string]*subDef{}}
+	e.client = &http.Client{
+		Timeout:       httpTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	e.jobs = make(chan httpJob, jobQueueSize)
 	for _, dir := range []string{topicsDir, subsDir} {
 		if err := fsys.MkdirAll(dir); err != nil {
 			return nil, fmt.Errorf("create %s: %w", dir, err)
@@ -182,6 +197,9 @@ func (e *Engine) checkSub(def subDef) error {
 	}
 	if _, err := e.checkEndpoint(def.Protocol, def.Endpoint); err != nil {
 		return err
+	}
+	if def.Pending && def.Token == "" {
+		return fmt.Errorf("pending subscription %q has no token", def.ARN)
 	}
 	return checkSubAttrs(def.Attributes)
 }

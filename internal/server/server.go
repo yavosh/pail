@@ -102,9 +102,15 @@ func (s *Server) Serve(ctx context.Context) error {
 		defer close(lifecycleDone)
 		s.runLifecycle(lifecycleCtx)
 	}()
+	deliveriesDone := make(chan struct{})
+	go func() {
+		defer close(deliveriesDone)
+		s.topics.RunDeliveries(lifecycleCtx)
+	}()
 	defer func() {
 		stopLifecycle()
 		<-lifecycleDone
+		<-deliveriesDone
 	}()
 	clogServer().Info("listening", "addr", s.ln.Addr().String())
 

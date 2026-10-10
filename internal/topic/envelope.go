@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"maps"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -72,6 +73,41 @@ func (n notification) envelope() string {
 			b.WriteString(quote(name) + `:{"Type":` + quote(a.DataType) + `,"Value":` + quote(value) + `}`)
 		}
 		b.WriteByte('}')
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+// confirmation is the data of one SNS SubscriptionConfirmation envelope.
+type confirmation struct {
+	messageID, topicARN, token, timestamp string
+	signatureVersion, signature, baseURL  string
+}
+
+func (c confirmation) message() string {
+	return "You have chosen to subscribe to the topic " + c.topicARN + ".\nTo confirm the subscription, visit the SubscribeURL included in this message."
+}
+
+func (c confirmation) subscribeURL() string {
+	return c.baseURL + "/?Action=ConfirmSubscription&TopicArn=" + url.QueryEscape(c.topicARN) + "&Token=" + c.token
+}
+
+// stringToSign is the canonical text that SNS signs for a SubscriptionConfirmation.
+func (c confirmation) stringToSign() string {
+	return "Message\n" + c.message() + "\nMessageId\n" + c.messageID + "\nSubscribeURL\n" + c.subscribeURL() +
+		"\nTimestamp\n" + c.timestamp + "\nToken\n" + c.token + "\nTopicArn\n" + c.topicARN + "\nType\nSubscriptionConfirmation\n"
+}
+
+// envelope returns the JSON body of the confirmation, with the keys in AWS's order.
+func (c confirmation) envelope() string {
+	var b strings.Builder
+	b.WriteString(`{"Type":"SubscriptionConfirmation"`)
+	for _, f := range [][2]string{
+		{"MessageId", c.messageID}, {"Token", c.token}, {"TopicArn", c.topicARN}, {"Message", c.message()},
+		{"SubscribeURL", c.subscribeURL()}, {"Timestamp", c.timestamp}, {"SignatureVersion", c.signatureVersion},
+		{"Signature", c.signature}, {"SigningCertURL", c.baseURL + "/_pail/sns/signing-cert.pem"},
+	} {
+		b.WriteString(`,"` + f[0] + `":` + quote(f[1]))
 	}
 	b.WriteByte('}')
 	return b.String()

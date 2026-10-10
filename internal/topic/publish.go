@@ -60,10 +60,11 @@ type PublishResult struct {
 	Err       error
 }
 
-// delivery is one SQS subscription that receives a message.
+// delivery is one subscription that receives a message. queue is empty for
+// an HTTP or HTTPS endpoint.
 type delivery struct {
-	arn, queue string
-	raw        bool
+	arn, protocol, endpoint, queue string
+	raw                            bool
 }
 
 // Publish sends a message to every subscription of a topic and returns its
@@ -85,13 +86,16 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 	version := topicAttrValue(t, in.TopicARN, "SignatureVersion")
 	var targets []delivery
 	for _, s := range e.topicSubs(in.TopicARN) {
+		if s.Pending {
+			continue
+		}
 		// With MessageStructure json, a body policy sees the SQS message (unverified).
 		f, _ := compileFilter(s.Attributes) // checked when stored
 		if !f.match(in.Attributes, message) {
 			continue
 		}
 		name, _ := e.checkEndpoint(s.Protocol, s.Endpoint) // checked when stored
-		targets = append(targets, delivery{s.ARN, name, s.rawDelivery()})
+		targets = append(targets, delivery{s.ARN, s.Protocol, s.Endpoint, name, s.rawDelivery()})
 	}
 	e.mu.Unlock()
 
@@ -106,6 +110,15 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 		}
 	}
 	for _, d := range targets {
+		if d.protocol != protocolSQS {
+			body := n.message
+			if !d.raw {
+				n.subscriptionARN = d.arn
+				body = n.envelope()
+			}
+			e.enqueue(newJob(d.endpoint, body, "Notification", n.messageID, in.TopicARN, d.arn, d.raw))
+			continue
+		}
 		// Forwarding the group ID to SQS is unverified.
 		send := queue.SendInput{Body: n.message, Attributes: rawAttributes(in.Attributes), GroupID: in.GroupID}
 		if !d.raw {

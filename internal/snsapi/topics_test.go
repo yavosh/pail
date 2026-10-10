@@ -226,6 +226,25 @@ func TestSubscriptionShapes(t *testing.T) {
 	}
 }
 
+func TestHTTPSubscriptionShapes(t *testing.T) {
+	g := newRig(t)
+	arn := tag(t, g.ok(t, "Action=CreateTopic&Name=web"), "TopicArn")
+	form := "Action=Subscribe&TopicArn=" + esc(arn) + "&Protocol=http&Endpoint=" + esc("http://192.0.2.1/pail")
+	if got := tag(t, g.ok(t, form), "SubscriptionArn"); got != "pending confirmation" {
+		t.Errorf("Subscribe http = %q, want pending confirmation", got)
+	}
+	sub := tag(t, g.ok(t, form+"&ReturnSubscriptionArn=true"), "SubscriptionArn")
+	if !strings.HasPrefix(sub, arn+":") {
+		t.Errorf("Subscribe http with ReturnSubscriptionArn = %q, want prefix %q", sub, arn+":")
+	}
+	if got := g.ok(t, "Action=ListSubscriptionsByTopic&TopicArn="+esc(arn)); !strings.Contains(got, "<SubscriptionArn>PendingConfirmation</SubscriptionArn>") {
+		t.Errorf("ListSubscriptionsByTopic = %s, want PendingConfirmation", got)
+	}
+	if status, body := g.do(t, "Action=ConfirmSubscription&TopicArn="+esc(arn)+"&Token=bad"); status != 400 || !strings.Contains(body, "<Code>InvalidParameter</Code>") {
+		t.Errorf("ConfirmSubscription with a bad token = %d %s, want 400 InvalidParameter", status, body)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	g := newRig(t)
 	arn := tag(t, g.ok(t, "Action=CreateTopic&Name=errs"), "TopicArn")

@@ -19,7 +19,7 @@ type apiError struct {
 // TooManyEntriesInBatchRequest, BatchEntryIdsNotDistinct, and InvalidBatchEntryId
 // match the AWS recordings in test/diff. The others come from the service
 // model and are unverified: ResourceNotFound, TagLimitExceeded, BatchRequestTooLong,
-// and InternalError.
+// InternalError, and AuthorizationError.
 var (
 	errInvalidAction       = apiError{http.StatusBadRequest, "Sender", "InvalidAction"}
 	errMissingAuth         = apiError{http.StatusForbidden, "Sender", "MissingAuthenticationToken"}
@@ -38,6 +38,7 @@ var (
 	errInvalidBatchEntryID = apiError{http.StatusBadRequest, "Sender", "InvalidBatchEntryId"}
 	errBatchRequestTooLong = apiError{http.StatusBadRequest, "Sender", "BatchRequestTooLong"}
 	errInternalError       = apiError{http.StatusInternalServerError, "Receiver", "InternalError"}
+	errAuthorization       = apiError{http.StatusForbidden, "Sender", "AuthorizationError"}
 )
 
 // mapping ties an error to its SNS error.
@@ -49,6 +50,7 @@ var mappings = []struct {
 	{topic.ErrInvalidParameter, errInvalidParameter},
 	{topic.ErrResourceNotFound, errResourceNotFound},
 	{topic.ErrTagLimitExceeded, errTagLimitExceeded},
+	{topic.ErrAuthorization, errAuthorization},
 	{errValidation, errValidationError},
 	{errTooManyInBatch, errTooManyEntries},
 	{errBatchIDsNotUniq, errEntryIDsNotDistinct},

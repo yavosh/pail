@@ -335,6 +335,12 @@ func verify(t *testing.T, cert []byte, body string) {
 		toSign += "Subject\n" + env.Subject + "\n"
 	}
 	toSign += "Timestamp\n" + env.Timestamp + "\nTopicArn\n" + env.TopicArn + "\nType\nNotification\n"
+	verifySignature(t, cert, env.SignatureVersion, toSign, env.Signature)
+}
+
+// verifySignature checks that signature signs toSign under the certificate.
+func verifySignature(t *testing.T, cert []byte, version, toSign, signature string) {
+	t.Helper()
 	block, _ := pem.Decode(cert)
 	if block == nil {
 		t.Fatal("certificate is not PEM")
@@ -343,13 +349,13 @@ func verify(t *testing.T, cert []byte, body string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig, err := base64.StdEncoding.DecodeString(env.Signature)
+	sig, err := base64.StdEncoding.DecodeString(signature)
 	if err != nil {
 		t.Fatal(err)
 	}
 	hash, sum := crypto.SHA1, sha1.Sum([]byte(toSign))
 	digest := sum[:]
-	if env.SignatureVersion == "2" {
+	if version == "2" {
 		s := sha256.Sum256([]byte(toSign))
 		hash, digest = crypto.SHA256, s[:]
 	}
@@ -358,7 +364,7 @@ func verify(t *testing.T, cert []byte, body string) {
 		t.Fatal("certificate key is not RSA")
 	}
 	if err := rsa.VerifyPKCS1v15(pub, hash, digest, sig); err != nil {
-		t.Errorf("signature of version %s does not verify: %v\n%s", env.SignatureVersion, err, toSign)
+		t.Errorf("signature of version %s does not verify: %v\n%s", version, err, toSign)
 	}
 }
 
