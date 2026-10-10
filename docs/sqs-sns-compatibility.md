@@ -236,7 +236,7 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 
 A subscription without a filter policy receives every message. With a policy, it receives only the messages that match. pail checks the policy when you set it, and it checks the scope together with the policy.
 
-The `sns-filter-policies` recording verifies the rules below that carry no "unverified" marker, except the operators that pail rejects.
+The `sns-filter-policies` and `sns-filter-edge-cases` recordings verify the rules below, except the operators that pail rejects.
 
 - `FilterPolicyScope` is `MessageAttributes` (the default) or `MessageBody`. Any other value returns `InvalidParameter`.
 - `FilterPolicy` is a JSON object. Each key maps to an array of conditions. A message matches when every key matches (AND). A key matches when any condition in its array matches (OR). An empty object `{}` removes the policy.
@@ -248,15 +248,15 @@ The `sns-filter-policies` recording verifies the rules below that carry no "unve
   - `{"numeric": ["=", n]}`, or one or two pairs of an operator (`<`, `<=`, `>`, `>=`) and a number. With two pairs, one is a lower bound and the other is an upper bound, in either order.
   - `{"exists": true}` or `{"exists": false}`.
 - An empty array, a boolean, a null, an array inside the array, and an object with more than one key return `InvalidParameter`. So do `$or` and the operators that pail does not implement, such as `suffix`, `equals-ignore-case`, `cidr`, and `wildcard`.
-- A policy has at most 5 keys that map to an array, counting nested ones, and the product of the lengths of those arrays is at most 150. The recording verifies that 6 top-level keys and 156 combinations return `InvalidParameter`. The count of nested keys is unverified.
+- A policy has at most 5 keys that map to an array, counting nested ones, and the product of the lengths of those arrays is at most 150. Intermediate keys of a nested policy do not count. So 6 top-level keys, 6 nested keys under one top-level key, and 156 combinations return `InvalidParameter`, but 5 nested keys under 2 top-level keys do not.
 - In `MessageAttributes` scope, the key names a message attribute:
   - `String` and `Number` (with or without a custom label) give one value. A `Number` value compares as a number. A `String` value never matches a number or `numeric`.
   - `String.Array` gives its elements. The key matches when any element matches.
   - `Binary` exists but has no value that a condition other than `exists` can match.
-  - An attribute that is not on the message does not match any condition except `{"exists": false}`. That includes `anything-but` (unverified).
-  - A value of another type satisfies `anything-but` (unverified).
-- In `MessageBody` scope, the message must be a JSON object. Any other message does not match. An array on the path fans out into its elements, and the key matches when any of them matches. An object at the end of the path is not a value. A missing path does not match, except `{"exists": false}` (unverified).
-- With `MessageStructure` set to `json`, a body policy matches the message that pail sends to SQS (the `sqs` value, or `default`). This is unverified.
+  - An attribute that is not on the message does not match any condition except `{"exists": false}`. That includes `anything-but`.
+  - A value of another type satisfies `anything-but`. For example, `{"anything-but": ["prod"]}` matches the `Number` attribute `5`.
+- In `MessageBody` scope, the message must be a JSON object. Any other message does not match. An array on the path fans out into its elements, and the key matches when any of them matches. An object at the end of the path is not a value. A missing path, or one whose parent object is missing, does not match, except `{"exists": false}`.
+- With `MessageStructure` set to `json`, a body policy matches the message that pail sends to SQS: the `sqs` value, or `default` when there is no `sqs` value. A policy that matches only the `default` value does not match when an `sqs` value exists.
 - pail filters before it signs. A publish that matches no subscription sends nothing.
 
 ### Publish
