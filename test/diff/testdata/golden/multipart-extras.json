@@ -1,0 +1,259 @@
+{
+  "scenario": "multipart-extras",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "create-sized",
+      "request": "POST /sized?uploads",
+      "fingerprint": "736d70a34ba90039",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: sized\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "put-part",
+      "request": "PUT /sized?partNumber=1&uploadId={uploadId}",
+      "fingerprint": "8dd75b994ee60ba4",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"900150983cd24fb0d6963f7d28e17f72\"",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "complete-wrong-size",
+      "request": "POST /sized?uploadId={uploadId}",
+      "fingerprint": "e7f2e0716d0cc50b",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "complete-bad-size",
+      "request": "POST /sized?uploadId={uploadId}",
+      "fingerprint": "f8cc9eefa8245454",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "complete-right-size",
+      "request": "POST /sized?uploadId={uploadId}",
+      "fingerprint": "c6dd03b8b954a3dc",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CompleteMultipartUploadResult\n  Location: <volatile>\n  Bucket: {bucket}\n  Key: sized\n  ETag: \"af5da9f45af7a300e3aded972f8ff687-1\"\n  ChecksumCRC64NVME: BeXKuz/B+us=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-sized",
+      "request": "HEAD /sized",
+      "fingerprint": "2a418eb9d7637861",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "3",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"af5da9f45af7a300e3aded972f8ff687-1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "create-odd",
+      "request": "POST /odd key+&=%?uploads",
+      "fingerprint": "75c9e3f70ad7fe8a",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: odd key+&=%\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "list-uploads-url",
+      "request": "GET /?encoding-type=url&uploads",
+      "fingerprint": "1981a9b531b27b4e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListMultipartUploadsResult\n  Bucket: {bucket}\n  KeyMarker: \n  UploadIdMarker: <volatile>\n  NextKeyMarker: odd+key%2B%26%3D%25\n  NextUploadIdMarker: <volatile>\n  MaxUploads: 1000\n  EncodingType: url\n  IsTruncated: false\n  Upload\n    Key: odd+key%2B%26%3D%25\n    UploadId: <volatile>\n    Initiator\n      ID: <volatile>\n      DisplayName: <volatile>\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n    Initiated: <volatile>\n"
+    },
+    {
+      "step": "list-uploads-plain",
+      "request": "GET /?uploads",
+      "fingerprint": "4fcf59e099bd15b4",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListMultipartUploadsResult\n  Bucket: {bucket}\n  KeyMarker: \n  UploadIdMarker: <volatile>\n  NextKeyMarker: odd key+&=%\n  NextUploadIdMarker: <volatile>\n  MaxUploads: 1000\n  IsTruncated: false\n  Upload\n    Key: odd key+&=%\n    UploadId: <volatile>\n    Initiator\n      ID: <volatile>\n      DisplayName: <volatile>\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD\n    Initiated: <volatile>\n"
+    },
+    {
+      "step": "list-uploads-bad-encoding",
+      "request": "GET /?encoding-type=bogus&uploads",
+      "fingerprint": "d139c83110fcf282",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "abort-odd",
+      "request": "DELETE /odd key+&=%?uploadId={uploadId}",
+      "fingerprint": "98ac2e32506ccacb",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-plain",
+      "request": "PUT /plain",
+      "fingerprint": "c739827b13a8f096",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"ac7938d40cfc2307e2bf325d28e7884e\"",
+        "X-Amz-Checksum-Crc64nvme": "d7A49Y7ZNHM=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-null-version",
+      "request": "GET /plain?versionId=null",
+      "fingerprint": "9ba825a3f0a77e78",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "5",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"ac7938d40cfc2307e2bf325d28e7884e\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "plain"
+    },
+    {
+      "step": "head-null-version",
+      "request": "HEAD /plain?versionId=null",
+      "fingerprint": "927c86247d78c629",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "5",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"ac7938d40cfc2307e2bf325d28e7884e\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-bogus-version",
+      "request": "GET /plain?versionId=bogus",
+      "fingerprint": "faec374b33c30ca8",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "get-null-acl",
+      "request": "GET /plain?acl&versionId=null",
+      "fingerprint": "7030714449db76ab",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "AccessControlPolicy\n  Owner\n    ID: <volatile>\n  AccessControlList\n    Grant\n      Grantee\n        ID: <volatile>\n      Permission: FULL_CONTROL\n"
+    },
+    {
+      "step": "delete-null-version",
+      "request": "DELETE /plain?versionId=null",
+      "fingerprint": "3d511698b4ee963b",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-after-null-delete",
+      "request": "GET /plain",
+      "fingerprint": "ddfc59bf299af10b",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "delete-sized",
+      "request": "DELETE /sized",
+      "fingerprint": "2001e42dcc76cc33",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

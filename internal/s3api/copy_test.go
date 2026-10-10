@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -121,7 +122,6 @@ func TestCopyObject(t *testing.T) {
 		{"if-modified-since now", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-modified-since": "{now}"}, 412, "PreconditionFailed", "", "", "", ""},
 		{"if-unmodified-since future", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-unmodified-since": future}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"if-unmodified-since past", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-unmodified-since": past}, 412, "PreconditionFailed", "", "", "", ""},
-		{"destination if-match is not a copy condition", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "If-Match": `"nope"`}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"source without a key", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt"}, 400, "InvalidArgument", "", "", "", ""},
 		{"source with a bad escape", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/a%zz"}, 400, "InvalidArgument", "", "", "", ""},
 		{"missing source key", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/nope"}, 404, "NoSuchKey", "", "", "", ""},
@@ -132,7 +132,8 @@ func TestCopyObject(t *testing.T) {
 		{"versionId null", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=null"}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"other versionId", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=v1"}, 501, "NotImplemented", "", "", "", ""},
 		{"checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "SHA256"}, 200, "", "text/plain", "blue", "attachment", "SHA256"},
-		{"unknown checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "MD5"}, 400, "InvalidRequest", "", "", "", ""},
+		{"xxhash128 checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "XXHASH128"}, 501, "NotImplemented", "", "", "", ""},
+		{"unknown checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "BOGUS"}, 400, "InvalidRequest", "", "", "", ""},
 	}
 	for _, tt := range tests {
 		put("bkt", "src") // the onto-itself REPLACE case overwrites it
@@ -186,6 +187,133 @@ func TestCopyObject(t *testing.T) {
 		}
 		if !strings.Contains(string(body), "<Checksum"+tt.wantAlg+">"+info.Checksum+"</Checksum"+tt.wantAlg+">") {
 			t.Errorf("%s: CopyObjectResult = %s, want a Checksum%s element", tt.name, body, tt.wantAlg)
+		}
+	}
+}
+
+func TestUploadPartCopy(t *testing.T) {
+	srv, st := storeServer(t, "")
+	ctx := context.Background()
+	if err := st.CreateBucket(ctx, "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.PutObject(ctx, "bkt", "src", strings.NewReader("0123456789"), store.PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.PutObject(ctx, "bkt", "cold", strings.NewReader("x"), store.PutOptions{StorageClass: "GLACIER"}); err != nil {
+		t.Fatal(err)
+	}
+	up, err := st.CreateUpload(ctx, "bkt", "dst", store.UploadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wholeETag = "781e5e245d69b566979b86e28d23f2c7" // MD5 of "0123456789"
+	const rangeETag = "81b073de9370ea873f548e31b8adc081" // MD5 of "2345"
+
+	tests := []struct {
+		name       string
+		query      string
+		header     map[string]string
+		wantStatus int
+		wantCode   string
+		wantETag   string
+	}{
+		{"whole object", "partNumber=1&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src"}, 200, "", wholeETag},
+		{"range", "partNumber=2&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "/bkt/src", "x-amz-copy-source-range": "bytes=2-5"}, 200, "", rangeETag},
+		{"range to the last byte", "partNumber=3&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-range": "bytes=9-9"}, 200, "", ""},
+		{"range past the end", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-range": "bytes=5-100"}, 400, "InvalidArgument", ""},
+		{"range without unit", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-range": "2-5"}, 400, "InvalidArgument", ""},
+		{"open-ended range", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-range": "bytes=2-"}, 400, "InvalidArgument", ""},
+		{"reversed range", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-range": "bytes=5-2"}, 400, "InvalidArgument", ""},
+		{"if-match miss", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-match": `"nope"`}, 412, "PreconditionFailed", ""},
+		{"missing source", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/missing"}, 404, "NoSuchKey", ""},
+		{"archived source", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/cold"}, 403, "InvalidObjectState", ""},
+		{"bad source", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt"}, 400, "InvalidArgument", ""},
+		{"source owner mismatch", "partNumber=4&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-source-expected-bucket-owner": "123456789012"}, 403, "AccessDenied", ""},
+		{"unknown upload", "partNumber=4&uploadId=bogus", map[string]string{"x-amz-copy-source": "bkt/src"}, 404, "NoSuchUpload", ""},
+		{"part number zero", "partNumber=0&uploadId=" + up.ID, map[string]string{"x-amz-copy-source": "bkt/src"}, 400, "InvalidArgument", ""},
+	}
+	for _, tt := range tests {
+		r := call(t, srv, http.MethodPut, "/bkt/dst?"+tt.query, "", tt.header)
+		if r.status != tt.wantStatus || r.code != tt.wantCode {
+			t.Errorf("%s: status, code = %d, %q; want %d, %q (body %s)", tt.name, r.status, r.code, tt.wantStatus, tt.wantCode, r.body)
+			continue
+		}
+		var got struct {
+			ETag string
+		}
+		if tt.wantStatus == 200 {
+			if err := xml.Unmarshal([]byte(r.body), &got); err != nil {
+				t.Fatalf("%s: decode %q: %v", tt.name, r.body, err)
+			}
+		}
+		if tt.wantETag != "" && got.ETag != `"`+tt.wantETag+`"` {
+			t.Errorf("%s: ETag = %s, want %q", tt.name, got.ETag, tt.wantETag)
+		}
+	}
+
+	_, parts, err := st.ListParts(ctx, "bkt", "dst", up.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sizes []int64
+	for _, p := range parts {
+		sizes = append(sizes, p.Size)
+	}
+	if want := []int64{10, 4, 1}; !slices.Equal(sizes, want) {
+		t.Errorf("part sizes = %v, want %v", sizes, want)
+	}
+}
+
+func TestParseCopyRange(t *testing.T) {
+	tests := []struct {
+		spec             string
+		size             int64
+		wantFirst, wantN int64
+		wantOK           bool
+	}{
+		{"bytes=0-9", 10, 0, 10, true},
+		{"bytes=2-5", 10, 2, 4, true},
+		{"bytes=9-9", 10, 9, 1, true},
+		{"bytes=0-10", 10, 0, 0, false},
+		{"bytes=5-2", 10, 0, 0, false},
+		{"bytes=2-", 10, 0, 0, false},
+		{"bytes=-2", 10, 0, 0, false},
+		{"2-5", 10, 0, 0, false},
+		{"bytes=a-b", 10, 0, 0, false},
+		{"bytes=0-0", 0, 0, 0, false},
+	}
+	for _, tt := range tests {
+		first, n, ok := parseCopyRange(tt.spec, tt.size)
+		if first != tt.wantFirst || n != tt.wantN || ok != tt.wantOK {
+			t.Errorf("parseCopyRange(%q, %d) = %d, %d, %v; want %d, %d, %v", tt.spec, tt.size, first, n, ok, tt.wantFirst, tt.wantN, tt.wantOK)
+		}
+	}
+}
+
+func TestPartWritesRejectSSEC(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	sendWith(t, srv, http.MethodPut, "/bkt", "", nil)
+	sendWith(t, srv, http.MethodPut, "/bkt/src", "data", nil)
+	_, _, body := sendWith(t, srv, http.MethodPost, "/bkt/dst?uploads", "", nil)
+	var created struct {
+		UploadID string `xml:"UploadId"`
+	}
+	if err := xml.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	part := "/bkt/dst?partNumber=1&uploadId=" + created.UploadID
+	tests := []struct {
+		name   string
+		header map[string]string
+	}{
+		{"UploadPart with a customer key", map[string]string{"x-amz-server-side-encryption-customer-algorithm": "AES256"}},
+		{"UploadPartCopy with a customer key", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-server-side-encryption-customer-algorithm": "AES256"}},
+		{"UploadPartCopy with a source key", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-server-side-encryption-customer-algorithm": "AES256"}},
+	}
+	for _, tt := range tests {
+		if status, code, _ := sendWith(t, srv, http.MethodPut, part, "data", tt.header); status != http.StatusForbidden || code != "AccessDenied" {
+			t.Errorf("%s: PUT %s = %d %q, want 403 AccessDenied", tt.name, part, status, code)
 		}
 	}
 }

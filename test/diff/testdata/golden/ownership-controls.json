@@ -1,0 +1,302 @@
+{
+  "scenario": "ownership-controls",
+  "exchanges": [
+    {
+      "step": "create-bucket-bogus-ownership",
+      "request": "PUT /",
+      "fingerprint": "2824689030d5fd63",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "b869ce8229221742",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-ownership",
+      "request": "GET /?ownershipControls",
+      "fingerprint": "5c545caa3cc0c130",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "OwnershipControls\n  Rule\n    ObjectOwnership: BucketOwnerEnforced\n"
+    },
+    {
+      "step": "get-bucket-acl",
+      "request": "GET /?acl",
+      "fingerprint": "1fb650b3f1359564",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "AccessControlPolicy\n  Owner\n    ID: <volatile>\n  AccessControlList\n    Grant\n      Grantee\n        ID: <volatile>\n      Permission: FULL_CONTROL\n"
+    },
+    {
+      "step": "put-public-read",
+      "request": "PUT /k",
+      "fingerprint": "05c1d38f1959325a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessControlListNotSupported\n"
+    },
+    {
+      "step": "put-private",
+      "request": "PUT /k",
+      "fingerprint": "3bd924a993a91b09",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-owner-full-control",
+      "request": "PUT /k",
+      "fingerprint": "3b24092cb8bffca9",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-no-acl",
+      "request": "PUT /k",
+      "fingerprint": "f0d339d46376f4af",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-object-acl",
+      "request": "GET /k?acl",
+      "fingerprint": "9b31db89c40dab91",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "AccessControlPolicy\n  Owner\n    ID: <volatile>\n  AccessControlList\n    Grant\n      Grantee\n        ID: <volatile>\n      Permission: FULL_CONTROL\n"
+    },
+    {
+      "step": "put-object-acl",
+      "request": "PUT /k?acl",
+      "fingerprint": "7ff7b1e38f912ed2",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessControlListNotSupported\n"
+    },
+    {
+      "step": "put-bucket-acl",
+      "request": "PUT /?acl",
+      "fingerprint": "5c07bf6c1d5a8f18",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessControlListNotSupported\n"
+    },
+    {
+      "step": "put-object-writer",
+      "request": "PUT /?ownershipControls",
+      "fingerprint": "2c10cd44e4c9bdaa",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-ownership-after",
+      "request": "GET /?ownershipControls",
+      "fingerprint": "5c545caa3cc0c130",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "OwnershipControls\n  Rule\n    ObjectOwnership: ObjectWriter\n"
+    },
+    {
+      "step": "put-private-after",
+      "request": "PUT /k",
+      "fingerprint": "3bd924a993a91b09",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-object-acl-after",
+      "request": "PUT /k?acl",
+      "fingerprint": "7ff7b1e38f912ed2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-preferred",
+      "request": "PUT /?ownershipControls",
+      "fingerprint": "fa2134227b5f38fe",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-ownership-preferred",
+      "request": "GET /?ownershipControls",
+      "fingerprint": "5c545caa3cc0c130",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "OwnershipControls\n  Rule\n    ObjectOwnership: BucketOwnerPreferred\n"
+    },
+    {
+      "step": "put-bogus",
+      "request": "PUT /?ownershipControls",
+      "fingerprint": "f8b60cce09ac356a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: MalformedXML\n"
+    },
+    {
+      "step": "put-no-md5",
+      "request": "PUT /?ownershipControls",
+      "fingerprint": "640b73c8cf0378c0",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-malformed",
+      "request": "PUT /?ownershipControls",
+      "fingerprint": "1bc4da308f9ce00d",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: MalformedXML\n"
+    },
+    {
+      "step": "delete-ownership",
+      "request": "DELETE /?ownershipControls",
+      "fingerprint": "158e83316fd6ea7b",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-ownership-deleted",
+      "request": "GET /?ownershipControls",
+      "fingerprint": "5c545caa3cc0c130",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: OwnershipControlsNotFoundError\n"
+    },
+    {
+      "step": "put-private-no-controls",
+      "request": "PUT /k",
+      "fingerprint": "3bd924a993a91b09",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"9dd4e461268c8034f5c8564e155c67a6\"",
+        "X-Amz-Checksum-Crc64nvme": "Lb1nAmRU5LE=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-object",
+      "request": "DELETE /k",
+      "fingerprint": "d19d2c8bc0681eba",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

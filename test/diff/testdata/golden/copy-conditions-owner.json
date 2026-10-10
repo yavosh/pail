@@ -1,0 +1,322 @@
+{
+  "scenario": "copy-conditions-owner",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-src",
+      "request": "PUT /src",
+      "fingerprint": "4406167d9fda71a9",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"36cd38f49b9afa08222c0dc9ebfe35eb\"",
+        "X-Amz-Checksum-Crc64nvme": "ryXQDZQAMz0=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-dest",
+      "request": "PUT /dest",
+      "fingerprint": "a6cc2acfbcdffd27",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"0b43c25ccf2340e23492d4d3141479dc\"",
+        "X-Amz-Checksum-Crc64nvme": "SrrtzM0HiRA=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "copy-if-none-match-existing",
+      "request": "PUT /dest",
+      "fingerprint": "a13a5d9727565dd9",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "copy-if-none-match-new",
+      "request": "PUT /fresh",
+      "fingerprint": "1de78b268b9fce39",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"36cd38f49b9afa08222c0dc9ebfe35eb\"\n  ChecksumCRC64NVME: ryXQDZQAMz0=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "copy-if-match-wrong",
+      "request": "PUT /dest",
+      "fingerprint": "914ce51423186e73",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "copy-if-match-right",
+      "request": "PUT /dest",
+      "fingerprint": "305b2f324f8f4fe4",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"36cd38f49b9afa08222c0dc9ebfe35eb\"\n  ChecksumCRC64NVME: ryXQDZQAMz0=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "copy-if-match-missing",
+      "request": "PUT /missing",
+      "fingerprint": "d89ea6924c8a2552",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "copy-if-none-match-etag",
+      "request": "PUT /dest",
+      "fingerprint": "14dd27e536c71e14",
+      "status": 501,
+      "headers": {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NotImplemented\n"
+    },
+    {
+      "step": "get-dest",
+      "request": "GET /dest",
+      "fingerprint": "99040d896133c163",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "6",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"36cd38f49b9afa08222c0dc9ebfe35eb\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "source"
+    },
+    {
+      "step": "get-owner-wrong",
+      "request": "GET /src",
+      "fingerprint": "bd7b6ed41cdb4438",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "get-owner-malformed",
+      "request": "GET /src",
+      "fingerprint": "aa8213826fd2cd07",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidBucketOwnerAWSAccountID\n"
+    },
+    {
+      "step": "head-owner-wrong",
+      "request": "HEAD /src",
+      "fingerprint": "50141abcdb9013ce",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-owner-wrong",
+      "request": "PUT /owned",
+      "fingerprint": "e555be805e8835b9",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "list-owner-wrong",
+      "request": "GET /?list-type=2",
+      "fingerprint": "1f49df0ced553278",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "location-owner-wrong",
+      "request": "GET /?location",
+      "fingerprint": "749bd4718a30be39",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "lifecycle-owner-wrong",
+      "request": "PUT /?lifecycle",
+      "fingerprint": "4674e6b97ad0d63f",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "copy-source-owner-wrong",
+      "request": "PUT /copied",
+      "fingerprint": "0c15492c7b7e87a6",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "copy-dest-owner-wrong",
+      "request": "PUT /copied",
+      "fingerprint": "82cc80de022ef9bd",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "create-upload-owner-wrong",
+      "request": "POST /mpu?uploads",
+      "fingerprint": "f99bfaf93bbe591b",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "delete-owner-wrong",
+      "request": "DELETE /src",
+      "fingerprint": "bbfd98433900b325",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "get-after-owner-wrong",
+      "request": "GET /src",
+      "fingerprint": "de8d4bdd81c191bf",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "6",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"36cd38f49b9afa08222c0dc9ebfe35eb\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "source"
+    },
+    {
+      "step": "delete-src",
+      "request": "DELETE /src",
+      "fingerprint": "579c91fd1cd68ac0",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-dest",
+      "request": "DELETE /dest",
+      "fingerprint": "94d1ff9506328920",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-fresh",
+      "request": "DELETE /fresh",
+      "fingerprint": "ad84acfe5ceb6b4e",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

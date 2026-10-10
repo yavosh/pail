@@ -1,6 +1,7 @@
 package s3api
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
@@ -69,11 +70,9 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 				case field == "tagging":
 					writeError(w, r, errNotImplemented)
 					return
-				case field == "x-amz-storage-class":
-					if value != "STANDARD" {
-						writeError(w, r, errNotImplemented)
-						return
-					}
+				case field == "x-amz-storage-class", field == "x-amz-website-redirect-location",
+					strings.HasPrefix(field, "x-amz-server-side-encryption"), strings.HasPrefix(field, "x-amz-object-lock-"):
+					headers.Set(field, value)
 				case field == "x-amz-checksum-algorithm":
 					headers.Set("x-amz-sdk-checksum-algorithm", value)
 				case strings.HasPrefix(field, "x-amz-checksum-"):
@@ -107,6 +106,10 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 					return
 				}
 			}
+			if e, ok := h.checkACLsEnabled(r.Context(), t.bucket, headers); !ok {
+				writeError(w, r, e)
+				return
+			}
 			policy, e, ok := h.requestACL(headers, false, ownerID)
 			if !ok {
 				writeError(w, r, e)
@@ -121,9 +124,15 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 				}
 				opts.ContentMD5 = digest
 			}
-			algorithm, digest, trailer, valid := parseChecksum(headers)
+			options, e, ok := parseObjectOptions(headers)
+			if !ok {
+				writeError(w, r, e)
+				return
+			}
+			opts.ObjectOptions = options
+			algorithm, digest, trailer, e, valid := parseChecksum(headers)
 			if !valid || trailer || fields["x-amz-checksum-algorithm"] != "" && digest == nil {
-				writeError(w, r, errInvalidChecksum)
+				writeError(w, r, cmp.Or(e, errInvalidChecksum))
 				return
 			}
 			opts.ChecksumAlgorithm, opts.Checksum = algorithm, digest
@@ -136,6 +145,7 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 			etag := quoteETag(info.ETag)
 			w.Header().Set("ETag", etag)
 			setChecksumHeaders(w.Header(), info)
+			setOptionHeaders(w.Header(), info.ObjectOptions)
 			if destination != nil {
 				q := destination.Query()
 				q.Set("bucket", t.bucket)

@@ -115,7 +115,7 @@ func normalize(st step, bucket string, r response) exchange {
 		body = "base64:" + base64.StdEncoding.EncodeToString(r.body)
 	}
 	ex.Body = body
-	for _, h := range comparedHeaders {
+	for _, h := range append(slices.Clone(comparedHeaders), st.compare...) {
 		if v := r.header.Get(h); v != "" {
 			if h == "Location" && st.form != nil && r.status == http.StatusCreated {
 				if location, err := url.Parse(v); err == nil {
@@ -204,6 +204,9 @@ func fingerprint(st step) string {
 	}
 	if st.service != "" { // only here, so older steps keep their fingerprints
 		fmt.Fprintf(h, "\nservice %s %q", st.service, st.target)
+	}
+	if len(st.compare) > 0 { // only here, so older steps keep their fingerprints
+		fmt.Fprintf(h, "\ncompare %q", st.compare)
 	}
 	if st.form != nil {
 		for _, key := range slices.Sorted(maps.Keys(st.form)) {

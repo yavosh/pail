@@ -17,11 +17,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yavosh/pail/internal/account"
 	"github.com/yavosh/pail/internal/vfs"
 )
 
 // Account is the account ID in every queue ARN and URL. pail serves one account.
-const Account = "000000000000"
+const Account = account.ID
 
 const (
 	queuesDir     = "sqs/queues"

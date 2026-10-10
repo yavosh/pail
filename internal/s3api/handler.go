@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yavosh/pail/internal/account"
 	"github.com/yavosh/pail/internal/sigv4"
 )
 
@@ -61,6 +62,9 @@ func (h *handler) routes() {
 		opGetBucketLifecycle:    h.handleBucketConfiguration,
 		opPutBucketLifecycle:    h.handleBucketConfiguration,
 		opDeleteBucketLifecycle: h.handleBucketConfiguration,
+		opGetBucketOwnership:    h.handleOwnershipControls,
+		opPutBucketOwnership:    h.handleOwnershipControls,
+		opDeleteBucketOwnership: h.handleOwnershipControls,
 		opPostObject:            h.handlePostObject,
 		opListBuckets:           h.handleListBuckets,
 		opCreateBucket:          h.handleCreateBucket,
@@ -78,6 +82,7 @@ func (h *handler) routes() {
 
 		opCreateMultipartUpload:   h.handleCreateMultipartUpload,
 		opUploadPart:              h.handleUploadPart,
+		opUploadPartCopy:          h.handleUploadPartCopy,
 		opCompleteMultipartUpload: h.handleCompleteMultipartUpload,
 		opAbortMultipartUpload:    h.handleAbortMultipartUpload,
 		opListParts:               h.handleListParts,
@@ -125,6 +130,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.handlePostObject(rec, r, t)
 		} else if err := h.verifySignature(r, t); err != nil && (!errors.Is(err, sigv4.ErrMissingAuth) || h.opts.Store == nil || !h.anonymousAllowed(r, t, op)) {
 			writeError(rec, r, toAPIError(err))
+		} else if apiErr, ok := expectedOwner(r, t, op); !ok {
+			writeError(rec, r, apiErr)
+		} else if apiErr, ok := checkVersionID(op, r.URL.Query()); !ok {
+			writeError(rec, r, apiErr)
 		} else if fn, ok := h.ops[op]; ok {
 			fn(rec, r, t)
 		} else {
@@ -134,6 +143,32 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	clogS3api().Info("request", "method", r.Method, "op", op, "bucket", t.bucket,
 		"status", rec.status, "bytes", rec.bytes, "duration", time.Since(start))
+}
+
+// expectedOwner checks x-amz-expected-bucket-owner. CreateBucket is exempt:
+// its bucket does not exist yet.
+func expectedOwner(r *http.Request, t target, op operation) (apiError, bool) {
+	if t.bucket == "" || op == opCreateBucket {
+		return apiError{}, true
+	}
+	return checkExpectedOwner(r.Header, "x-amz-expected-bucket-owner")
+}
+
+// checkExpectedOwner validates an expected-owner header against pail's one
+// account. CopyObject also calls it for x-amz-source-expected-bucket-owner.
+func checkExpectedOwner(header http.Header, name string) (apiError, bool) {
+	values := header.Values(name)
+	if len(values) == 0 {
+		return apiError{}, true
+	}
+	id := values[0]
+	if len(id) != len(account.ID) || strings.Trim(id, "0123456789") != "" {
+		return errInvalidBucketOwner, false
+	}
+	if id != account.ID {
+		return errAccessDenied, false
+	}
+	return apiError{}, true
 }
 
 func (h *handler) verifySignature(r *http.Request, t target) error {

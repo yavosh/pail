@@ -48,6 +48,18 @@ func (h *handler) handleACL(w http.ResponseWriter, r *http.Request, t target) {
 		writeError(w, r, toAPIError(err))
 		return
 	}
+	enforced, err := h.ownerEnforced(r.Context(), t.bucket)
+	if err != nil {
+		writeError(w, r, toAPIError(err))
+		return
+	}
+	if enforced && r.Method == http.MethodPut {
+		writeError(w, r, errACLNotSupported)
+		return
+	}
+	if enforced {
+		current = acl.Private(h.bucketOwner().ID)
+	}
 	if r.Method == http.MethodGet {
 		current.Xmlns = s3Namespace
 		writeXML(w, r, http.StatusOK, current)
@@ -239,6 +251,10 @@ func (h *handler) anonymousAllowed(r *http.Request, t target, op operation) bool
 	default:
 		return false
 	}
+	// Under BucketOwnerEnforced, stored grants grant nothing.
+	if enforced, err := h.ownerEnforced(r.Context(), t.bucket); err != nil || enforced {
+		return false
+	}
 	policy, err := h.resourceACL(r, resource)
 	if err != nil || !policy.Public(permission) {
 		return false
@@ -250,7 +266,15 @@ func (h *handler) anonymousAllowed(r *http.Request, t target, op operation) bool
 	return true
 }
 
-func (h *handler) writeACL(r *http.Request, bucket bool) (acl.Policy, apiError, bool) {
+func (h *handler) writeACL(r *http.Request, t target, bucket bool) (acl.Policy, apiError, bool) {
+	if e, ok := h.checkACLsEnabled(r.Context(), t.bucket, r.Header); !ok {
+		return acl.Policy{}, e, false
+	}
+	return h.requestPolicy(r, bucket)
+}
+
+// requestPolicy builds the ACL a write request asks for, owned by its caller.
+func (h *handler) requestPolicy(r *http.Request, bucket bool) (acl.Policy, apiError, bool) {
 	ownerID := h.bucketOwner().ID
 	if anonymousRequest(r) {
 		ownerID = acl.AnonymousID

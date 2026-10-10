@@ -7,7 +7,7 @@ import (
 )
 
 func TestBucketConfigurationPersistence(t *testing.T) {
-	for _, kind := range []string{"cors", "lifecycle", "acl"} {
+	for _, kind := range []string{"cors", "lifecycle", "acl", "ownership"} {
 		t.Run(kind, func(t *testing.T) {
 			s, fsys := newStore(t)
 			mustCreate(t, s, "bucket")

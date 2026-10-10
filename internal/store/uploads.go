@@ -30,6 +30,7 @@ var (
 	ErrInvalidPartOrder          = errors.New("parts not in ascending order")
 	ErrEntityTooSmall            = errors.New("part smaller than the minimum size")
 	ErrEntityTooLarge            = errors.New("object larger than the maximum size")
+	ErrSizeMismatch              = errors.New("object size does not match the expected size")
 	ErrChecksumAlgorithmMismatch = errors.New("checksum algorithm does not match the upload")
 	ErrChecksumTypeMismatch      = errors.New("checksum type does not match the upload")
 	ErrMissingPartChecksum       = errors.New("missing part checksum")
@@ -38,8 +39,8 @@ var (
 // Multipart limits, as on AWS.
 const (
 	MaxParts         = 10000
-	MinPartSize      = 5 << 20 // every part but the last
-	maxMultipartSize = 5 << 40
+	MinPartSize      = 5 << 20              // every part but the last
+	maxMultipartSize = MaxParts * (5 << 30) // 10,000 parts of 5 GiB
 	uploadFileName   = "upload.json"
 )
 
@@ -51,6 +52,7 @@ type UploadInfo struct {
 	Initiated time.Time   `json:"initiated"`
 	// Metadata is stored with the object that Complete creates.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	ObjectOptions
 	// ChecksumAlgorithm and ChecksumType are empty when the client chose none.
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
 	ChecksumType      string `json:"checksumType,omitempty"`
@@ -58,8 +60,9 @@ type UploadInfo struct {
 
 // UploadOptions are the optional parts of a CreateUpload.
 type UploadOptions struct {
-	ACL               *acl.Policy
-	Metadata          map[string]string
+	ACL      *acl.Policy
+	Metadata map[string]string
+	ObjectOptions
 	ChecksumAlgorithm string
 	ChecksumType      string
 }
@@ -70,6 +73,8 @@ type PartInfo struct {
 	Size         int64     `json:"size"`
 	ETag         string    `json:"etag"` // hex MD5, without quotes
 	LastModified time.Time `json:"lastModified"`
+	// ObjectOptions come from the upload. PutPart fills them; they are not stored with the part.
+	ObjectOptions `json:"-"`
 	// ChecksumAlgorithm and Checksum (base64) are empty when the part has none.
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
 	Checksum          string `json:"checksum,omitempty"`
@@ -111,6 +116,8 @@ type CompleteOptions struct {
 	ChecksumAlgorithm  string
 	FullObjectChecksum []byte
 	ChecksumType       string
+	// ExpectedSize is the x-amz-mp-object-size value. Nil means the client sent none.
+	ExpectedSize *int64
 }
 
 func uploadsDir(bucket string) string { return path.Join("buckets", bucket, "uploads") }
@@ -188,6 +195,7 @@ func (s *Store) CreateUpload(ctx context.Context, bucket, key string, opts Uploa
 		Initiated:         time.Now().UTC(),
 		Metadata:          opts.Metadata,
 		ACL:               opts.ACL,
+		ObjectOptions:     opts.ObjectOptions,
 		ChecksumAlgorithm: checksum.Canonical(opts.ChecksumAlgorithm),
 		ChecksumType:      opts.ChecksumType,
 	}
@@ -276,6 +284,7 @@ func (s *Store) PutPart(ctx context.Context, bucket, key, uploadID string, partN
 	if oldErr == nil {
 		_ = s.fs.Remove(path.Join(uploadDir(bucket, uploadID), old.File))
 	}
+	rec.ObjectOptions = up.ObjectOptions
 	return rec.PartInfo, nil
 }
 
@@ -450,9 +459,14 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 		return ObjectInfo{}, ErrChecksumTypeMismatch
 	}
 
-	records, err := s.checkParts(bucket, up, parts)
+	records, size, err := s.checkParts(bucket, up, parts)
 	if err != nil {
 		return ObjectInfo{}, err
+	}
+	if opts.ExpectedSize != nil {
+		if size != *opts.ExpectedSize {
+			return ObjectInfo{}, ErrSizeMismatch
+		}
 	}
 
 	// A composite upload has no whole-object hash; an upload with no
@@ -512,6 +526,8 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 		LastModified: time.Now().UTC(),
 		Metadata:     up.Metadata,
 		ACL:          up.ACL,
+
+		ObjectOptions: up.ObjectOptions,
 	}
 	if full != nil {
 		fullSum := full.Sum(nil)
@@ -542,14 +558,14 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 }
 
 // checkParts matches the client's list against the stored parts and returns
-// the stored records in list order.
-func (s *Store) checkParts(bucket string, up UploadInfo, parts []CompletePart) ([]partRecord, error) {
+// the stored records in list order, with their total size.
+func (s *Store) checkParts(bucket string, up UploadInfo, parts []CompletePart) ([]partRecord, int64, error) {
 	if len(parts) == 0 {
-		return nil, ErrInvalidPart
+		return nil, 0, ErrInvalidPart
 	}
 	for i := 1; i < len(parts); i++ {
 		if parts[i].PartNumber <= parts[i-1].PartNumber {
-			return nil, ErrInvalidPartOrder
+			return nil, 0, ErrInvalidPartOrder
 		}
 	}
 	var (
@@ -558,41 +574,41 @@ func (s *Store) checkParts(bucket string, up UploadInfo, parts []CompletePart) (
 	)
 	for i, cp := range parts {
 		if cp.PartNumber < 1 || cp.PartNumber > MaxParts {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		var r partRecord
 		err := s.readJSON(partFile(bucket, up.ID, cp.PartNumber), &r)
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read part %d: %w", cp.PartNumber, err)
+			return nil, 0, fmt.Errorf("read part %d: %w", cp.PartNumber, err)
 		}
 		if strings.Trim(cp.ETag, `"`) != r.ETag {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		if up.ChecksumType == checksum.Composite {
 			if cp.Checksum == "" {
-				return nil, ErrMissingPartChecksum
+				return nil, 0, ErrMissingPartChecksum
 			}
 			if cp.PartNumber != i+1 {
 				// AWS returns InternalError for nonconsecutive composite parts.
-				return nil, fmt.Errorf("checksum part number %d, want %d", cp.PartNumber, i+1)
+				return nil, 0, fmt.Errorf("checksum part number %d, want %d", cp.PartNumber, i+1)
 			}
 		}
 		if cp.Checksum != "" && (checksum.Canonical(cp.ChecksumAlgorithm) != r.ChecksumAlgorithm || cp.Checksum != r.Checksum) {
-			return nil, ErrInvalidPart
+			return nil, 0, ErrInvalidPart
 		}
 		if i < len(parts)-1 && r.Size < MinPartSize {
-			return nil, ErrEntityTooSmall
+			return nil, 0, ErrEntityTooSmall
 		}
 		total += r.Size
 		records = append(records, r)
 	}
 	if total > maxMultipartSize {
-		return nil, ErrEntityTooLarge
+		return nil, 0, ErrEntityTooLarge
 	}
-	return records, nil
+	return records, total, nil
 }
 
 // copyPart appends a part's data file to dst.

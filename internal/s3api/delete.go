@@ -2,6 +2,7 @@ package s3api
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/xml"
@@ -62,10 +63,10 @@ func (h *handler) handleDeleteObjects(w http.ResponseWriter, r *http.Request, t 
 			return
 		}
 	}
-	algorithm, want, inTrailer, ok := parseChecksum(r.Header)
+	algorithm, want, inTrailer, apiErr, ok := parseChecksum(r.Header)
 	streaming := sigv4.IsStreaming(r.Header)
 	if !ok || inTrailer && !streaming {
-		writeError(w, r, errInvalidChecksum)
+		writeError(w, r, cmp.Or(apiErr, errInvalidChecksum))
 		return
 	}
 	if md5Sum == nil && algorithm == "" {

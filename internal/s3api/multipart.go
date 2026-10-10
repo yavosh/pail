@@ -1,6 +1,7 @@
 package s3api
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
@@ -30,6 +31,9 @@ type checksumFields struct {
 	ChecksumCRC64NVME string `xml:"ChecksumCRC64NVME,omitempty"`
 	ChecksumSHA1      string `xml:"ChecksumSHA1,omitempty"`
 	ChecksumSHA256    string `xml:"ChecksumSHA256,omitempty"`
+	ChecksumSHA512    string `xml:"ChecksumSHA512,omitempty"`
+	ChecksumMD5       string `xml:"ChecksumMD5,omitempty"`
+	ChecksumXXHASH64  string `xml:"ChecksumXXHASH64,omitempty"`
 }
 
 // field returns the element for algorithm, or nil for an unknown one.
@@ -45,6 +49,12 @@ func (c *checksumFields) field(algorithm string) *string {
 		return &c.ChecksumSHA1
 	case checksum.SHA256:
 		return &c.ChecksumSHA256
+	case checksum.SHA512:
+		return &c.ChecksumSHA512
+	case checksum.MD5:
+		return &c.ChecksumMD5
+	case checksum.XXHASH64:
+		return &c.ChecksumXXHASH64
 	}
 	return nil
 }
@@ -110,21 +120,31 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 		writeError(w, r, apiErr)
 		return
 	}
+	if isUnsupportedChecksum(r.Header.Get("x-amz-checksum-algorithm")) {
+		writeError(w, r, errNotImplemented)
+		return
+	}
 	algorithm, typ, ok := uploadChecksum(r.Header)
 	if !ok {
 		writeError(w, r, errInvalidChecksum)
 		return
 	}
-	policy, apiErr, valid := h.writeACL(r, false)
+	policy, apiErr, valid := h.writeACL(r, t, false)
 	if !valid {
 		writeError(w, r, apiErr)
 		return
 	}
-	up, err := h.opts.Store.CreateUpload(r.Context(), t.bucket, t.key, store.UploadOptions{ACL: &policy, Metadata: metadata, ChecksumAlgorithm: algorithm, ChecksumType: typ})
+	options, apiErr, valid := parseObjectOptions(r.Header)
+	if !valid {
+		writeError(w, r, apiErr)
+		return
+	}
+	up, err := h.opts.Store.CreateUpload(r.Context(), t.bucket, t.key, store.UploadOptions{ACL: &policy, Metadata: metadata, ObjectOptions: options, ChecksumAlgorithm: algorithm, ChecksumType: typ})
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}
+	setEncryptionHeader(w.Header(), options.ServerSideEncryption)
 	if algorithm != "" {
 		w.Header().Set("x-amz-checksum-algorithm", algorithm)
 		w.Header().Set("x-amz-checksum-type", typ)
@@ -141,6 +161,10 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 
 func (h *handler) handleUploadPart(w http.ResponseWriter, r *http.Request, t target) {
 	if apiErr, ok := checkObjectTarget(t); !ok {
+		writeError(w, r, apiErr)
+		return
+	}
+	if apiErr, ok := rejectSSEC(r.Header); !ok {
 		writeError(w, r, apiErr)
 		return
 	}
@@ -174,8 +198,9 @@ func (h *handler) handleUploadPart(w http.ResponseWriter, r *http.Request, t tar
 	}
 	var inTrailer bool
 	// Only an aws-chunked body has trailers; fail before reading the body.
-	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
-		writeError(w, r, errInvalidChecksum)
+	var apiErr apiError
+	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, apiErr, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
+		writeError(w, r, cmp.Or(apiErr, errInvalidChecksum))
 		return
 	}
 	var body io.Reader = r.Body
@@ -197,6 +222,7 @@ func (h *handler) handleUploadPart(w http.ResponseWriter, r *http.Request, t tar
 	if info.Checksum != "" {
 		w.Header().Set(checksum.Header(info.ChecksumAlgorithm), info.Checksum)
 	}
+	setOptionHeaders(w.Header(), info.ObjectOptions)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -240,11 +266,19 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 		return
 	}
 	opts.IfMatch = r.Header.Get("If-Match")
+	if s := r.Header.Get("x-amz-mp-object-size"); s != "" {
+		size, ok := parseDigits(s)
+		if !ok {
+			writeError(w, r, errInvalidObjectSize)
+			return
+		}
+		opts.ExpectedSize = &size
+	}
 	opts.ChecksumType = r.Header.Get("x-amz-checksum-type")
 	// Here the header names the whole object's checksum, which only a FULL_OBJECT upload has.
-	algorithm, want, inTrailer, ok := parseChecksum(r.Header)
+	algorithm, want, inTrailer, apiErr, ok := parseChecksum(r.Header)
 	if !ok || inTrailer {
-		writeError(w, r, errInvalidChecksum)
+		writeError(w, r, cmp.Or(apiErr, errInvalidChecksum))
 		return
 	}
 	opts.ChecksumAlgorithm, opts.FullObjectChecksum = algorithm, want
@@ -283,6 +317,7 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 		location.Scheme = "https"
 	}
 	h.setExpiration(w, r, t.bucket, info)
+	setEncryptionHeader(w.Header(), info.ServerSideEncryption)
 	writeXML(w, r, http.StatusOK, response{
 		Xmlns: s3Namespace, Location: location.String(), Bucket: t.bucket, Key: t.key, ETag: quoteETag(info.ETag),
 		checksumFields: newChecksumFields(info.ChecksumAlgorithm, info.Checksum), ChecksumType: info.ChecksumType,
@@ -377,7 +412,7 @@ func (h *handler) handleListParts(w http.ResponseWriter, r *http.Request, t targ
 	}
 	resp := response{
 		Xmlns: s3Namespace, Bucket: t.bucket, Key: t.key, UploadID: uploadID, PartNumberMarker: marker, MaxParts: requested,
-		Parts: []part{}, Initiator: h.bucketInitiator(), Owner: h.bucketOwner(), StorageClass: "STANDARD",
+		Parts: []part{}, Initiator: h.bucketInitiator(), Owner: h.bucketOwner(), StorageClass: storageClassName(up.ObjectOptions),
 		ChecksumAlgorithm: up.ChecksumAlgorithm, ChecksumType: up.ChecksumType,
 	}
 	for _, p := range parts {
@@ -472,6 +507,7 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 		Prefix             string         `xml:"Prefix,omitempty"`
 		Delimiter          string         `xml:"Delimiter,omitempty"` // with CommonPrefixes, unverified: the recording has neither
 		MaxUploads         int            `xml:"MaxUploads"`
+		EncodingType       string         `xml:"EncodingType,omitempty"`
 		IsTruncated        bool           `xml:"IsTruncated"`
 		Uploads            []upload       `xml:"Upload"`
 		CommonPrefixes     []commonPrefix `xml:"CommonPrefixes"`
@@ -483,6 +519,15 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 	q := r.URL.Query()
 	requested, limit, ok := pageSize(q.Get("max-uploads"))
 	if !ok {
+		writeError(w, r, errInvalidArgument)
+		return
+	}
+	encode := func(s string) string { return s }
+	switch q.Get("encoding-type") {
+	case "":
+	case "url":
+		encode = urlEncode
+	default:
 		writeError(w, r, errInvalidArgument)
 		return
 	}
@@ -498,19 +543,19 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 	own := h.bucketOwner()
 	starter := h.bucketInitiator()
 	resp := response{
-		Xmlns: s3Namespace, Bucket: t.bucket, KeyMarker: keyMarker, UploadIDMarker: idMarker, Prefix: prefix, Delimiter: delimiter,
-		MaxUploads: requested, IsTruncated: page.truncated, Uploads: []upload{}, CommonPrefixes: []commonPrefix{},
+		Xmlns: s3Namespace, Bucket: t.bucket, KeyMarker: encode(keyMarker), UploadIDMarker: idMarker, Prefix: encode(prefix), Delimiter: encode(delimiter),
+		MaxUploads: requested, EncodingType: q.Get("encoding-type"), IsTruncated: page.truncated, Uploads: []upload{}, CommonPrefixes: []commonPrefix{},
 	}
 	for _, u := range page.uploads {
 		resp.Uploads = append(resp.Uploads, upload{
-			Key: u.Key, UploadID: u.ID, Initiator: starter, Owner: own, StorageClass: "STANDARD", Initiated: u.Initiated.UTC().Format(timeFormat),
+			Key: encode(u.Key), UploadID: u.ID, Initiator: starter, Owner: own, StorageClass: storageClassName(u.ObjectOptions), Initiated: u.Initiated.UTC().Format(timeFormat),
 			ChecksumAlgorithm: u.ChecksumAlgorithm, ChecksumType: u.ChecksumType,
 		})
 	}
 	for _, p := range page.prefixes {
-		resp.CommonPrefixes = append(resp.CommonPrefixes, commonPrefix{Prefix: p})
+		resp.CommonPrefixes = append(resp.CommonPrefixes, commonPrefix{Prefix: encode(p)})
 	}
 	// AWS always sends the last entry's markers, even on a page that is not truncated.
-	resp.NextKeyMarker, resp.NextUploadIDMarker = page.lastKey, page.lastID
+	resp.NextKeyMarker, resp.NextUploadIDMarker = encode(page.lastKey), page.lastID
 	writeXML(w, r, http.StatusOK, resp)
 }

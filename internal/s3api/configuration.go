@@ -2,6 +2,7 @@ package s3api
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/xml"
@@ -24,10 +25,6 @@ func (h *handler) handleBucketConfiguration(w http.ResponseWriter, r *http.Reque
 	}
 	if !validBucketName(t.bucket) {
 		writeError(w, r, errInvalidBucketName)
-		return
-	}
-	if expected := r.Header.Get("x-amz-expected-bucket-owner"); expected != "" && expected != h.bucketOwner().ID {
-		writeError(w, r, errAccessDenied)
 		return
 	}
 	switch r.Method {
@@ -115,9 +112,9 @@ func (h *handler) handleBucketConfiguration(w http.ResponseWriter, r *http.Reque
 }
 
 func readConfiguration(w http.ResponseWriter, r *http.Request, requireChecksum bool) ([]byte, apiError, bool) {
-	algorithm, want, trailer, ok := parseChecksum(r.Header)
+	algorithm, want, trailer, apiErr, ok := parseChecksum(r.Header)
 	if !ok || trailer {
-		return nil, errInvalidChecksum, false
+		return nil, cmp.Or(apiErr, errInvalidChecksum), false
 	}
 	md5Value, hasMD5 := r.Header["Content-Md5"]
 	var digest []byte

@@ -92,8 +92,13 @@ func TestUploadChecksum(t *testing.T) {
 		{"SHA256 composite", "SHA256", "COMPOSITE", "SHA256", "COMPOSITE", true},
 		{"SHA256 full object", "SHA256", "FULL_OBJECT", "", "", false},
 		{"SHA1 full object", "SHA1", "FULL_OBJECT", "", "", false},
+		// The AWS rules for these three are unverified: they follow SHA1 and SHA256.
+		{"SHA512 default", "SHA512", "", "SHA512", "COMPOSITE", true},
+		{"MD5 composite", "MD5", "COMPOSITE", "MD5", "COMPOSITE", true},
+		{"XXHASH64 full object", "XXHASH64", "FULL_OBJECT", "", "", false},
+		{"XXHASH3 is not supported", "XXHASH3", "", "", "", false},
 		{"lower-case algorithm", "crc32", "", "CRC32", "COMPOSITE", true},
-		{"unknown algorithm", "MD5", "", "", "", false},
+		{"unknown algorithm", "BOGUS", "", "", "", false},
 		{"unknown type", "CRC32", "PARTIAL", "", "", false},
 	}
 	for _, tt := range tests {
@@ -142,7 +147,8 @@ func TestMultipartErrors(t *testing.T) {
 	}{
 		{"create in a missing bucket", http.MethodPost, "/nope/k?uploads", "", nil, 404, "NoSuchBucket"},
 		{"create in an invalid bucket", http.MethodPost, "/Bad_Name/k?uploads", "", nil, 400, "InvalidBucketName"},
-		{"create with an unknown algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "MD5"}, 400, "InvalidRequest"},
+		{"create with xxhash3", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "XXHASH3"}, 501, "NotImplemented"},
+		{"create with an unknown algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "BOGUS"}, 400, "InvalidRequest"},
 		{"create with a type but no algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-type": "FULL_OBJECT"}, 400, "InvalidRequest"},
 		{"create CRC64NVME composite", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "CRC64NVME", "x-amz-checksum-type": "COMPOSITE"}, 400, "InvalidRequest"},
 		{"create SHA256 full object", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "SHA256", "x-amz-checksum-type": "FULL_OBJECT"}, 400, "InvalidRequest"},
@@ -164,7 +170,6 @@ func TestMultipartErrors(t *testing.T) {
 		{"part with another algorithm", http.MethodPut, "/bkt/crc?partNumber=3&uploadId=" + crcID, "x", map[string]string{"x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}, 400, "InvalidRequest"},
 		{"part with a malformed checksum", http.MethodPut, "/bkt/crc?partNumber=3&uploadId=" + crcID, "x", map[string]string{"x-amz-checksum-crc32": "nope!"}, 400, "InvalidRequest"},
 		{"part with a trailer but no aws-chunked", http.MethodPut, "/bkt/crc?partNumber=3&uploadId=" + crcID, "x", map[string]string{"x-amz-trailer": "x-amz-checksum-crc32"}, 400, "InvalidRequest"},
-		{"part copy source is not implemented", http.MethodPut, "/bkt/k?partNumber=3&uploadId=" + id, "", map[string]string{"x-amz-copy-source": "/bkt/k"}, 501, "NotImplemented"},
 
 		{"complete with an empty body", http.MethodPost, "/bkt/k?uploadId=" + id, "", nil, 400, "MalformedXML"},
 		{"complete with no parts", http.MethodPost, "/bkt/k?uploadId=" + id, complete(), nil, 400, "MalformedXML"},
@@ -520,5 +525,76 @@ func TestDeleteBucketDiscardsUploads(t *testing.T) {
 	}
 	if status, code, _ := sendWith(t, srv, http.MethodGet, "/bkt/k?uploadId="+id, "", nil); status != http.StatusNotFound || code != "NoSuchBucket" {
 		t.Errorf("ListParts after DeleteBucket = %d %q, want 404 NoSuchBucket", status, code)
+	}
+}
+
+func TestCompleteObjectSize(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	id := startUpload(t, srv, "k", nil)
+	etag := putPart(t, srv, "k", id, 1, "abc", nil).header.Get("ETag")
+	body := "<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>" + etag + "</ETag></Part></CompleteMultipartUpload>"
+	tests := []struct {
+		name, size string
+		wantStatus int
+		wantCode   string
+	}{
+		{"wrong size", "999", 400, "InvalidRequest"},
+		{"zero", "0", 400, "InvalidRequest"},
+		{"not a number", "abc", 400, "InvalidRequest"},
+		{"negative", "-3", 400, "InvalidRequest"},
+		{"signed", "+3", 400, "InvalidRequest"},
+		{"too large for int64", "99999999999999999999", 400, "InvalidRequest"},
+		{"right size", "3", 200, ""},
+	}
+	for _, tt := range tests {
+		r := call(t, srv, http.MethodPost, "/bkt/k?uploadId="+id, body, map[string]string{"x-amz-mp-object-size": tt.size})
+		if r.status != tt.wantStatus || r.code != tt.wantCode {
+			t.Errorf("%s: complete with x-amz-mp-object-size %q = %d %s, want %d %s", tt.name, tt.size, r.status, r.code, tt.wantStatus, tt.wantCode)
+		}
+	}
+	// The upload above ended, so a new one covers the request without the header.
+	id = startUpload(t, srv, "k2", nil)
+	putPart(t, srv, "k2", id, 1, "abc", nil) // the same bytes give the same ETag
+	if r := call(t, srv, http.MethodPost, "/bkt/k2?uploadId="+id, body, nil); r.status != 200 {
+		t.Errorf("complete without x-amz-mp-object-size = %d %s, want 200", r.status, r.body)
+	}
+}
+
+func TestListMultipartUploadsEncoding(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	startUpload(t, srv, "dir/x", nil)
+	if r := call(t, srv, http.MethodPost, "/bkt/odd%20key%2B%26%3D%25?uploads", "", nil); r.status != 200 {
+		t.Fatalf("create upload for an odd key = %d %s, want 200", r.status, r.body)
+	}
+	tests := []struct {
+		name, query string
+		wantStatus  int
+		want        []string // substrings of the body
+		notWant     []string
+	}{
+		{"url", "&encoding-type=url&prefix=odd", 200,
+			[]string{"<EncodingType>url</EncodingType>", "<Key>odd+key%2B%26%3D%25</Key>", "<NextKeyMarker>odd+key%2B%26%3D%25</NextKeyMarker>", "<Prefix>odd</Prefix>"}, nil},
+		{"url with a delimiter", "&encoding-type=url&delimiter=%2F", 200,
+			[]string{"<Delimiter>/</Delimiter>", "<CommonPrefixes><Prefix>dir/</Prefix>"}, nil},
+		{"url key marker", "&encoding-type=url&key-marker=odd+key%2B%26%3D%25", 200, []string{"<KeyMarker>odd+key%2B%26%3D%25</KeyMarker>"}, nil},
+		{"none", "&prefix=odd", 200, []string{"<Key>odd key+&amp;=%</Key>"}, []string{"EncodingType"}},
+		{"bogus", "&encoding-type=bogus", 400, nil, nil},
+		{"empty", "&encoding-type=", 200, nil, []string{"EncodingType"}},
+	}
+	for _, tt := range tests {
+		r := call(t, srv, http.MethodGet, "/bkt?uploads"+tt.query, "", nil)
+		if r.status != tt.wantStatus {
+			t.Errorf("%s: GET ?uploads%s = %d %s, want %d", tt.name, tt.query, r.status, r.body, tt.wantStatus)
+		}
+		for _, s := range tt.want {
+			if !strings.Contains(r.body, s) {
+				t.Errorf("%s: GET ?uploads%s body = %s, want it to contain %s", tt.name, tt.query, r.body, s)
+			}
+		}
+		for _, s := range tt.notWant {
+			if strings.Contains(r.body, s) {
+				t.Errorf("%s: GET ?uploads%s body = %s, want it not to contain %s", tt.name, tt.query, r.body, s)
+			}
+		}
 	}
 }

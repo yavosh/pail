@@ -1,0 +1,196 @@
+{
+  "scenario": "upload-part-copy",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-src",
+      "request": "PUT /src",
+      "fingerprint": "6cfdb4d8e52563cd",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"781e5e245d69b566979b86e28d23f2c7\"",
+        "X-Amz-Checksum-Crc64nvme": "Ffmx7kz9nB0=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "create-upload",
+      "request": "POST /dst?uploads",
+      "fingerprint": "4c88c9878cec5dab",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: dst\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "copy-part-full",
+      "request": "PUT /dst?partNumber=1&uploadId={uploadId}",
+      "fingerprint": "fe02d819f1faab4b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyPartResult\n  LastModified: <volatile>\n  ETag: \"781e5e245d69b566979b86e28d23f2c7\"\n"
+    },
+    {
+      "step": "copy-part-range",
+      "request": "PUT /dst?partNumber=2&uploadId={uploadId}",
+      "fingerprint": "1ff853d4782ad07d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyPartResult\n  LastModified: <volatile>\n  ETag: \"81b073de9370ea873f548e31b8adc081\"\n"
+    },
+    {
+      "step": "copy-part-range-past-end",
+      "request": "PUT /dst?partNumber=3&uploadId={uploadId}",
+      "fingerprint": "3b43aa0a7685bbc0",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "copy-part-range-malformed",
+      "request": "PUT /dst?partNumber=3&uploadId={uploadId}",
+      "fingerprint": "fe733f759f1c85ff",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "copy-part-if-match-wrong",
+      "request": "PUT /dst?partNumber=3&uploadId={uploadId}",
+      "fingerprint": "235e437e13c0ff43",
+      "status": 412,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: PreconditionFailed\n"
+    },
+    {
+      "step": "copy-part-missing-source",
+      "request": "PUT /dst?partNumber=3&uploadId={uploadId}",
+      "fingerprint": "f4faace5f15943b5",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchKey\n"
+    },
+    {
+      "step": "copy-part-bad-upload",
+      "request": "PUT /dst?partNumber=3&uploadId=bogus",
+      "fingerprint": "c6ac38509e7b8b69",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchUpload\n"
+    },
+    {
+      "step": "list-parts",
+      "request": "GET /dst?uploadId={uploadId}",
+      "fingerprint": "b5c911541cbd6a31",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListPartsResult\n  Bucket: {bucket}\n  Key: dst\n  UploadId: <volatile>\n  Initiator\n    ID: <volatile>\n    DisplayName: <volatile>\n  Owner\n    ID: <volatile>\n  StorageClass: STANDARD\n  PartNumberMarker: 0\n  NextPartNumberMarker: 2\n  MaxParts: 1000\n  IsTruncated: false\n  Part\n    PartNumber: 1\n    LastModified: <volatile>\n    ETag: \"781e5e245d69b566979b86e28d23f2c7\"\n    Size: 10\n  Part\n    PartNumber: 2\n    LastModified: <volatile>\n    ETag: \"81b073de9370ea873f548e31b8adc081\"\n    Size: 4\n"
+    },
+    {
+      "step": "complete-upload",
+      "request": "POST /dst?uploadId={uploadId}",
+      "fingerprint": "a1f2187a990e3817",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CompleteMultipartUploadResult\n  Location: <volatile>\n  Bucket: {bucket}\n  Key: dst\n  ETag: \"bff0abc2da71e00869f3ca2889f3db82-1\"\n  ChecksumCRC64NVME: 0jVLYbifX9A=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "get-dst",
+      "request": "GET /dst",
+      "fingerprint": "f69cf7a0f53c2693",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "4",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"bff0abc2da71e00869f3ca2889f3db82-1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "2345"
+    },
+    {
+      "step": "delete-src",
+      "request": "DELETE /src",
+      "fingerprint": "579c91fd1cd68ac0",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-dst",
+      "request": "DELETE /dst",
+      "fingerprint": "ec9a16a54e7dc8a5",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

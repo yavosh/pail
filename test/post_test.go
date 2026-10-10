@@ -249,3 +249,66 @@ func TestPostRedirect(t *testing.T) {
 		}
 	})
 }
+
+func TestPostObjectOptions(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, p *pail, _ style, c *s3.Client) {
+		bucket := aws.String("post-options")
+		if _, err := c.CreateBucket(t.Context(), &s3.CreateBucketInput{Bucket: bucket}); err != nil {
+			t.Fatal(err)
+		}
+		tests := []struct {
+			name, field, value string
+			wantStatus         int
+		}{
+			{"storage class", "x-amz-storage-class", "STANDARD_IA", 204},
+			{"unknown storage class", "x-amz-storage-class", "BOGUS", 400},
+			{"encryption", "x-amz-server-side-encryption", "aws:kms", 204},
+			{"unknown encryption", "x-amz-server-side-encryption", "bogus", 400},
+			{"SSE-C", "x-amz-server-side-encryption-customer-algorithm", "AES256", 403},
+			{"website redirect", "x-amz-website-redirect-location", "/target", 204},
+			{"relative website redirect", "x-amz-website-redirect-location", "target", 400},
+			{"Object Lock", "x-amz-object-lock-mode", "GOVERNANCE", 400},
+			{"unknown checksum", "x-amz-checksum-bogus", "AAAAAA==", 400},
+		}
+		for _, tt := range tests {
+			key := strings.ReplaceAll(tt.name, " ", "-")
+			post, err := s3.NewPresignClient(c).PresignPostObject(t.Context(), &s3.PutObjectInput{Bucket: bucket, Key: aws.String(key)}, func(o *s3.PresignPostOptions) {
+				o.Conditions = []any{map[string]string{tt.field: tt.value}}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields := maps.Clone(post.Values)
+			fields[tt.field] = tt.value
+			if got, _, body := sendForm(t, p, post.URL, fields, "form bytes", false); got != tt.wantStatus {
+				t.Errorf("%s: POST status = %d, want %d: %s", tt.name, got, tt.wantStatus, body)
+				continue
+			}
+			if tt.wantStatus != 204 {
+				if _, err := c.HeadObject(t.Context(), &s3.HeadObjectInput{Bucket: bucket, Key: aws.String(key)}); errorCode(err) != "NotFound" {
+					t.Errorf("%s: HeadObject after a rejected POST error = %v, want NotFound", tt.name, err)
+				}
+				continue
+			}
+			head, err := c.HeadObject(t.Context(), &s3.HeadObjectInput{Bucket: bucket, Key: aws.String(key)})
+			if err != nil {
+				t.Errorf("%s: HeadObject error = %v", tt.name, err)
+				continue
+			}
+			switch tt.field {
+			case "x-amz-storage-class":
+				if string(head.StorageClass) != tt.value {
+					t.Errorf("%s: StorageClass = %q, want %q", tt.name, head.StorageClass, tt.value)
+				}
+			case "x-amz-server-side-encryption":
+				if string(head.ServerSideEncryption) != tt.value {
+					t.Errorf("%s: ServerSideEncryption = %q, want %q", tt.name, head.ServerSideEncryption, tt.value)
+				}
+			case "x-amz-website-redirect-location":
+				if aws.ToString(head.WebsiteRedirectLocation) != tt.value {
+					t.Errorf("%s: WebsiteRedirectLocation = %q, want %q", tt.name, aws.ToString(head.WebsiteRedirectLocation), tt.value)
+				}
+			}
+		}
+	})
+}

@@ -18,7 +18,7 @@ type BucketConfiguration struct {
 }
 
 func configurationFile(bucket, kind string) (string, error) {
-	if kind != "cors" && kind != "lifecycle" && kind != "acl" {
+	if kind != "cors" && kind != "lifecycle" && kind != "acl" && kind != "ownership" {
 		return "", fmt.Errorf("unknown configuration %q", kind)
 	}
 	return path.Join(bucketDir(bucket), kind+".json"), nil

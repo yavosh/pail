@@ -148,22 +148,51 @@ func (h *handler) handleCreateBucket(w http.ResponseWriter, r *http.Request, t t
 			return
 		}
 	}
-	policy, apiErr, valid := h.writeACL(r, true)
+	if strings.EqualFold(r.Header.Get("x-amz-bucket-object-lock-enabled"), "true") {
+		writeError(w, r, errNotImplemented) // pail has no Object Lock buckets
+		return
+	}
+	ownership := r.Header.Get("x-amz-object-ownership")
+	if ownership != "" && !validOwnership(ownership) {
+		writeError(w, r, errInvalidArgument)
+		return
+	}
+	if ownership == ownerEnforced {
+		if e, ok := aclHeadersAllowed(r.Header); !ok {
+			writeError(w, r, e)
+			return
+		}
+	}
+	policy, apiErr, valid := h.requestPolicy(r, true)
 	if !valid {
 		writeError(w, r, apiErr)
 		return
 	}
 	err = h.opts.Store.CreateBucket(r.Context(), t.bucket)
+	exists := errors.Is(err, store.ErrBucketExists)
 	// us-east-1 keeps its legacy answer: re-creating your own bucket succeeds.
-	if errors.Is(err, store.ErrBucketExists) && h.opts.Region == "us-east-1" {
+	if exists && h.opts.Region == "us-east-1" {
 		err = nil
 	}
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}
+	// A re-create must not store ACLs that the bucket's ownership controls refuse.
+	if exists {
+		if e, ok := h.checkACLsEnabled(r.Context(), t.bucket, r.Header); !ok {
+			writeError(w, r, e)
+			return
+		}
+	}
 	if !h.storeBucketACL(w, r, t, policy) {
 		return
+	}
+	if ownership != "" && !exists {
+		if err := h.putOwnership(r.Context(), t.bucket, ownership); err != nil {
+			writeError(w, r, toAPIError(err))
+			return
+		}
 	}
 	w.Header().Set("Location", "/"+t.bucket)
 	w.WriteHeader(http.StatusOK)

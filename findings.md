@@ -38,7 +38,7 @@ Source conditions are supported, but destination conditions are not. Copying ove
 
 Code: `internal/s3api/copy.go:65`.
 
-Status: open. `CopyObject` checks only the `x-amz-copy-source-if-*` conditions (`internal/s3api/copy.go`).
+Status: fixed on branch feat/s3-copy-conditions-owner. `CopyObject` passes `If-Match` and `If-None-Match` to the store's conditional write, as `PutObject` does.
 
 Recommendation: Pass destination conditions through to the existing conditional-write storage implementation.
 
@@ -54,7 +54,7 @@ There is no implemented SSE or Object Lock subsystem. AWS applies the requested 
 
 Code: `internal/s3api/objects.go:42`, `internal/s3api/objects.go:125`.
 
-Status: open. No code handles server-side encryption or Object Lock headers, so pail ignores them. `docs/s3-compatibility.md` now says so.
+Status: fixed on branch feat/s3-object-options. pail validates and stores the encryption method, answers SSE-C and Object Lock headers with an error, and rejects `CreateBucket` with Object Lock. `docs/s3-compatibility.md` lists the rules.
 
 Recommendation: Reject unsupported encryption, retention, and legal-hold options before implementing the full feature. Validate PUT, copy, multipart initiation, and bucket creation consistently.
 
@@ -68,7 +68,7 @@ pail supports CRC32, CRC32C, CRC64NVME, SHA-1, and SHA-256. Current AWS document
 
 Code: `internal/s3api/objects.go:162`, `internal/checksum/checksum.go:39`.
 
-Status: open. `parseChecksum` reads only the five algorithms in `checksum.Algorithms`, so other checksum headers are ignored.
+Status: fixed on branch feat/s3-object-options. pail adds SHA-512, MD5, and XXHASH64, answers XXHASH3 and XXHASH128 with `501 NotImplemented`, and rejects any other checksum header with `400 InvalidRequest`.
 
 Recommendation: Reject unsupported checksum headers rather than ignoring them; add algorithms according to client demand.
 
@@ -84,7 +84,7 @@ The configuration check compares against pail's derived canonical owner ID, wher
 
 Code: `internal/s3api/configuration.go:29`, `internal/s3api/buckets.go:73`.
 
-Status: open. Only `internal/s3api/configuration.go` checks `x-amz-expected-bucket-owner`.
+Status: fixed on branch feat/s3-copy-conditions-owner. `expectedOwner` in `internal/s3api/handler.go` checks the header for every bucket and object request, and `CopyObject` also checks `x-amz-source-expected-bucket-owner`.
 
 Recommendation: Define an account-ID model separately from canonical ACL owner IDs and enforce checks consistently.
 
@@ -96,7 +96,7 @@ Recommendation: Define an account-ID model separately from canonical ACL owner I
 
 Code: `internal/s3api/buckets.go:124`, `internal/s3api/acl.go`.
 
-Status: open. No code reads `ObjectOwnership`. ACL support (`e53a83e`) keeps ACLs enabled on every bucket, and `docs/s3-compatibility.md` documents that.
+Status: fixed on branch feat/s3-ownership-controls. No code read `ObjectOwnership` before. ACL support (`e53a83e`) kept ACLs enabled on every bucket, and `docs/s3-compatibility.md` documents that.
 
 Recommendation: Reject unsupported ownership-control requests. Decide explicitly whether AWS's current defaults or a documented legacy-style mode should be pail's default.
 
@@ -106,17 +106,17 @@ AWS reference: [CreateBucket](https://docs.aws.amazon.com/AmazonS3/latest/API/AP
 
 | Gap | Current pail behavior | Impact |
 | --- | --- | --- |
-| UploadPartCopy | Confirmed 501 | SDK-managed multipart copies, particularly copies over 5 GiB, cannot work. |
+| UploadPartCopy | Confirmed 501 (fixed on branch feat/s3-upload-part-copy) | SDK-managed multipart copies, particularly copies over 5 GiB, cannot work. |
 | GET/HEAD with partNumber | Routes reject them; GET confirmed 501 | Completed multipart parts cannot be retrieved individually. |
 | GetObjectAttributes | Confirmed 501 | Missing combined size, ETag, checksum, and multipart-part inspection API. |
 | Explicit versionId=null | GET confirmed 501; routes also exclude versioned HEAD/DELETE | Unversioned-object workflows using explicit null versions fail. Copy and batch delete already handle null versions. |
 | Multipart expected size | Completing a 3-byte upload with MpuObjectSize=999 returned 200 | AWS requires 400 InvalidRequest for a size mismatch. |
 | Multipart listing URL encoding | EncodingType=url is ignored; no encoding declaration returned | Special-character keys cannot reliably round-trip, especially characters XML cannot represent. |
-| Storage-class options | STANDARD_IA returned 200 but no storage-class metadata was retained | Applications may believe a requested class was applied. |
-| Website redirect metadata | PUT accepted WebsiteRedirectLocation; HEAD did not return it | Metadata is silently lost independently of website hosting support. |
+| Storage-class options | STANDARD_IA returned 200 but no storage-class metadata was retained (fixed on branch feat/s3-object-options) | Applications may believe a requested class was applied. |
+| Website redirect metadata | PUT accepted WebsiteRedirectLocation; HEAD did not return it (fixed on branch feat/s3-object-options) | Metadata is silently lost independently of website hosting support. |
 | Maximum multipart object size | Hard-coded to 5 TiB | Current AWS documentation specifies 48.8 TiB; README's “as on AWS” claim is outdated. |
 
-Status: all nine gaps are open. `resolve` in `internal/s3api/route.go` has no route for `UploadPartCopy`, `GetObjectAttributes`, `partNumber` reads, or `versionId`. No code reads `x-amz-mp-object-size`, the storage-class header, or the website-redirect header. `docs/s3-compatibility.md` says `ListMultipartUploads` does not support `encoding-type`, and `maxMultipartSize` in `internal/store/uploads.go` is still 5 TiB.
+Status: the storage-class and website-redirect gaps are fixed on branch feat/s3-object-options. The explicit `versionId=null`, multipart expected size, multipart listing URL encoding, and maximum multipart object size gaps are fixed on branch feat/s3-multipart-extras. `UploadPartCopy` is fixed on branch feat/s3-upload-part-copy. The other two are open. `resolve` in `internal/s3api/route.go` has no route for `GetObjectAttributes` or `partNumber` reads.
 
 Relevant code: `internal/s3api/route.go`, `internal/s3api/multipart.go`, `internal/s3api/objects.go`, `internal/store/uploads.go:38`.
 
@@ -162,11 +162,11 @@ The differential suite has 15 golden fixtures and 266 exchanges, with no entries
 ## Recommended implementation order
 
 1. Stop silent success: reject unsupported security, checksum, storage, and ownership options.
-   Status: open.
+   Status: partly fixed on branch feat/s3-object-options. Encryption, Object Lock, checksum, and storage options are fixed. Ownership options remain.
 2. Fix destructive-operation conditions: single/batch delete and destination-conditional copy.
-   Status: partly fixed. Single and batch delete are fixed (PR #49). Destination-conditional copy is open.
+   Status: fixed. Single and batch delete are fixed (PR #49). Destination-conditional copy is fixed on branch feat/s3-copy-conditions-owner.
 3. Complete smaller gaps: expected-owner checks, multipart size validation, null versions, multipart URL encoding, redirect metadata.
-   Status: open.
+   Status: partly fixed. Redirect metadata is fixed on branch feat/s3-object-options. Expected-owner checks are fixed on branch feat/s3-copy-conditions-owner. The other gaps are open.
 4. Add high-value APIs: UploadPartCopy, GetObjectAttributes, part-number reads.
    Status: open.
 5. Expand scope deliberately: tagging first; versioning and notifications according to actual users.
