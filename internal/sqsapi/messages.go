@@ -53,15 +53,11 @@ type sendEntry struct {
 	MessageGroupID          string `json:"MessageGroupId"`
 }
 
-// toInput converts e. A standard queue ignores MessageGroupId: AWS fair queues
-// use it for tenant fairness, which pail does not model. MessageDeduplicationId
-// is rejected (unverified).
+// toInput converts e. The engine applies the group and deduplication rules of
+// the queue type.
 func (e sendEntry) toInput() (queue.SendInput, error) {
 	if e.MessageBody == "" {
 		return queue.SendInput{}, fmt.Errorf("MessageBody is required: %w", errMissingParam)
-	}
-	if e.MessageDeduplicationID != "" {
-		return queue.SendInput{}, fmt.Errorf("MessageDeduplicationId is not valid for this queue type: %w", queue.ErrInvalidParameterValue)
 	}
 	attrs, err := toEngine(e.MessageAttributes)
 	if err != nil {
@@ -71,7 +67,10 @@ func (e sendEntry) toInput() (queue.SendInput, error) {
 	if err != nil {
 		return queue.SendInput{}, err
 	}
-	return queue.SendInput{Body: e.MessageBody, DelaySeconds: e.DelaySeconds, Attributes: attrs, SystemAttributes: sys}, nil
+	return queue.SendInput{
+		Body: e.MessageBody, DelaySeconds: e.DelaySeconds, Attributes: attrs, SystemAttributes: sys,
+		GroupID: e.MessageGroupID, DeduplicationID: e.MessageDeduplicationID,
+	}, nil
 }
 
 // size is the part of the batch size limit that this entry adds.
@@ -93,6 +92,7 @@ type sendMessageResponse struct {
 	MessageID                    string `json:"MessageId"`
 	MD5OfMessageAttributes       string `json:",omitempty"`
 	MD5OfMessageSystemAttributes string `json:",omitempty"`
+	SequenceNumber               string `json:",omitempty"`
 }
 
 func (h *handler) sendMessage(r *http.Request, in sendMessageRequest) (any, error) {
@@ -116,6 +116,7 @@ func (h *handler) sendMessage(r *http.Request, in sendMessageRequest) (any, erro
 		MessageID:                    res[0].MessageID,
 		MD5OfMessageAttributes:       res[0].MD5OfAttributes,
 		MD5OfMessageSystemAttributes: res[0].MD5OfSystemAttributes,
+		SequenceNumber:               res[0].SequenceNumber,
 	}, nil
 }
 
@@ -127,7 +128,7 @@ type receiveMessageRequest struct {
 	MaxNumberOfMessages         *int
 	VisibilityTimeout           *int
 	WaitTimeSeconds             *int
-	// ReceiveRequestAttemptId only matters for FIFO queues and is ignored.
+	// ReceiveRequestAttemptId only retries a FIFO receive. pail ignores it.
 }
 
 type receivedMessage struct {
@@ -198,6 +199,18 @@ func (h *handler) systemAttributes(m queue.Message, names []string) map[string]s
 	}
 	if want("ApproximateFirstReceiveTimestamp") {
 		out["ApproximateFirstReceiveTimestamp"] = strconv.FormatInt(m.FirstReceivedAt.UnixMilli(), 10)
+	}
+	if m.SequenceNumber != "" && want("SequenceNumber") {
+		out["SequenceNumber"] = m.SequenceNumber
+	}
+	if m.GroupID != "" && want("MessageGroupId") {
+		out["MessageGroupId"] = m.GroupID
+	}
+	if m.DeduplicationID != "" && want("MessageDeduplicationId") {
+		out["MessageDeduplicationId"] = m.DeduplicationID
+	}
+	if m.DeadLetterSourceARN != "" && want("DeadLetterQueueSourceArn") {
+		out["DeadLetterQueueSourceArn"] = m.DeadLetterSourceARN
 	}
 	if trace, ok := m.SystemAttributes["AWSTraceHeader"]; ok && want("AWSTraceHeader") {
 		out["AWSTraceHeader"] = trace.StringValue

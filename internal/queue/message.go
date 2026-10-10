@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"regexp"
@@ -29,11 +31,14 @@ type MessageAttribute struct {
 }
 
 // SendInput is one message to send. A nil DelaySeconds uses the queue's.
+// GroupID and DeduplicationID are for FIFO queues; a standard queue stores GroupID.
 type SendInput struct {
 	Body             string
 	DelaySeconds     *int
 	Attributes       map[string]MessageAttribute
 	SystemAttributes map[string]MessageAttribute
+	GroupID          string
+	DeduplicationID  string
 }
 
 // SendResult is the outcome of one SendInput. The MD5 fields are empty for an empty map.
@@ -42,6 +47,7 @@ type SendResult struct {
 	MD5OfBody             string
 	MD5OfAttributes       string
 	MD5OfSystemAttributes string
+	SequenceNumber        string // FIFO queues only
 	Err                   error
 }
 
@@ -63,6 +69,11 @@ type Message struct {
 	SentAt           time.Time
 	FirstReceivedAt  time.Time
 	ReceiveCount     int
+	GroupID          string
+	DeduplicationID  string
+	SequenceNumber   string
+	// DeadLetterSourceARN names the queue that moved the message here.
+	DeadLetterSourceARN string
 }
 
 // VisibilityChange sets one message's remaining visibility timeout.
@@ -82,6 +93,19 @@ type message struct {
 	lastReceived  time.Time
 	receives      int
 	seq           uint32 // sequence of the newest receipt handle
+	group         string
+	dedupID       string
+	sequence      string // FIFO sequence number
+	dlqSource     string
+}
+
+// dedupWindow is how long a FIFO queue remembers a deduplication ID.
+const dedupWindow = 5 * time.Minute
+
+// dedupEntry is a FIFO send in the deduplication window.
+type dedupEntry struct {
+	at     time.Time
+	result SendResult
 }
 
 func newID() [16]byte {
@@ -109,6 +133,7 @@ func (e *Engine) Send(ctx context.Context, name string, in []SendInput) ([]SendR
 	}
 	now := time.Now()
 	q.prune(now)
+	maps.DeleteFunc(q.dedup, func(_ string, d dedupEntry) bool { return now.Sub(d.at) >= dedupWindow })
 	maxSize := q.intAttr("MaximumMessageSize")
 	queueDelay := q.intAttr("DelaySeconds")
 	out := make([]SendResult, len(in))
@@ -118,12 +143,26 @@ func (e *Engine) Send(ctx context.Context, name string, in []SendInput) ([]SendR
 			out[i].Err = err
 			continue
 		}
+		key, err := q.checkRouting(s)
+		if err != nil {
+			out[i].Err = err
+			continue
+		}
+		if d, ok := q.dedup[key]; ok {
+			out[i] = d.result
+			continue
+		}
 		m := &message{
 			id:       newID(),
 			body:     s.Body,
 			attrs:    cloneAttrs(s.Attributes),
 			sysAttrs: cloneAttrs(s.SystemAttributes),
 			sentAt:   now,
+			group:    s.GroupID,
+		}
+		if q.fifo() {
+			m.dedupID = cmp.Or(s.DeduplicationID, contentHash(s.Body))
+			m.sequence = q.newSequence()
 		}
 		delay := queueDelay
 		if s.DelaySeconds != nil {
@@ -137,12 +176,64 @@ func (e *Engine) Send(ctx context.Context, name string, in []SendInput) ([]SendR
 			MD5OfBody:             MD5OfBody(s.Body),
 			MD5OfAttributes:       MD5OfAttributes(s.Attributes),
 			MD5OfSystemAttributes: MD5OfAttributes(s.SystemAttributes),
+			SequenceNumber:        m.sequence,
+		}
+		if key != "" {
+			q.dedup[key] = dedupEntry{now, out[i]}
 		}
 	}
 	if added {
 		q.notify()
 	}
 	return out, nil
+}
+
+// newSequence returns the next FIFO sequence number.
+func (q *queue) newSequence() string {
+	q.nextSeq++
+	return fmt.Sprintf("%020d", q.nextSeq)
+}
+
+func contentHash(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
+}
+
+// validID reports whether s is a FIFO group or deduplication ID: 1 to 128
+// printable ASCII characters.
+func validID(s string) bool {
+	return len(s) >= 1 && len(s) <= 128 && !strings.ContainsFunc(s, func(r rune) bool { return r < 0x21 || r > 0x7e })
+}
+
+// checkRouting applies the group and deduplication rules of the queue type. On
+// a FIFO queue it returns the deduplication key, or "" when the entry has none.
+func (q *queue) checkRouting(s SendInput) (key string, err error) {
+	if !q.fifo() {
+		if s.DeduplicationID != "" {
+			return "", fmt.Errorf("MessageDeduplicationId is not valid for a standard queue: %w", ErrInvalidParameterValue)
+		}
+		if s.GroupID != "" && !validID(s.GroupID) {
+			return "", fmt.Errorf("MessageGroupId must be 1 to 128 printable ASCII characters: %w", ErrInvalidParameterValue)
+		}
+		return "", nil
+	}
+	switch {
+	case s.GroupID == "":
+		return "", fmt.Errorf("MessageGroupId is required for a FIFO queue: %w", ErrMissingParameter)
+	case !validID(s.GroupID):
+		return "", fmt.Errorf("MessageGroupId must be 1 to 128 printable ASCII characters: %w", ErrInvalidParameterValue)
+	case s.DelaySeconds != nil:
+		return "", fmt.Errorf("DelaySeconds cannot be set per message on a FIFO queue: %w", ErrInvalidParameterValue)
+	case s.DeduplicationID == "" && q.def.Attributes["ContentBasedDeduplication"] != "true":
+		return "", fmt.Errorf("the queue should either have ContentBasedDeduplication enabled or MessageDeduplicationId provided explicitly: %w", ErrInvalidParameterValue)
+	case s.DeduplicationID != "" && !validID(s.DeduplicationID):
+		return "", fmt.Errorf("MessageDeduplicationId must be 1 to 128 printable ASCII characters: %w", ErrInvalidParameterValue)
+	}
+	key = cmp.Or(s.DeduplicationID, contentHash(s.Body))
+	if q.def.Attributes["DeduplicationScope"] == "messageGroup" {
+		key = s.GroupID + "\x00" + key
+	}
+	return key, nil
 }
 
 func cloneAttrs(a map[string]MessageAttribute) map[string]MessageAttribute {
@@ -313,14 +404,37 @@ func (e *Engine) Receive(ctx context.Context, name string, in ReceiveInput) ([]M
 	}
 }
 
-// take receives up to limit visible messages. The caller holds e.mu.
+// take receives up to limit visible messages. A FIFO group with an in-flight or
+// hidden message is skipped. A message past maxReceiveCount moves to the
+// dead-letter queue instead. The caller holds e.mu.
 func (e *Engine) take(q *queue, now time.Time, limit, timeout int) []Message {
+	dlq, maxReceives := e.deadLetterTarget(q)
+	var locked map[string]bool
+	if q.fifo() {
+		locked = map[string]bool{}
+		for _, m := range q.messages {
+			if m.receives > 0 && now.Before(m.visibleAt) {
+				locked[m.group] = true
+			}
+		}
+	}
 	var got []Message
+	var moved []*message
 	for _, m := range q.messages {
 		if len(got) == limit {
 			break
 		}
+		if locked[m.group] {
+			continue
+		}
 		if now.Before(m.visibleAt) {
+			if locked != nil {
+				locked[m.group] = true
+			}
+			continue
+		}
+		if dlq != nil && m.receives >= maxReceives {
+			moved = append(moved, m)
 			continue
 		}
 		m.receives++
@@ -331,18 +445,54 @@ func (e *Engine) take(q *queue, now time.Time, limit, timeout int) []Message {
 		m.seq++
 		m.visibleAt = now.Add(time.Duration(timeout) * time.Second)
 		got = append(got, Message{
-			ID:               idString(m.id),
-			ReceiptHandle:    e.newHandle(q.def.Name, m.id, m.seq),
-			Body:             m.body,
-			MD5OfBody:        MD5OfBody(m.body),
-			Attributes:       cloneAttrs(m.attrs),
-			SystemAttributes: cloneAttrs(m.sysAttrs),
-			SentAt:           m.sentAt,
-			FirstReceivedAt:  m.firstReceived,
-			ReceiveCount:     m.receives,
+			ID:                  idString(m.id),
+			ReceiptHandle:       e.newHandle(q.def.Name, m.id, m.seq),
+			Body:                m.body,
+			MD5OfBody:           MD5OfBody(m.body),
+			Attributes:          cloneAttrs(m.attrs),
+			SystemAttributes:    cloneAttrs(m.sysAttrs),
+			SentAt:              m.sentAt,
+			FirstReceivedAt:     m.firstReceived,
+			ReceiveCount:        m.receives,
+			GroupID:             m.group,
+			DeduplicationID:     m.dedupID,
+			SequenceNumber:      m.sequence,
+			DeadLetterSourceARN: m.dlqSource,
 		})
 	}
+	if len(moved) > 0 {
+		e.moveToDeadLetter(q, dlq, moved, now)
+	}
 	return got
+}
+
+// deadLetterTarget returns the queue that q redrives to and the receive count
+// that triggers it, or nil when q has no policy or its target is gone.
+func (e *Engine) deadLetterTarget(q *queue) (*queue, int) {
+	p, ok := parseRedrivePolicy(q.def.Attributes["RedrivePolicy"])
+	if !ok || p.MaxReceiveCount < 1 || p.MaxReceiveCount > 1000 {
+		return nil, 0 // only a hand-edited file can store an out-of-range count
+	}
+	name, ok := strings.CutPrefix(p.TargetARN, e.ARN(""))
+	if !ok {
+		return nil, 0
+	}
+	return e.queues[name], p.MaxReceiveCount
+}
+
+// moveToDeadLetter moves messages from q to dlq. They keep their ID, body, and
+// receive count, and are visible at once. A FIFO target numbers them again.
+func (e *Engine) moveToDeadLetter(q, dlq *queue, moved []*message, now time.Time) {
+	q.messages = slices.DeleteFunc(q.messages, func(m *message) bool { return slices.Contains(moved, m) })
+	for _, m := range moved {
+		m.visibleAt = now
+		m.dlqSource = e.ARN(q.def.Name)
+		if dlq.fifo() {
+			m.sequence = dlq.newSequence()
+		}
+		dlq.messages = append(dlq.messages, m)
+	}
+	dlq.notify()
 }
 
 // nextVisible returns the earliest future visibleAt, or the zero time.
@@ -389,6 +539,7 @@ func (e *Engine) Delete(ctx context.Context, name string, handles []string) ([]e
 		return nil, err
 	}
 	errs := make([]error, len(handles))
+	deleted := false
 	for i, h := range handles {
 		id, seq, ok := e.parseHandle(name, h)
 		if !ok {
@@ -398,7 +549,11 @@ func (e *Engine) Delete(ctx context.Context, name string, handles []string) ([]e
 		j := slices.IndexFunc(q.messages, func(m *message) bool { return m.id == id })
 		if j >= 0 && q.messages[j].seq == seq {
 			q.messages = slices.Delete(q.messages, j, j+1)
+			deleted = true
 		}
+	}
+	if deleted {
+		q.notify() // deleting a FIFO group's head unlocks the next message
 	}
 	return errs, nil
 }

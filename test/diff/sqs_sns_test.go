@@ -1,8 +1,10 @@
 package diff
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
+	"testing"
 )
 
 // Scenarios never call SNS ListTopics or ListSubscriptions, and call SQS ListQueues
@@ -138,6 +140,95 @@ func sqsErrorsScenario() scenario {
 	}}
 }
 
+func sqsFifoScenario() scenario {
+	const url = `"QueueUrl":"{queueUrl}"`
+	send := func(fields string) string { return `{` + url + `,"MessageBody":` + fields + `}` }
+	return scenario{name: "sqs-fifo", queues: []string{"{name}.fifo", "{name}-cbd.fifo", "{name}-noattr.fifo", "{name}-std", "{name}-ht.fifo"}, steps: []step{
+		sqsStep("create-fifo-queue", "CreateQueue", `{"QueueName":"{name}.fifo","Attributes":{"FifoQueue":"true"}}`),
+		sqsStep("get-fifo-attributes", "GetQueueAttributes", `{`+url+`,"AttributeNames":["All"]}`),
+		sqsStep("set-fifo-queue-attribute", "SetQueueAttributes", `{`+url+`,"Attributes":{"FifoQueue":"false"}}`),
+		sqsStep("create-fifo-attr-on-standard-name", "CreateQueue", `{"QueueName":"{name}-std","Attributes":{"FifoQueue":"true"}}`),
+		sqsStep("create-high-throughput", "CreateQueue", `{"QueueName":"{name}-ht.fifo","Attributes":{"FifoQueue":"true","DeduplicationScope":"messageGroup","FifoThroughputLimit":"perMessageGroupId"}}`),
+		sqsStep("get-high-throughput-attributes", "GetQueueAttributes", `{`+url+`,"AttributeNames":["All"]}`),
+		sqsStep("get-main-queue-url", "GetQueueUrl", `{"QueueName":"{name}.fifo"}`),
+		sqsStep("create-fifo-without-attribute", "CreateQueue", `{"QueueName":"{name}-noattr.fifo"}`),
+		sqsStep("send-missing-group", "SendMessage", send(`"x","MessageDeduplicationId":"d0"`)),
+		sqsStep("send-missing-dedup", "SendMessage", send(`"x","MessageGroupId":"a"`)),
+		sqsStep("send-per-message-delay", "SendMessage", send(`"x","MessageGroupId":"a","MessageDeduplicationId":"d0","DelaySeconds":5`)),
+		sqsStep("send-a1", "SendMessage", send(`"a1","MessageGroupId":"a","MessageDeduplicationId":"1"`)),
+		sqsStep("send-a1-duplicate", "SendMessage", send(`"a1","MessageGroupId":"a","MessageDeduplicationId":"1"`)),
+		sqsStep("send-a2", "SendMessage", send(`"a2","MessageGroupId":"a","MessageDeduplicationId":"2"`)),
+		sqsStep("receive-first", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":1,"WaitTimeSeconds":5,"MessageSystemAttributeNames":["All"]}`),
+		sqsStep("receive-locked", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":1,"WaitTimeSeconds":0}`),
+		sqsStep("delete-first", "DeleteMessage", `{`+url+`,"ReceiptHandle":"{receiptHandle}"}`),
+		sqsStep("receive-next", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":1,"WaitTimeSeconds":5}`),
+		sqsStep("delete-next", "DeleteMessage", `{`+url+`,"ReceiptHandle":"{receiptHandle}"}`),
+		sqsStep("create-cbd-queue", "CreateQueue", `{"QueueName":"{name}-cbd.fifo","Attributes":{"FifoQueue":"true","ContentBasedDeduplication":"true"}}`),
+		sqsStep("send-cbd-1", "SendMessage", send(`"same","MessageGroupId":"g"`)),
+		sqsStep("send-cbd-2", "SendMessage", send(`"same","MessageGroupId":"g"`)),
+		// The second receive runs while the first message is in flight, so it is empty either way.
+		sqsStep("receive-cbd", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":10,"WaitTimeSeconds":5,"MessageSystemAttributeNames":["MessageDeduplicationId"]}`),
+		sqsStep("receive-cbd-again", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":10,"WaitTimeSeconds":0}`),
+		sqsStep("delete-cbd-queue", "DeleteQueue", `{`+url+`}`),
+		sqsStep("get-high-throughput-url", "GetQueueUrl", `{"QueueName":"{name}-ht.fifo"}`),
+		sqsStep("delete-high-throughput-queue", "DeleteQueue", `{`+url+`}`),
+		sqsStep("get-fifo-url", "GetQueueUrl", `{"QueueName":"{name}.fifo"}`),
+		sqsStep("delete-fifo-queue", "DeleteQueue", `{`+url+`}`),
+	}}
+}
+
+func sqsDeadLetterScenario() scenario {
+	const url = `"QueueUrl":"{queueUrl}"`
+	// The policy is a JSON string inside the JSON body, so its quotes are escaped.
+	policy := func(queue, arn, count string) string {
+		return `{"QueueName":"` + queue + `","Attributes":{"RedrivePolicy":"{\"deadLetterTargetArn\":\"` + arn + `\",\"maxReceiveCount\":` + count + `}"}}`
+	}
+	return scenario{name: "sqs-dead-letter", queues: []string{"{name}", "{name}-dlq", "{name}-dlq.fifo", "{name}-mm", "{name}-denied"}, steps: []step{
+		sqsStep("create-dlq", "CreateQueue", `{"QueueName":"{name}-dlq"}`),
+		sqsStep("get-dlq-attributes", "GetQueueAttributes", `{`+url+`,"AttributeNames":["QueueArn"]}`),
+		sqsStep("list-dlq-sources-empty", "ListDeadLetterSourceQueues", `{`+url+`}`),
+		sqsStep("create-fifo-dlq", "CreateQueue", `{"QueueName":"{name}-dlq.fifo","Attributes":{"FifoQueue":"true"}}`),
+		sqsStep("get-fifo-dlq-attributes", "GetQueueAttributes", `{`+url+`,"AttributeNames":["QueueArn"]}`),
+		sqsStep("create-source-type-mismatch", "CreateQueue", policy("{name}-mm", `{queueArn}`, `1`)),
+		sqsStep("delete-fifo-dlq", "DeleteQueue", `{`+url+`}`),
+		sqsStep("get-dlq-url-before-policy", "GetQueueUrl", `{"QueueName":"{name}-dlq"}`),
+		sqsStep("get-dlq-arn-again", "GetQueueAttributes", `{`+url+`,"AttributeNames":["QueueArn"]}`),
+		sqsStep("set-allow-deny-all", "SetQueueAttributes", `{`+url+`,"Attributes":{"RedriveAllowPolicy":"{\"redrivePermission\":\"denyAll\"}"}}`),
+		sqsStep("create-source-denied", "CreateQueue", policy("{name}-denied", `{queueArn}`, `1`)),
+		sqsStep("get-dlq-allow-policy", "GetQueueAttributes", `{`+url+`,"AttributeNames":["RedriveAllowPolicy"]}`),
+		sqsStep("set-allow-all", "SetQueueAttributes", `{`+url+`,"Attributes":{"RedriveAllowPolicy":"{\"redrivePermission\":\"allowAll\"}"}}`),
+		sqsStep("create-source-bad-target", "CreateQueue", policy("{name}", `{queueArn}-missing`, `1`)),
+		sqsStep("create-source-bad-count", "CreateQueue", policy("{name}", `{queueArn}`, `0`)),
+		sqsStep("create-source", "CreateQueue", policy("{name}", `{queueArn}`, `\"1\"`)),
+		sqsStep("get-source-attributes", "GetQueueAttributes", `{`+url+`,"AttributeNames":["RedrivePolicy"]}`),
+		sqsStep("send-message", "SendMessage", `{`+url+`,"MessageBody":"poison"}`),
+		sqsStep("receive-once", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":5,"VisibilityTimeout":0,"AttributeNames":["ApproximateReceiveCount"]}`),
+		sqsStep("receive-moved", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":5}`),
+		sqsStep("get-dlq-url", "GetQueueUrl", `{"QueueName":"{name}-dlq"}`),
+		sqsStep("list-dlq-sources", "ListDeadLetterSourceQueues", `{`+url+`}`),
+		sqsStep("receive-from-dlq", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":5,"MessageSystemAttributeNames":["All"]}`),
+		sqsStep("delete-from-dlq", "DeleteMessage", `{`+url+`,"ReceiptHandle":"{receiptHandle}"}`),
+		sqsStep("delete-dlq", "DeleteQueue", `{`+url+`}`),
+		sqsStep("get-source-url", "GetQueueUrl", `{"QueueName":"{name}"}`),
+		sqsStep("delete-source", "DeleteQueue", `{`+url+`}`),
+	}}
+}
+
+func sqsFairQueueScenario() scenario {
+	const url = `"QueueUrl":"{queueUrl}"`
+	// The normalizer masks MessageId and SequenceNumber, so sqs-fifo settles
+	// deduplication through receive-next returning a2, not through the send results.
+	return scenario{name: "sqs-fair-queue", queues: []string{"{name}"}, steps: []step{
+		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
+		sqsStep("set-fifo-attr-on-standard", "SetQueueAttributes", `{`+url+`,"Attributes":{"ContentBasedDeduplication":"true"}}`),
+		sqsStep("send-dedup-id-standard", "SendMessage", `{`+url+`,"MessageBody":"x","MessageDeduplicationId":"d1"}`),
+		sqsStep("send-with-group", "SendMessage", `{`+url+`,"MessageBody":"tenant","MessageGroupId":"tenant-a"}`),
+		sqsStep("receive-with-attributes", "ReceiveMessage", `{`+url+`,"WaitTimeSeconds":5,"MessageSystemAttributeNames":["All"]}`),
+		sqsStep("delete-message", "DeleteMessage", `{`+url+`,"ReceiptHandle":"{receiptHandle}"}`),
+		sqsStep("delete-queue", "DeleteQueue", `{`+url+`}`),
+	}}
+}
+
 func snsAuthErrorsScenario() scenario {
 	// A harmless read, in case auth unexpectedly succeeds.
 	const form = "Action=GetTopicAttributes&TopicArn=arn%3Aaws%3Asns%3Aus-east-1%3A000000000000%3A{name}&Version=2010-03-31"
@@ -161,4 +252,39 @@ func snsTopicBasicsScenario() scenario {
 		snsStep("delete-topic", "Action=DeleteTopic&TopicArn={topicArn}&Version=2010-03-31"),
 		snsStep("get-deleted-topic-attributes", attributes),
 	}}
+}
+
+func TestSQSStepBodiesAreJSON(t *testing.T) {
+	vars := map[string]string{"name": "pail-diff-1"}
+	for _, v := range variables {
+		vars[v] = "arn:aws:sqs:us-east-1:000000000000:v"
+	}
+	for _, sc := range scenarios() {
+		for _, st := range sc.steps {
+			if st.service != "sqs" {
+				continue
+			}
+			expanded, _ := st.withVars(vars)
+			if !json.Valid([]byte(expanded.body)) && st.name != "malformed-json" {
+				t.Errorf("%s/%s body = %s, want valid JSON", sc.name, st.name, expanded.body)
+			}
+		}
+	}
+}
+
+func TestRedrivePolicyStepBody(t *testing.T) {
+	var found step
+	for _, st := range sqsDeadLetterScenario().steps {
+		if st.name == "create-source" {
+			found = st
+		}
+	}
+	st, _ := found.withVars(map[string]string{"name": "n", "queueArn": "arn:q"})
+	var got struct{ Attributes map[string]string }
+	if err := json.Unmarshal([]byte(st.body), &got); err != nil {
+		t.Fatalf("Unmarshal(%s) error = %v", st.body, err)
+	}
+	if want := `{"deadLetterTargetArn":"arn:q","maxReceiveCount":"1"}`; got.Attributes["RedrivePolicy"] != want {
+		t.Errorf("RedrivePolicy = %q, want %q", got.Attributes["RedrivePolicy"], want)
+	}
 }

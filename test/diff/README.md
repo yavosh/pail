@@ -92,7 +92,21 @@ go test ./test/diff -record -run '^TestDiff/sqs-(message-attributes|visibility|b
 
 The recording masks `SenderId`, because it is the recording identity's IAM unique ID. The suite also drops the `Message` text of failed batch entries, which differs between servers.
 
-The steps of `sns-topic-basics` and the four newer SQS scenarios start in `pending.txt`. After you record, remove each line whose step matches AWS.
+The FIFO and dead-letter scenarios are:
+
+- `sqs-fifo`: FIFO queue creation and its errors (`FifoQueue` changes, `FifoQueue` on a standard name), high-throughput attributes, send rules (missing group, missing deduplication ID, per-message delay), deduplication, group locking, and content-based deduplication with its `MessageDeduplicationId`.
+- `sqs-dead-letter`: `RedrivePolicy` validation, a FIFO target for a standard source, `RedriveAllowPolicy` `denyAll` and `allowAll`, the move to the dead-letter queue, `DeadLetterQueueSourceArn`, and `ListDeadLetterSourceQueues`.
+- `sqs-fair-queue`: FIFO attributes and `MessageDeduplicationId` on a standard queue, `MessageGroupId` on a standard queue, and what a receive returns for it.
+
+Record them with:
+
+```bash
+go test ./test/diff -record -run '^TestDiff/sqs-(fifo|dead-letter|fair-queue)$' -v
+```
+
+The recording identity also needs `sqs:ListDeadLetterSourceQueues`.
+
+The steps of `sns-topic-basics` are still in `pending.txt`. After you record a new scenario, remove each line whose step matches AWS.
 
 ## What is compared
 

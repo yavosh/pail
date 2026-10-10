@@ -10,25 +10,37 @@ import (
 )
 
 // attrSpec describes one settable attribute. An empty def means no default.
+// A canon function rewrites a validated value into its stored form.
 type attrSpec struct {
-	def     string
-	ok      func(string) bool
-	integer bool // stored in canonical decimal form
+	def      string
+	ok       func(string) bool
+	canon    func(string) string
+	fifoOnly bool
 }
 
-// attrSpecs is the one table of settable attributes. Later PRs add redrive
-// and FIFO entries here.
+func isBool(v string) bool { return v == "true" || v == "false" }
+
+// attrSpecs is the one table of settable attributes.
 var attrSpecs = map[string]attrSpec{
-	"DelaySeconds":                  {"0", intRange(0, 900), true},
-	"MaximumMessageSize":            {"1048576", intRange(1024, 1048576), true},
-	"MessageRetentionPeriod":        {"345600", intRange(60, 1209600), true},
-	"ReceiveMessageWaitTimeSeconds": {"0", intRange(0, 20), true},
-	"VisibilityTimeout":             {"30", intRange(0, 43200), true},
-	"SqsManagedSseEnabled":          {"true", func(v string) bool { return v == "true" || v == "false" }, false},
-	"KmsMasterKeyId":                {"", func(v string) bool { return v != "" }, false},
-	"KmsDataKeyReusePeriodSeconds":  {"", intRange(60, 86400), true},
-	"Policy":                        {"", isJSONObject, false},
+	"DelaySeconds":                  {"0", intRange(0, 900), canonInt, false},
+	"MaximumMessageSize":            {"1048576", intRange(1024, 1048576), canonInt, false},
+	"MessageRetentionPeriod":        {"345600", intRange(60, 1209600), canonInt, false},
+	"ReceiveMessageWaitTimeSeconds": {"0", intRange(0, 20), canonInt, false},
+	"VisibilityTimeout":             {"30", intRange(0, 43200), canonInt, false},
+	"SqsManagedSseEnabled":          {"true", isBool, nil, false},
+	"KmsMasterKeyId":                {"", func(v string) bool { return v != "" }, nil, false},
+	"KmsDataKeyReusePeriodSeconds":  {"", intRange(60, 86400), canonInt, false},
+	"Policy":                        {"", isJSONObject, nil, false},
+	"RedrivePolicy":                 {"", validRedrivePolicy, canonRedrivePolicy, false},
+	"RedriveAllowPolicy":            {"", validRedriveAllowPolicy, canonRedriveAllowPolicy, false},
+	"FifoQueue":                     {"", func(v string) bool { return v == "true" }, nil, true},
+	"ContentBasedDeduplication":     {"false", isBool, nil, true},
+	"DeduplicationScope":            {"queue", func(v string) bool { return v == "queue" || v == "messageGroup" }, nil, true},
+	"FifoThroughputLimit":           {"perQueue", func(v string) bool { return v == "perQueue" || v == "perMessageGroupId" }, nil, true},
 }
+
+// clearable attributes are removed when set to the empty string.
+var clearable = []string{"RedrivePolicy", "RedriveAllowPolicy"}
 
 // computedAttrs are read-only attributes the engine derives.
 var computedAttrs = []string{
@@ -38,13 +50,6 @@ var computedAttrs = []string{
 	"CreatedTimestamp",
 	"LastModifiedTimestamp",
 	"QueueArn",
-}
-
-// unsupportedAttrs are valid SQS attributes that a later PR implements. They
-// cannot be set yet, and a standard queue does not report them.
-var unsupportedAttrs = []string{
-	"FifoQueue", "ContentBasedDeduplication", "DeduplicationScope",
-	"FifoThroughputLimit", "RedrivePolicy", "RedriveAllowPolicy",
 }
 
 // isJSONObject accepts a JSON document whose top level is an object.
@@ -73,28 +78,34 @@ func intRange(lo, hi int) func(string) bool {
 	}
 }
 
-// canonicalAttrs returns a copy of validated attrs with integers in canonical
-// decimal form, so "007" is stored and compared as "7".
+// canonInt writes a validated integer in canonical decimal form.
+func canonInt(v string) string {
+	n, _ := strconv.Atoi(v)
+	return strconv.Itoa(n)
+}
+
+// canonicalAttrs returns a copy of validated attrs in stored form, so "007"
+// is stored and compared as "7".
 func canonicalAttrs(attrs map[string]string) map[string]string {
 	out := maps.Clone(attrs)
 	for name, v := range out {
-		if attrSpecs[name].integer {
-			n, _ := strconv.Atoi(v)
-			out[name] = strconv.Itoa(n)
+		if canon := attrSpecs[name].canon; canon != nil && v != "" {
+			out[name] = canon(v)
 		}
 	}
 	return out
 }
 
-// validateAttrs checks names and values in sorted name order.
-func validateAttrs(attrs map[string]string) error {
+// validateAttrs checks names and values in sorted name order. FIFO-only
+// attributes are valid only when fifo is true.
+func validateAttrs(attrs map[string]string, fifo bool) error {
 	for _, name := range slices.Sorted(maps.Keys(attrs)) {
-		if slices.Contains(unsupportedAttrs, name) {
-			return fmt.Errorf("attribute %s: %w", name, ErrUnsupported)
-		}
 		spec, ok := attrSpecs[name]
-		if !ok {
+		if !ok || (spec.fifoOnly && !fifo) {
 			return fmt.Errorf("attribute %s: %w", name, ErrInvalidAttributeName)
+		}
+		if attrs[name] == "" && slices.Contains(clearable, name) {
+			continue
 		}
 		if !spec.ok(attrs[name]) {
 			return fmt.Errorf("attribute %s value %q: %w", name, attrs[name], ErrInvalidAttributeValue)
@@ -103,11 +114,11 @@ func validateAttrs(attrs map[string]string) error {
 	return nil
 }
 
-// defaultAttrs returns the defaults overlaid with attrs.
-func defaultAttrs(attrs map[string]string) map[string]string {
+// defaultAttrs returns the defaults for a queue type overlaid with attrs.
+func defaultAttrs(attrs map[string]string, fifo bool) map[string]string {
 	out := map[string]string{}
 	for name, spec := range attrSpecs {
-		if spec.def != "" {
+		if spec.def != "" && (fifo || !spec.fifoOnly) {
 			out[name] = spec.def
 		}
 	}
@@ -118,5 +129,5 @@ func defaultAttrs(attrs map[string]string) map[string]string {
 // knownAttr reports whether name can be requested from Attributes.
 func knownAttr(name string) bool {
 	_, ok := attrSpecs[name]
-	return ok || slices.Contains(computedAttrs, name) || slices.Contains(unsupportedAttrs, name)
+	return ok || slices.Contains(computedAttrs, name)
 }

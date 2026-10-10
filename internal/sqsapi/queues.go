@@ -107,35 +107,77 @@ type listQueuesResponse struct {
 	NextToken string   `json:",omitempty"`
 }
 
-// The token is the last name of the previous page, so it needs no state.
-func (h *handler) listQueues(r *http.Request, in listQueuesRequest) (any, error) {
-	limit := 0
-	if in.MaxResults != nil {
-		limit = *in.MaxResults
+// pageParams reads MaxResults and NextToken. The token is the last name of the
+// previous page, so it needs no state.
+func pageParams(maxResults *int, token string) (limit int, after string, err error) {
+	if maxResults != nil {
+		limit = *maxResults
 		if limit < 1 || limit > maxListResults {
-			return nil, fmt.Errorf("MaxResults %d must be from 1 to %d: %w", limit, maxListResults, queue.ErrInvalidParameterValue)
+			return 0, "", fmt.Errorf("MaxResults %d must be from 1 to %d: %w", limit, maxListResults, queue.ErrInvalidParameterValue)
 		}
 	}
-	var after string
-	if in.NextToken != "" {
-		b, err := base64.RawURLEncoding.DecodeString(in.NextToken)
+	if token != "" {
+		b, err := base64.RawURLEncoding.DecodeString(token)
 		if err != nil {
-			return nil, fmt.Errorf("NextToken is not valid: %w", queue.ErrInvalidParameterValue)
+			return 0, "", fmt.Errorf("NextToken is not valid: %w", queue.ErrInvalidParameterValue)
 		}
 		after = string(b)
+	}
+	return limit, after, nil
+}
+
+// queueURLs builds the response URLs and token of one page of names.
+func queueURLs(r *http.Request, names []string, next string) (urls []string, token string) {
+	for _, n := range names {
+		urls = append(urls, queueURL(r, n))
+	}
+	if next != "" {
+		token = base64.RawURLEncoding.EncodeToString([]byte(next))
+	}
+	return urls, token
+}
+
+func (h *handler) listQueues(r *http.Request, in listQueuesRequest) (any, error) {
+	limit, after, err := pageParams(in.MaxResults, in.NextToken)
+	if err != nil {
+		return nil, err
 	}
 	names, next, err := h.queues.ListQueues(r.Context(), in.QueueNamePrefix, limit, after)
 	if err != nil {
 		return nil, err
 	}
-	out := listQueuesResponse{}
-	for _, n := range names {
-		out.QueueURLs = append(out.QueueURLs, queueURL(r, n))
-	}
-	if next != "" {
-		out.NextToken = base64.RawURLEncoding.EncodeToString([]byte(next))
-	}
+	var out listQueuesResponse
+	out.QueueURLs, out.NextToken = queueURLs(r, names, next)
 	return out, nil
+}
+
+type listDeadLetterSourceQueuesRequest struct {
+	QueueURL   string `json:"QueueUrl"`
+	MaxResults *int
+	NextToken  string
+}
+
+// The model names this member in lower case.
+type listDeadLetterSourceQueuesResponse struct {
+	QueueURLs []string `json:"queueUrls,omitempty"`
+	NextToken string   `json:",omitempty"`
+}
+
+func (h *handler) listDeadLetterSourceQueues(r *http.Request, in listDeadLetterSourceQueuesRequest) (any, error) {
+	name, err := queueName(in.QueueURL)
+	if err != nil {
+		return nil, err
+	}
+	limit, after, err := pageParams(in.MaxResults, in.NextToken)
+	if err != nil {
+		return nil, err
+	}
+	names, next, err := h.queues.DeadLetterSourceQueues(r.Context(), name, limit, after)
+	if err != nil {
+		return nil, err
+	}
+	urls, token := queueURLs(r, names, next)
+	return listDeadLetterSourceQueuesResponse{urls, token}, nil
 }
 
 type getQueueAttributesRequest struct {
