@@ -58,7 +58,8 @@ func (n notifier) Exists(ctx context.Context, arn string) bool {
 	case !ok:
 		return false
 	case service == "sqs":
-		return n.queues.Lookup(ctx, name) == nil
+		// AWS refuses a FIFO queue, and a delivery without a group ID would fail.
+		return !strings.HasSuffix(name, ".fifo") && n.queues.Lookup(ctx, name) == nil
 	}
 	_, err := n.topics.TopicAttributes(ctx, arn)
 	return err == nil

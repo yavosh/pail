@@ -225,6 +225,7 @@ pail supports `PutBucketNotificationConfiguration` and `GetBucketNotificationCon
   - A destination that doesn't exist in this pail, or that has the wrong service, returns `400 InvalidArgument`. The ARN's region and account must be pail's.
   - Two configurations that share an event type and have overlapping prefixes and suffixes return `400 InvalidArgument`.
   - Malformed XML, or a queue configuration with a `Topic` element, returns `400 MalformedXML`.
+- A FIFO queue isn't a valid destination.
 - `CloudFunctionConfiguration`, `LambdaFunctionConfiguration`, and `EventBridgeConfiguration` return `501 NotImplemented`. So do the AWS event types pail never raises: object restore, replication, lifecycle, intelligent tiering, tagging, and ACL events.
 - A `PutBucketNotificationConfiguration` that adds a destination sends it a test event: `{"Service":"Amazon S3","Event":"s3:TestEvent","Time":...,"Bucket":...,"RequestId":...,"HostId":...}`. pail sends it only to a destination that the old configuration lacked. Whether AWS also sends one for a changed filter or event list is unverified.
 - An event is a `Records` array with one record. It carries the AWS fields `eventVersion` `2.6`, `eventSource`, `awsRegion`, `eventTime`, `eventName`, `userIdentity`, `requestParameters.sourceIPAddress`, `responseElements`, and `s3` with `configurationId`, `bucket`, and `object`. The object key is URL-encoded, with `/` kept. A removal has no `size` or `eTag`. A copy adds `hasObjectAnnotation: false`. The AWS recording verifies this shape.

@@ -430,8 +430,6 @@ func writeJSON(b *strings.Builder, path, key string, v any) {
 	}
 }
 
-// snsEnvelope reports whether s is the JSON envelope of an SNS notification or
-// subscription confirmation, which SNS delivers as an SQS message body.
 // s3EventVolatileKeys change on every run, or name the caller, in an S3 event
 // notification. The source IP and principal IDs must never reach a golden file.
 var s3EventVolatileKeys = map[string]bool{
@@ -481,6 +479,8 @@ func writeS3Event(b *strings.Builder, path string, v any) {
 	}
 }
 
+// snsEnvelope reports whether s is the JSON envelope of an SNS notification or
+// subscription confirmation, which SNS delivers as an SQS message body.
 func snsEnvelope(s string) (map[string]any, bool) {
 	if !strings.HasPrefix(s, "{") {
 		return nil, false

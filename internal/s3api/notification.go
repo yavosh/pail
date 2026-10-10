@@ -261,7 +261,7 @@ func (h *handler) handleBucketNotification(w http.ResponseWriter, r *http.Reques
 	}
 	for _, d := range append(slices.Clone(c.Topics), c.Queues...) {
 		if !old[d.arn()] {
-			h.deliver(r, d, t.bucket, h.testEventJSON(w, t.bucket))
+			h.deliver(context.WithoutCancel(r.Context()), r, t, d, h.testEventJSON(w, t.bucket))
 		}
 	}
 	w.WriteHeader(http.StatusOK)
@@ -395,26 +395,27 @@ func (h *handler) notify(w http.ResponseWriter, r *http.Request, t target, ev ob
 	if h.opts.Notifier == nil {
 		return
 	}
-	c := h.notificationConfig(r.Context(), t.bucket)
+	// The request may be canceled once the write has committed.
+	ctx := context.WithoutCancel(r.Context())
+	c := h.notificationConfig(ctx, t.bucket)
 	for _, d := range slices.Concat(c.Topics, c.Queues) {
 		if d.matches(ev.name, ev.key) {
-			h.deliver(r, d, t.bucket, h.eventJSON(w, r, t.bucket, d.ID, ev))
+			h.deliver(ctx, r, t, d, h.eventJSON(w, r, t.bucket, d.ID, ev))
 		}
 	}
 }
 
 // deliver sends message to the destination of d and logs a failure.
-func (h *handler) deliver(r *http.Request, d notificationTarget, bucket, message string) {
+func (h *handler) deliver(ctx context.Context, r *http.Request, t target, d notificationTarget, message string) {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
 	host := r.Host
-	if h.opts.Domain != "" {
-		host = strings.TrimPrefix(host, bucket+".")
+	if t.virtualHost {
+		host = host[len(t.bucket)+1:] // parseTarget matched "<bucket>." case-insensitively
 	}
-	// The request may be canceled once the write has committed.
-	if err := h.opts.Notifier.Deliver(context.WithoutCancel(r.Context()), d.arn(), message, scheme+"://"+host); err != nil {
-		clogS3api().Error("deliver notification", "bucket", bucket, "destination", d.arn(), "error", err)
+	if err := h.opts.Notifier.Deliver(ctx, d.arn(), message, scheme+"://"+host); err != nil {
+		clogS3api().Error("deliver notification", "bucket", t.bucket, "destination", d.arn(), "error", err)
 	}
 }

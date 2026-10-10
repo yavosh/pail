@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs/localdisk"
@@ -333,6 +335,75 @@ func TestNotificationMatches(t *testing.T) {
 	for _, tt := range tests {
 		if got := tt.c.matches(tt.event, tt.key); got != tt.want {
 			t.Errorf("%s: matches(%q, %q) = %v, want %v", tt.name, tt.event, tt.key, got, tt.want)
+		}
+	}
+}
+
+// cancelAfterPut cancels the request context once the real write has committed.
+type cancelAfterPut struct {
+	Store
+	cancel context.CancelFunc
+}
+
+func (s *cancelAfterPut) PutObject(ctx context.Context, bucket, key string, body io.Reader, opts store.PutOptions) (store.ObjectInfo, error) {
+	info, err := s.Store.PutObject(ctx, bucket, key, body, opts)
+	s.cancel()
+	return info, err
+}
+
+func TestEventSurvivesCanceledRequest(t *testing.T) {
+	fsys, err := localdisk.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fsys.Close() })
+	st, err := store.Open(context.Background(), fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := &fakeNotifier{}
+	wrapper := &cancelAfterPut{Store: st}
+	opts := testOptions("")
+	opts.Region, opts.Store, opts.Notifier = "us-east-1", wrapper, n
+	h := New(opts)
+	if err := st.CreateBucket(context.Background(), "bkt"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := store.BucketConfiguration{}
+	cfg.XML = []byte(`<NotificationConfiguration><QueueConfiguration><Id>a</Id><Queue>` + testQueueARN + `</Queue><Event>s3:ObjectCreated:*</Event></QueueConfiguration></NotificationConfiguration>`)
+	if err := st.PutBucketConfiguration(context.Background(), "bkt", "notification", &cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	wrapper.cancel = cancel
+	req := httptest.NewRequestWithContext(ctx, http.MethodPut, "/bkt/k", strings.NewReader("x"))
+	signPayload(t, req, time.Now(), "x")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if got := n.take(); len(got) != 1 {
+		t.Errorf("deliveries after the request was canceled = %v, want 1", got)
+	}
+}
+
+func TestDeliverBaseURL(t *testing.T) {
+	tests := []struct {
+		name, domain, host, path, want string
+	}{
+		{"path-style host starts with the bucket", "example.com", "example.com:9000", "/example/k", "http://example.com:9000"},
+		{"virtual-hosted", "example.com", "bkt.example.com:9000", "/k", "http://example.com:9000"},
+		{"virtual-hosted in another case", "example.com", "Bkt.Example.com:9000", "/k", "http://Example.com:9000"},
+		{"no domain", "", "localhost:9000", "/bkt/k", "http://localhost:9000"},
+	}
+	for _, tt := range tests {
+		n := &fakeNotifier{}
+		opts := testOptions(tt.domain)
+		opts.Notifier = n
+		h := New(opts).(*handler)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "http://"+tt.host+tt.path, nil)
+		target := parseTarget(req, h.opts.Domain)
+		h.deliver(context.Background(), req, target, notificationTarget{Queue: testQueueARN}, "m")
+		if got := n.take(); len(got) != 1 || got[0].baseURL != tt.want {
+			t.Errorf("%s: baseURL = %v, want %s", tt.name, got, tt.want)
 		}
 	}
 }

@@ -35,8 +35,14 @@ func TestNotifierExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := queues.CreateQueue(ctx, "q", nil, nil); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"q", "q.fifo"} {
+		attrs := map[string]string{}
+		if strings.HasSuffix(name, ".fifo") {
+			attrs["FifoQueue"] = "true"
+		}
+		if err := queues.CreateQueue(ctx, name, attrs, nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if _, err := topics.CreateTopic(ctx, "t", nil, nil); err != nil {
 		t.Fatal(err)
@@ -48,6 +54,7 @@ func TestNotifierExists(t *testing.T) {
 	}{
 		{"arn:aws:sqs:us-east-1:000000000000:q", true},
 		{"arn:aws:sns:us-east-1:000000000000:t", true},
+		{"arn:aws:sqs:us-east-1:000000000000:q.fifo", false},
 		{"arn:aws:sqs:us-east-1:000000000000:missing", false},
 		{"arn:aws:sns:us-east-1:000000000000:missing", false},
 		{"arn:aws:sqs:eu-west-1:000000000000:q", false},
