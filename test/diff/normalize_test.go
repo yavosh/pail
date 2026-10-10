@@ -52,6 +52,10 @@ var comparedHeaders = []string{
 	"Vary", "X-Amz-Transition-Default-Minimum-Object-Size", "X-Amzn-Query-Error",
 }
 
+// arnAccountRE matches the account ID in an ARN, such as a queue ARN in a
+// bucket notification configuration. It must never reach a golden file.
+var arnAccountRE = regexp.MustCompile(`(arn:aws:[a-z0-9-]+:[a-z0-9-]*:)[0-9]{12}:`)
+
 var presenceHeaders = []string{"Last-Modified", "X-Amz-Id-2", "X-Amz-Request-Id", "X-Amzn-Requestid"}
 
 // volatileElements change on every run, so only their presence is kept.
@@ -111,6 +115,7 @@ func normalize(st step, bucket string, r response) exchange {
 		if body, _, err = canonicalXML(body); err != nil {
 			body = "unparsable XML: " + err.Error()
 		}
+		body = arnAccountRE.ReplaceAllString(body, "${1}{account}:")
 	case !utf8.ValidString(body):
 		// JSON would replace invalid UTF-8, so binary bodies are stored encoded.
 		body = "base64:" + base64.StdEncoding.EncodeToString(r.body)
@@ -387,9 +392,11 @@ func writeJSON(b *strings.Builder, path, key string, v any) {
 			if path != "" {
 				p = path + "." + k
 			}
-			// An envelope body carries a timestamp and a signature, so its checksum changes too.
+			// An envelope or S3 event body carries times and IDs, so its checksum changes too.
 			if body, _ := v["Body"].(string); k == "MD5OfBody" && body != "" {
-				if _, ok := snsEnvelope(body); ok {
+				_, envelope := snsEnvelope(body)
+				_, event := s3Event(body)
+				if envelope || event {
 					fmt.Fprintf(b, "%s: <volatile>\n", p)
 					continue
 				}
@@ -411,10 +418,63 @@ func writeJSON(b *strings.Builder, path, key string, v any) {
 				writeEnvelope(b, path, env)
 				return
 			}
+			if ev, ok := s3Event(s); ok {
+				writeS3Event(b, path, ev)
+				return
+			}
 		}
 		if volatileJSONKeys[key] {
 			v = "<volatile>"
 		}
+		fmt.Fprintf(b, "%s: %v\n", path, v)
+	}
+}
+
+// s3EventVolatileKeys change on every run, or name the caller, in an S3 event
+// notification. The source IP and principal IDs must never reach a golden file.
+var s3EventVolatileKeys = map[string]bool{
+	"eventTime": true, "principalId": true, "sourceIPAddress": true, "x-amz-request-id": true,
+	"x-amz-id-2": true, "sequencer": true, "Time": true, "RequestId": true, "HostId": true,
+}
+
+// s3Event reports whether s is an S3 event notification or the s3:TestEvent
+// message, as S3 delivers them to a queue.
+func s3Event(s string) (map[string]any, bool) {
+	if !strings.HasPrefix(s, "{") {
+		return nil, false
+	}
+	var ev map[string]any
+	if json.Unmarshal([]byte(s), &ev) != nil {
+		return nil, false
+	}
+	if ev["Event"] == "s3:TestEvent" {
+		return ev, true
+	}
+	records, _ := ev["Records"].([]any)
+	if len(records) == 0 {
+		return nil, false
+	}
+	r, _ := records[0].(map[string]any)
+	return ev, r != nil && r["eventSource"] == "aws:s3"
+}
+
+// writeS3Event writes an S3 event one line per value, sorted, with the
+// volatile values masked.
+func writeS3Event(b *strings.Builder, path string, v any) {
+	switch v := v.(type) {
+	case map[string]any:
+		for _, k := range slices.Sorted(maps.Keys(v)) {
+			if s3EventVolatileKeys[k] {
+				fmt.Fprintf(b, "%s.%s: <volatile>\n", path, k)
+				continue
+			}
+			writeS3Event(b, path+"."+k, v[k])
+		}
+	case []any:
+		for i, e := range v {
+			writeS3Event(b, fmt.Sprintf("%s[%d]", path, i), e)
+		}
+	default:
 		fmt.Fprintf(b, "%s: %v\n", path, v)
 	}
 }

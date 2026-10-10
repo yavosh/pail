@@ -1,0 +1,318 @@
+{
+  "scenario": "bucket-notifications",
+  "exchanges": [
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "get-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\n"
+    },
+    {
+      "step": "set-queue-policy",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "f7f16a36b3d7aa14",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-config-new",
+      "request": "GET /?notification",
+      "fingerprint": "688322025e08705e",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "NotificationConfiguration: \n"
+    },
+    {
+      "step": "put-config-bad-event",
+      "request": "PUT /?notification",
+      "fingerprint": "abc4b6d033a89b40",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "put-config-missing-queue",
+      "request": "PUT /?notification",
+      "fingerprint": "891738c28abab5b3",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "put-config-overlap",
+      "request": "PUT /?notification",
+      "fingerprint": "6757611bdeadd51c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "put-config-malformed",
+      "request": "PUT /?notification",
+      "fingerprint": "dadff624bb5b307c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: MalformedXML\n"
+    },
+    {
+      "step": "put-config",
+      "request": "PUT /?notification",
+      "fingerprint": "7c3dad6615befb0e",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "receive-test-event",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a96139cdd642d317",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body.Bucket: {name}\nMessages[0].Body.Event: s3:TestEvent\nMessages[0].Body.HostId: <volatile>\nMessages[0].Body.RequestId: <volatile>\nMessages[0].Body.Service: Amazon S3\nMessages[0].Body.Time: <volatile>\nMessages[0].MD5OfBody: <volatile>\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-test-event",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "get-config",
+      "request": "GET /?notification",
+      "fingerprint": "688322025e08705e",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "NotificationConfiguration\n  QueueConfiguration\n    Id: created\n    Queue: arn:aws:sqs:us-east-1:{account}:{bucket}\n    Event: s3:ObjectCreated:*\n    Event: s3:ObjectRemoved:*\n    Filter\n      S3Key\n        FilterRule\n          Name: Prefix\n          Value: in/\n"
+    },
+    {
+      "step": "put-in",
+      "request": "PUT /in/a.txt",
+      "fingerprint": "bc6f8ec3bf48cdce",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"5d41402abc4b2a76b9719d911017c592\"",
+        "X-Amz-Checksum-Crc64nvme": "M3eFcAZSQlc=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-out",
+      "request": "PUT /out/b.txt",
+      "fingerprint": "6bcb7a356731002b",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"08b43519a7e36ee4c6c5615d1663bcfd\"",
+        "X-Amz-Checksum-Crc64nvme": "y/ASiaFPdi4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "receive-created",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a96139cdd642d317",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body.Records[0].awsRegion: us-east-1\nMessages[0].Body.Records[0].eventName: ObjectCreated:Put\nMessages[0].Body.Records[0].eventSource: aws:s3\nMessages[0].Body.Records[0].eventTime: <volatile>\nMessages[0].Body.Records[0].eventVersion: 2.6\nMessages[0].Body.Records[0].requestParameters.sourceIPAddress: <volatile>\nMessages[0].Body.Records[0].responseElements.x-amz-id-2: <volatile>\nMessages[0].Body.Records[0].responseElements.x-amz-request-id: <volatile>\nMessages[0].Body.Records[0].s3.bucket.arn: arn:aws:s3:::{name}\nMessages[0].Body.Records[0].s3.bucket.name: {name}\nMessages[0].Body.Records[0].s3.bucket.ownerIdentity.principalId: <volatile>\nMessages[0].Body.Records[0].s3.configurationId: created\nMessages[0].Body.Records[0].s3.object.eTag: 5d41402abc4b2a76b9719d911017c592\nMessages[0].Body.Records[0].s3.object.key: in/a.txt\nMessages[0].Body.Records[0].s3.object.sequencer: <volatile>\nMessages[0].Body.Records[0].s3.object.size: 5\nMessages[0].Body.Records[0].s3.s3SchemaVersion: 1.0\nMessages[0].Body.Records[0].userIdentity.principalId: <volatile>\nMessages[0].MD5OfBody: <volatile>\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-created",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "copy-in",
+      "request": "PUT /in/c.txt",
+      "fingerprint": "832dde593270261f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"5d41402abc4b2a76b9719d911017c592\"\n  ChecksumCRC64NVME: M3eFcAZSQlc=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "receive-copied",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a96139cdd642d317",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body.Records[0].awsRegion: us-east-1\nMessages[0].Body.Records[0].eventName: ObjectCreated:Copy\nMessages[0].Body.Records[0].eventSource: aws:s3\nMessages[0].Body.Records[0].eventTime: <volatile>\nMessages[0].Body.Records[0].eventVersion: 2.6\nMessages[0].Body.Records[0].requestParameters.sourceIPAddress: <volatile>\nMessages[0].Body.Records[0].responseElements.x-amz-id-2: <volatile>\nMessages[0].Body.Records[0].responseElements.x-amz-request-id: <volatile>\nMessages[0].Body.Records[0].s3.bucket.arn: arn:aws:s3:::{name}\nMessages[0].Body.Records[0].s3.bucket.name: {name}\nMessages[0].Body.Records[0].s3.bucket.ownerIdentity.principalId: <volatile>\nMessages[0].Body.Records[0].s3.configurationId: created\nMessages[0].Body.Records[0].s3.object.eTag: 5d41402abc4b2a76b9719d911017c592\nMessages[0].Body.Records[0].s3.object.hasObjectAnnotation: false\nMessages[0].Body.Records[0].s3.object.key: in/c.txt\nMessages[0].Body.Records[0].s3.object.sequencer: <volatile>\nMessages[0].Body.Records[0].s3.object.size: 5\nMessages[0].Body.Records[0].s3.s3SchemaVersion: 1.0\nMessages[0].Body.Records[0].userIdentity.principalId: <volatile>\nMessages[0].MD5OfBody: <volatile>\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-copied",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "delete-in",
+      "request": "DELETE /in/a.txt",
+      "fingerprint": "7a884c41d42e1d80",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "receive-removed",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a96139cdd642d317",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body.Records[0].awsRegion: us-east-1\nMessages[0].Body.Records[0].eventName: ObjectRemoved:Delete\nMessages[0].Body.Records[0].eventSource: aws:s3\nMessages[0].Body.Records[0].eventTime: <volatile>\nMessages[0].Body.Records[0].eventVersion: 2.6\nMessages[0].Body.Records[0].requestParameters.sourceIPAddress: <volatile>\nMessages[0].Body.Records[0].responseElements.x-amz-id-2: <volatile>\nMessages[0].Body.Records[0].responseElements.x-amz-request-id: <volatile>\nMessages[0].Body.Records[0].s3.bucket.arn: arn:aws:s3:::{name}\nMessages[0].Body.Records[0].s3.bucket.name: {name}\nMessages[0].Body.Records[0].s3.bucket.ownerIdentity.principalId: <volatile>\nMessages[0].Body.Records[0].s3.configurationId: created\nMessages[0].Body.Records[0].s3.object.key: in/a.txt\nMessages[0].Body.Records[0].s3.object.sequencer: <volatile>\nMessages[0].Body.Records[0].s3.s3SchemaVersion: 1.0\nMessages[0].Body.Records[0].userIdentity.principalId: <volatile>\nMessages[0].MD5OfBody: <volatile>\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-removed",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "put-config-empty",
+      "request": "PUT /?notification",
+      "fingerprint": "f352629849c10345",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-config-empty",
+      "request": "GET /?notification",
+      "fingerprint": "688322025e08705e",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "NotificationConfiguration: \n"
+    },
+    {
+      "step": "delete-objects",
+      "request": "POST /?delete",
+      "fingerprint": "ee0efee32e94df56",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Deleted\n    Key: in/c.txt\n  Deleted\n    Key: out/b.txt\n"
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

@@ -28,6 +28,8 @@ const (
 	opGetObjectTagging        operation = "GetObjectTagging"
 	opPutObjectTagging        operation = "PutObjectTagging"
 	opDeleteObjectTagging     operation = "DeleteObjectTagging"
+	opGetBucketNotification   operation = "GetBucketNotificationConfiguration"
+	opPutBucketNotification   operation = "PutBucketNotificationConfiguration"
 	opGetBucketOwnership      operation = "GetBucketOwnershipControls"
 	opPutBucketOwnership      operation = "PutBucketOwnershipControls"
 	opDeleteBucketOwnership   operation = "DeleteBucketOwnershipControls"
@@ -194,6 +196,13 @@ func resolveOperation(method string, t target, q url.Values, h http.Header) oper
 				return opPutBucketTagging
 			case http.MethodDelete:
 				return opDeleteBucketTagging
+			}
+		case only("notification"):
+			switch method {
+			case http.MethodGet:
+				return opGetBucketNotification
+			case http.MethodPut:
+				return opPutBucketNotification
 			}
 		case only("ownershipControls"):
 			switch method {

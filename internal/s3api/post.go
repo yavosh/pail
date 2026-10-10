@@ -147,6 +147,7 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 				writeError(w, r, toAPIError(err))
 				return
 			}
+			h.notify(w, r, t, createdEvent("ObjectCreated:Post", t.key, info))
 			etag := quoteETag(info.ETag)
 			w.Header().Set("ETag", etag)
 			setChecksumHeaders(w.Header(), info)

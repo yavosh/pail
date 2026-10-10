@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/yavosh/pail/internal/config"
+	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/s3api"
 	"github.com/yavosh/pail/internal/sigv4"
 	"github.com/yavosh/pail/internal/snsapi"
@@ -25,10 +28,58 @@ func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics 
 			Region:          cfg.Region,
 			Store:           st,
 			Internal:        map[string]http.Handler{"GET /_pail/sns/signing-cert.pem": signingCert(topics)},
+			Notifier:        notifier{region: cfg.Region, queues: queues, topics: topics},
 		}),
 		sqs: sqsapi.New(sqsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Queues: queues}),
 		sns: snsapi.New(snsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Topics: topics}),
 	}
+}
+
+// notifier delivers S3 event notifications to queues and topics by ARN.
+type notifier struct {
+	region string
+	queues sqsapi.Queues
+	topics *topic.Engine
+}
+
+// split returns the service and resource name of an ARN in pail's region and account.
+func (n notifier) split(arn string) (service, name string, ok bool) {
+	parts := strings.Split(arn, ":")
+	if len(parts) != 6 || parts[0] != "arn" || parts[1] != "aws" || parts[3] != n.region || parts[4] != queue.Account || parts[5] == "" {
+		return "", "", false
+	}
+	return parts[2], parts[5], parts[2] == "sqs" || parts[2] == "sns"
+}
+
+// Exists reports whether arn names a queue or topic.
+func (n notifier) Exists(ctx context.Context, arn string) bool {
+	service, name, ok := n.split(arn)
+	switch {
+	case !ok:
+		return false
+	case service == "sqs":
+		// AWS refuses a FIFO queue, and a delivery without a group ID would fail.
+		return !strings.HasSuffix(name, ".fifo") && n.queues.Lookup(ctx, name) == nil
+	}
+	_, err := n.topics.TopicAttributes(ctx, arn)
+	return err == nil
+}
+
+// Deliver sends message to the queue or topic. It holds no engine mutex.
+func (n notifier) Deliver(ctx context.Context, arn, message, baseURL string) error {
+	service, name, ok := n.split(arn)
+	switch {
+	case !ok:
+		return errors.New("unsupported destination " + arn)
+	case service == "sns":
+		_, err := n.topics.Publish(ctx, topic.PublishInput{TopicARN: arn, Message: message, Subject: "Amazon S3 Notification", BaseURL: baseURL})
+		return err
+	}
+	res, err := n.queues.Send(ctx, name, []queue.SendInput{{Body: message}})
+	if err == nil && len(res) == 1 {
+		err = res[0].Err
+	}
+	return err
 }
 
 // signingCert serves the certificate that verifies SNS notification signatures.

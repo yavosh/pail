@@ -388,6 +388,14 @@ The recordings verify every row except `AuthorizationError` and `InternalError`,
 | Batch rule broken | 400 | `Sender` | `TooManyEntriesInBatchRequest`, `BatchEntryIdsNotDistinct`, `InvalidBatchEntryId`, or `BatchRequestTooLong` |
 | Server fault | 500 | `Receiver` | `InternalError` |
 
+### S3 as a message source
+
+An S3 bucket can send object events to an SQS queue or an SNS topic in the same pail. Configure it with `PutBucketNotificationConfiguration`. See [Event notifications](s3-compatibility.md#event-notifications).
+
+- A queue receives the event JSON as the message body. The queue needs no policy.
+- A topic publishes the event JSON as the message, with the subject `Amazon S3 Notification`. A subscriber with raw delivery gets the JSON as the body. Other subscribers get the usual envelope.
+- pail delivers before it answers the S3 request.
+
 ### Differences from AWS
 
 - pail delivers to SQS queues and to HTTP and HTTPS endpoints. Filter policies support the operators in [Filter policies](#filter-policies) only.
