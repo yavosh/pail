@@ -103,3 +103,31 @@ func TestEnforcedOwnerDeniesStoredGrants(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnershipRejectsStrayInput(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	if status, code, _ := sendWith(t, srv, http.MethodPut, "/enf", "", map[string]string{"x-amz-object-ownership": "BucketOwnerEnforced"}); status != http.StatusOK {
+		t.Fatalf("create enforced bucket = %d %s, want 200", status, code)
+	}
+	controls := func(inner string) string { return `<OwnershipControls>` + inner + `</OwnershipControls>` }
+	tests := []struct {
+		name, method, path, body string
+		header                   map[string]string
+		wantStatus               int
+		wantCode                 string
+	}{
+		{"re-create with a public ACL", http.MethodPut, "/enf", "", map[string]string{"x-amz-acl": "public-read"}, 400, "AccessControlListNotSupported"},
+		{"re-create with a grant", http.MethodPut, "/enf", "", map[string]string{"x-amz-grant-read": `uri="http://acs.amazonaws.com/groups/global/AllUsers"`}, 400, "AccessControlListNotSupported"},
+		{"re-create without ACL headers", http.MethodPut, "/enf", "", nil, 200, ""},
+		{"extra root element", http.MethodPut, "/enf?ownershipControls", controls(`<Rule><ObjectOwnership>ObjectWriter</ObjectOwnership></Rule><Extra>x</Extra>`), nil, 400, "MalformedXML"},
+		{"repeated ObjectOwnership", http.MethodPut, "/enf?ownershipControls", controls(`<Rule><ObjectOwnership>BucketOwnerEnforced</ObjectOwnership><ObjectOwnership>ObjectWriter</ObjectOwnership></Rule>`), nil, 400, "MalformedXML"},
+	}
+	for _, tt := range tests {
+		if status, code, _ := sendWith(t, srv, tt.method, tt.path, tt.body, tt.header); status != tt.wantStatus || code != tt.wantCode {
+			t.Errorf("%s: %s %s = %d %q, want %d %q", tt.name, tt.method, tt.path, status, code, tt.wantStatus, tt.wantCode)
+		}
+	}
+	if status, _, body := sendWith(t, srv, http.MethodGet, "/enf?ownershipControls", "", nil); status != http.StatusOK || !strings.Contains(string(body), "BucketOwnerEnforced") {
+		t.Errorf("ownership after rejected writes = %d %s, want BucketOwnerEnforced kept", status, body)
+	}
+}

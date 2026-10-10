@@ -22,11 +22,20 @@ type ownershipControls struct {
 	XMLName xml.Name        `xml:"OwnershipControls"`
 	Xmlns   string          `xml:"xmlns,attr,omitempty"`
 	Rules   []ownershipRule `xml:"Rule"`
+	Unknown []xml.Name      `xml:",any"`
 }
 
 type ownershipRule struct {
-	ObjectOwnership string     `xml:"ObjectOwnership"`
+	ObjectOwnership []string   `xml:"ObjectOwnership"`
 	Unknown         []xml.Name `xml:",any"`
+}
+
+// value is the rule's one ObjectOwnership, or "" when it has none or several.
+func (r ownershipRule) value() string {
+	if len(r.ObjectOwnership) != 1 {
+		return ""
+	}
+	return r.ObjectOwnership[0]
 }
 
 func validOwnership(value string) bool {
@@ -47,11 +56,11 @@ func (h *handler) ownerEnforced(ctx context.Context, bucket string) (bool, error
 	if err := xml.Unmarshal(cfg.XML, &c); err != nil || len(c.Rules) != 1 {
 		return false, errors.New("corrupt ownership controls")
 	}
-	return c.Rules[0].ObjectOwnership == ownerEnforced, nil
+	return c.Rules[0].value() == ownerEnforced, nil
 }
 
 func (h *handler) putOwnership(ctx context.Context, bucket, value string) error {
-	body, _ := xml.Marshal(ownershipControls{Xmlns: s3Namespace, Rules: []ownershipRule{{ObjectOwnership: value}}})
+	body, _ := xml.Marshal(ownershipControls{Xmlns: s3Namespace, Rules: []ownershipRule{{ObjectOwnership: []string{value}}}})
 	return h.opts.Store.PutBucketConfiguration(ctx, bucket, "ownership", &store.BucketConfiguration{XML: body})
 }
 
@@ -117,11 +126,11 @@ func (h *handler) handleOwnershipControls(w http.ResponseWriter, r *http.Request
 			return
 		}
 		var c ownershipControls
-		if err := decodeXMLDocument(body, &c); err != nil || len(c.Rules) != 1 || len(c.Rules[0].Unknown) != 0 || !validOwnership(c.Rules[0].ObjectOwnership) {
+		if err := decodeXMLDocument(body, &c); err != nil || len(c.Rules) != 1 || len(c.Unknown) != 0 || len(c.Rules[0].Unknown) != 0 || !validOwnership(c.Rules[0].value()) {
 			writeError(w, r, errMalformedXML)
 			return
 		}
-		if err := h.putOwnership(r.Context(), t.bucket, c.Rules[0].ObjectOwnership); err != nil {
+		if err := h.putOwnership(r.Context(), t.bucket, c.Rules[0].value()); err != nil {
 			writeError(w, r, toAPIError(err))
 			return
 		}

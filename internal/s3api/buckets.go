@@ -178,6 +178,13 @@ func (h *handler) handleCreateBucket(w http.ResponseWriter, r *http.Request, t t
 		writeError(w, r, toAPIError(err))
 		return
 	}
+	// A re-create must not store ACLs that the bucket's ownership controls refuse.
+	if exists {
+		if e, ok := h.checkACLsEnabled(r.Context(), t.bucket, r.Header); !ok {
+			writeError(w, r, e)
+			return
+		}
+	}
 	if !h.storeBucketACL(w, r, t, policy) {
 		return
 	}
