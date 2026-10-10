@@ -1,3 +1,5 @@
+// Package queue implements SQS queues with persisted definitions and in-memory
+// messages. Delay, visibility, and retention are evaluated on each call.
 package queue
 
 import (

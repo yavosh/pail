@@ -119,6 +119,8 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 
 pail supports `PutBucketVersioning`, `GetBucketVersioning`, and `ListObjectVersions`. The AWS recording `versioning` covers the cases below unless this page marks them unverified.
 
+See [Storage layout](storage.md#version-transitions) for persisted version records and crash recovery.
+
 ### Bucket state
 
 - `GetBucketVersioning` returns an empty `VersioningConfiguration` for a bucket that never had versioning. `PutBucketVersioning` sets `Enabled` or `Suspended`. A bucket can't return to the never-versioned state.

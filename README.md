@@ -226,6 +226,8 @@ The Docker image and `compose.yaml` use `pail --healthcheck` as the container he
 
 For project guidance, see [AGENTS.md](AGENTS.md). For Go style references, see [Go code style](docs/code-style.md).
 
+For persisted files and version transitions, see [Storage layout](docs/storage.md).
+
 - `go test ./...` runs the unit tests and the aws-sdk-go-v2 tests.
 - `make smoke` builds pail, starts it, and runs the AWS CLI and boto3 against it. It needs the AWS CLI and a Python that can import boto3. CI runs it as the `smoke` job.
 - The CI `docker` job builds the image, starts it, waits for its healthcheck, and runs the AWS CLI against it.

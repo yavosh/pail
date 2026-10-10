@@ -100,11 +100,9 @@ type SubscribeInput struct {
 	BaseURL                      string
 }
 
-// Subscribe adds a subscription to a topic and returns its ARN. SQS
-// subscriptions are confirmed at once. An HTTP or HTTPS subscription is
-// pending until its endpoint confirms, and pail sends the endpoint a
-// SubscriptionConfirmation. It succeeds without change when the same endpoint
-// already subscribes with the same attributes.
+// Subscribe returns the subscription ARN; SQS confirms at once, and HTTP(S)
+// stays pending until the endpoint confirms its SubscriptionConfirmation.
+// An existing subscription with the same endpoint and attributes is unchanged.
 func (e *Engine) Subscribe(ctx context.Context, in SubscribeInput) (arn string, pending bool, err error) {
 	if err := ctx.Err(); err != nil {
 		return "", false, err

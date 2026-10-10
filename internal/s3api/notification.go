@@ -85,10 +85,10 @@ type filterRule struct {
 	Value string `xml:"Value"`
 }
 
-func (c notificationTarget) arn() string { return cmp.Or(c.Queue, c.Topic) }
+func (c *notificationTarget) arn() string { return cmp.Or(c.Queue, c.Topic) }
 
 // affixes returns the prefix and suffix rules of the filter.
-func (c notificationTarget) affixes() (prefix, suffix string) {
+func (c *notificationTarget) affixes() (prefix, suffix string) {
 	if c.Filter == nil || c.Filter.Key == nil {
 		return "", ""
 	}
@@ -104,7 +104,7 @@ func (c notificationTarget) affixes() (prefix, suffix string) {
 
 // matches reports whether the configuration covers event (such as
 // "ObjectCreated:Put") on key.
-func (c notificationTarget) matches(event, key string) bool {
+func (c *notificationTarget) matches(event, key string) bool {
 	full := "s3:" + event
 	hit := slices.ContainsFunc(c.Events, func(e string) bool {
 		return e == full || strings.HasSuffix(e, ":*") && strings.HasPrefix(full, strings.TrimSuffix(e, "*"))
@@ -114,7 +114,7 @@ func (c notificationTarget) matches(event, key string) bool {
 }
 
 // overlaps reports whether one object event can match both configurations.
-func (c notificationTarget) overlaps(o notificationTarget) bool {
+func (c *notificationTarget) overlaps(o notificationTarget) bool {
 	family := func(e string) string { return e[:strings.LastIndex(e, ":")] }
 	shared := false
 	for _, a := range c.Events {

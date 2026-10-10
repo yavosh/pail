@@ -2,15 +2,17 @@ package sqsapi
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,11 +30,29 @@ const (
 	jsonType   = "application/x-amz-json-1.0"
 )
 
-// env is a handler over a real engine. Its logs hold the handler's access lines.
+// env sends requests to a test server over a real engine and captures its logs.
 type env struct {
 	t    *testing.T
-	h    http.Handler
-	logs *bytes.Buffer
+	srv  *httptest.Server
+	logs *logBuffer
+}
+
+// logBuffer synchronizes server writes with test reads.
+type logBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *logBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *logBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func newEnv(t *testing.T) *env {
@@ -46,17 +66,22 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logs := &bytes.Buffer{}
+	logs := &logBuffer{}
 	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(old) })
-	return &env{t, New(Options{AccessKeyID: testKey, SecretAccessKey: testSecret, Queues: engine}), logs}
+	srv := httptest.NewTestServer(t, New(Options{AccessKeyID: testKey, SecretAccessKey: testSecret, Queues: engine}))
+	srv.Client() // Start the server before reading its URL.
+	return &env{t, srv, logs}
 }
 
 // send posts a request signed with secret; an empty secret leaves it unsigned.
 func (e *env) send(host, secret, op, body string) *httptest.ResponseRecorder {
 	e.t.Helper()
-	r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/", strings.NewReader(body))
+	r, err := http.NewRequestWithContext(e.t.Context(), http.MethodPost, e.srv.URL, strings.NewReader(body))
+	if err != nil {
+		e.t.Fatal(err)
+	}
 	r.Host = host
 	r.Header.Set("Content-Type", jsonType)
 	r.Header.Set("X-Amz-Target", "AmazonSQS."+op)
@@ -67,13 +92,29 @@ func (e *env) send(host, secret, op, body string) *httptest.ResponseRecorder {
 			e.t.Fatal(err)
 		}
 	}
-	w := httptest.NewRecorder()
-	e.h.ServeHTTP(w, r)
+	w := e.do(r)
 	if got := w.Header().Get("Content-Type"); got != jsonType {
 		e.t.Errorf("%s Content-Type = %q, want %q", op, got, jsonType)
 	}
 	if w.Header().Get("x-amzn-RequestId") == "" {
 		e.t.Errorf("%s x-amzn-RequestId is empty", op)
+	}
+	return w
+}
+
+// do sends r through the test server and captures its HTTP response.
+func (e *env) do(r *http.Request) *httptest.ResponseRecorder {
+	e.t.Helper()
+	resp, err := e.srv.Client().Do(r)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	w := httptest.NewRecorder()
+	maps.Copy(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		e.t.Fatal(err)
 	}
 	return w
 }
@@ -162,14 +203,16 @@ func TestUnsupportedAndMalformed(t *testing.T) {
 	for _, op := range []string{"AddPermission", "RemovePermission", "StartMessageMoveTask", "CancelMessageMoveTask", "ListMessageMoveTasks"} {
 		e.fail(op, `{}`, 400, unsupported, "AWS.SimpleQueueService.UnsupportedOperation")
 	}
-	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(`{}`))
+	r, err := http.NewRequestWithContext(t.Context(), http.MethodPost, e.srv.URL, strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
 	r.Header.Set("Content-Type", jsonType)
 	sum := sha256.Sum256([]byte(`{}`))
 	if err := v4.NewSigner().SignHTTP(r.Context(), aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}, r, hex.EncodeToString(sum[:]), "sqs", "us-east-1", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	w := httptest.NewRecorder()
-	e.h.ServeHTTP(w, r)
+	w := e.do(r)
 	if w.Code != 400 || !strings.Contains(w.Body.String(), "UnknownOperationException") {
 		t.Errorf("no target: status %d, body %s, want 400 UnknownOperationException", w.Code, w.Body)
 	}

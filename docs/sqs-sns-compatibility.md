@@ -57,6 +57,8 @@ Every other operation returns `UnsupportedOperation`. That includes `AddPermissi
 
 Queue definitions, which are attributes and tags, persist in the data directory. Messages live in memory. A restart keeps the queues and loses their messages.
 
+See [Storage layout](storage.md#sqs-and-sns-definitions) for queue, topic, and subscription files.
+
 ### Long polling and shutdown
 
 - `ReceiveMessage` with `WaitTimeSeconds` waits until a message is visible, the wait ends, or the client disconnects.

@@ -68,7 +68,7 @@ func newChecksumFields(algorithm, value string) checksumFields {
 }
 
 // sent returns the algorithm and value of the element that is set.
-func (c checksumFields) sent() (algorithm, value string) {
+func (c *checksumFields) sent() (algorithm, value string) {
 	for _, a := range checksum.Algorithms {
 		if v := *c.field(a); v != "" {
 			return a, v

@@ -161,7 +161,10 @@ func (e *Engine) Send(ctx context.Context, name string, in []SendInput) ([]SendR
 			group:    s.GroupID,
 		}
 		if q.fifo() {
-			m.dedupID = cmp.Or(s.DeduplicationID, contentHash(s.Body))
+			m.dedupID = s.DeduplicationID
+			if m.dedupID == "" {
+				m.dedupID = contentHash(s.Body)
+			}
 			m.sequence = q.newSequence()
 		}
 		delay := queueDelay
@@ -229,7 +232,10 @@ func (q *queue) checkRouting(s SendInput) (key string, err error) {
 	case s.DeduplicationID != "" && !validID(s.DeduplicationID):
 		return "", fmt.Errorf("MessageDeduplicationId must be 1 to 128 printable ASCII characters: %w", ErrInvalidParameterValue)
 	}
-	key = cmp.Or(s.DeduplicationID, contentHash(s.Body))
+	key = s.DeduplicationID
+	if key == "" {
+		key = contentHash(s.Body)
+	}
 	if q.def.Attributes["DeduplicationScope"] == "messageGroup" {
 		key = s.GroupID + "\x00" + key
 	}

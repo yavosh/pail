@@ -52,7 +52,7 @@ func (p *retryPolicy) UnmarshalJSON(b []byte) error {
 
 // check applies the recorded rules (retries, backoff, min <= max, phase sum)
 // and the documented delay bounds (unverified).
-func (p retryPolicy) check() error {
+func (p *retryPolicy) check() error {
 	switch {
 	case p.NumRetries < 0 || p.NumRetries > maxRetries:
 		return invalid("numRetries %d must be 0 to %d", p.NumRetries, maxRetries)
@@ -73,7 +73,7 @@ func (p retryPolicy) check() error {
 // delays returns the wait before each retry: the no-delay, min-delay, backoff,
 // and max-delay phases. The backoff formulas are pail's choice (unverified);
 // docs/sqs-sns-compatibility.md lists them.
-func (p retryPolicy) delays() []time.Duration {
+func (p *retryPolicy) delays() []time.Duration {
 	out := make([]time.Duration, 0, p.NumRetries)
 	repeat := func(n, seconds int) {
 		for range n {
