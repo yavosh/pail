@@ -443,7 +443,7 @@ func TestDecode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		if got := fmt.Sprint(tt.got()); got != tt.want {
-			t.Errorf("%s: decoded %v from %v, got %s, want %s", tt.name, url.Values(p), tt.name, got, tt.want)
+			t.Errorf("%s: decoded from %v, got %s, want %s", tt.name, url.Values(p), got, tt.want)
 		}
 	}
 	if got := p.attributes("None"); got != nil {

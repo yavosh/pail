@@ -109,14 +109,14 @@ func (e *Engine) SetTopicAttribute(ctx context.Context, arn, name, value string)
 	if err := checkTopicAttr(name, value); err != nil {
 		return err
 	}
-	if noopAttr(name, value) {
-		return nil
-	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	t, err := e.findTopic(arn)
 	if err != nil {
 		return err
+	}
+	if noopAttr(name, value) {
+		return nil
 	}
 	updated := *t
 	updated.Attributes = maps.Clone(t.Attributes)
