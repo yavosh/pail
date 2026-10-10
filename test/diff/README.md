@@ -69,7 +69,6 @@ The recording identity needs these actions, scoped to `pail-diff-*` resources wh
 
 - SQS: `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`, `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility`, `sqs:PurgeQueue`, `sqs:TagQueue`, `sqs:UntagQueue`, `sqs:ListQueueTags`, `sqs:ListQueues`, and `sqs:DeleteQueue`.
 - SNS: `sns:CreateTopic`, `sns:DeleteTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:Subscribe`, `sns:Unsubscribe`, `sns:ListSubscriptionsByTopic`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`, `sns:Publish`, `sns:TagResource`, `sns:UntagResource`, and `sns:ListTagsForResource`.
-- The `sns-sqs-delivery` scenario also needs `sqs:SetQueueAttributes`, which it uses to set the queue policy.
 
 A recording makes a few dozen SQS and SNS requests, well inside the free tier.
 

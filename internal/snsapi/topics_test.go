@@ -430,14 +430,21 @@ func TestDecode(t *testing.T) {
 		"Tags.member.1.Key":      {"k"}, "Tags.member.1.Value": {"v"},
 		"TagKeys.member.1": {"x"}, "TagKeys.member.2": {"y"}, "TagKeys.member.4": {"gap"},
 	})
-	if got := p.attributes("Attributes"); fmt.Sprint(got) != "map[a:1 b:]" {
-		t.Errorf("attributes = %v, want map[a:1 b:]", got)
+	tests := []struct {
+		name, want string
+		got        func() any
+	}{
+		{"attributes stop at the first gap", "map[a:1 b:]", func() any { return p.attributes("Attributes") }},
+		{"tags", "map[k:v]", func() any { return p.tags("Tags") }},
+		{"list stops at the first gap", "[x y]", func() any { return p.list("TagKeys") }},
+		{"absent attributes", "map[]", func() any { return p.attributes("None") }},
+		{"absent tags", "map[]", func() any { return p.tags("None") }},
+		{"absent list", "[]", func() any { return p.list("None") }},
 	}
-	if got := p.tags("Tags"); fmt.Sprint(got) != "map[k:v]" {
-		t.Errorf("tags = %v, want map[k:v]", got)
-	}
-	if got := p.list("TagKeys"); fmt.Sprint(got) != "[x y]" {
-		t.Errorf("list = %v, want [x y]", got)
+	for _, tt := range tests {
+		if got := fmt.Sprint(tt.got()); got != tt.want {
+			t.Errorf("%s: decoded %v from %v, got %s, want %s", tt.name, url.Values(p), tt.name, got, tt.want)
+		}
 	}
 	if got := p.attributes("None"); got != nil {
 		t.Errorf("attributes(None) = %v, want nil", got)

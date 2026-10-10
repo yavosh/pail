@@ -64,3 +64,20 @@ func TestWriteJSONReplaces(t *testing.T) {
 		t.Errorf("ReadJSON() = %+v, want the second write", got)
 	}
 }
+
+func TestFileRoundTrip(t *testing.T) {
+	fsys := openFS(t)
+	want := []byte("first")
+	for _, data := range [][]byte{want, []byte("second"), {}} {
+		if err := vfs.WriteFile(fsys, "f.bin", data); err != nil {
+			t.Fatalf("WriteFile(%q) error = %v", data, err)
+		}
+		got, err := vfs.ReadFile(fsys, "f.bin")
+		if err != nil || string(got) != string(data) {
+			t.Errorf("ReadFile after WriteFile(%q) = %q, %v; want %q", data, got, err, data)
+		}
+	}
+	if _, err := vfs.ReadFile(fsys, "missing.bin"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadFile(missing) error = %v, want fs.ErrNotExist", err)
+	}
+}

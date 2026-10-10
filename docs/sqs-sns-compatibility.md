@@ -216,6 +216,8 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 
 After these entries, pail lists the attributes that a client set, in this order (the position is unverified): `DeliveryPolicy`, `KmsMasterKeyId`, `SignatureVersion`, `TracingConfig`.
 
+`CreateTopic` accepts `FifoTopic` and `ContentBasedDeduplication` with the value `false` and ignores them. The value `true` returns `InvalidParameter`. `DisplayName` has at most 100 characters and no control characters (unverified). A tag key has 1 to 128 characters and a tag value has 0 to 256 characters (unverified).
+
 A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JSON object), `KmsMasterKeyId`, `SignatureVersion` (`1` or `2`), and `TracingConfig` (`PassThrough` or `Active`). Any other name returns `InvalidParameter`. An empty value unsets an attribute (unverified). pail stores `Policy`, `DeliveryPolicy`, and `KmsMasterKeyId` and enforces none of them.
 
 ### Subscriptions
@@ -226,7 +228,7 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 - pail confirms an SQS subscription at once. A subscription ARN is the topic ARN, a colon, and a lowercase UUID.
 - `Subscribe` is idempotent. The same topic, protocol, and endpoint return the existing ARN. Different attributes return `InvalidParameter` (unverified).
 - `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`). `FilterPolicy`, `FilterPolicyScope`, `RedrivePolicy`, `DeliveryPolicy`, and `SubscriptionRoleArn` return `InvalidParameter` for now. Filter policies arrive in a later version.
-- `GetSubscriptionAttributes` returns `SubscriptionArn`, `TopicArn`, `Owner`, `Protocol`, `Endpoint`, `RawMessageDelivery`, `ConfirmationWasAuthenticated`, and `PendingConfirmation`, in this order (the order and the set are unverified).
+- `GetSubscriptionAttributes` returns `SubscriptionArn`, `TopicArn`, `Owner`, `Protocol`, `Endpoint`, `RawMessageDelivery`, `ConfirmationWasAuthenticated`, `PendingConfirmation`, and `SubscriptionPrincipal`, in this order. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The order, the set, and the shape of that value are unverified.
 - `Unsubscribe` of a subscription that does not exist returns `NotFound` (unverified).
 - pail does not check the queue policy. AWS delivers only when the policy allows the topic.
 

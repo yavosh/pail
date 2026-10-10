@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yavosh/pail/internal/queue"
+	"github.com/yavosh/pail/internal/vfs"
 )
 
 func publishInput(arn string) PublishInput {
@@ -149,7 +150,7 @@ func TestPublishEnvelope(t *testing.T) {
 		if want := "http://localhost:9000/_pail/sns/signing-cert.pem"; env["SigningCertURL"] != want {
 			t.Errorf("SigningCertURL = %v, want %s", env["SigningCertURL"], want)
 		}
-		if want := "http://localhost:9000/?Action=Unsubscribe&SubscriptionArn=" + strings.ReplaceAll(sub.ARN, ":", "%3A"); env["UnsubscribeURL"] != want {
+		if want := "http://localhost:9000/?Action=Unsubscribe&SubscriptionArn=" + sub.ARN; env["UnsubscribeURL"] != want {
 			t.Errorf("UnsubscribeURL = %v, want %s", env["UnsubscribeURL"], want)
 		}
 		wantAttrs := map[string]any{
@@ -219,10 +220,14 @@ func TestPublishMessageStructure(t *testing.T) {
 	}
 	for _, raw := range []bool{false, true} {
 		for _, tt := range tests {
-			t.Run(tt.name+map[bool]string{false: " envelope", true: " raw"}[raw], func(t *testing.T) {
+			mode, rawValue := "envelope", "false"
+			if raw {
+				mode, rawValue = "raw", "true"
+			}
+			t.Run(tt.name+" "+mode, func(t *testing.T) {
 				e, fq := newEngine(t)
 				arn := mustTopic(t, e, "structured")
-				mustSubscribe(t, e, arn, "q1", map[string]string{"RawMessageDelivery": map[bool]string{false: "false", true: "true"}[raw]})
+				mustSubscribe(t, e, arn, "q1", map[string]string{"RawMessageDelivery": rawValue})
 				in := publishInput(arn)
 				in.MessageStructure = "json"
 				in.Message = tt.message
@@ -402,7 +407,7 @@ func TestOpenRejectsBadSigningMaterial(t *testing.T) {
 	if _, err := e.CertPEM(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeFile(e.fs, signingKeyFile, []byte("not pem")); err != nil {
+	if err := vfs.WriteFile(e.fs, signingKeyFile, []byte("not pem")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Open(t.Context(), e.fs, testRegion, &fakeQueues{}); err == nil {

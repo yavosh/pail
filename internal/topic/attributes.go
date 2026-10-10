@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/yavosh/pail/internal/queue"
 )
@@ -22,13 +25,25 @@ func defaultPolicy(arn string) string {
 // optional ones in TopicAttributes (positions unverified).
 var topicAttrNames = []string{"DisplayName", "Policy", "DeliveryPolicy", "KmsMasterKeyId", "SignatureVersion", "TracingConfig"}
 
+// noopAttr reports whether an attribute turns off a FIFO feature that pail never
+// has. pail accepts it and stores nothing.
+func noopAttr(name, value string) bool {
+	return (name == "FifoTopic" || name == "ContentBasedDeduplication") && value == "false"
+}
+
 // checkTopicAttr validates one attribute. An empty value means unset.
 func checkTopicAttr(name, value string) error {
+	if noopAttr(name, value) {
+		return nil
+	}
 	if !slices.Contains(topicAttrNames, name) {
 		return fmt.Errorf("topic attribute %q is not supported: %w", name, ErrInvalidParameter)
 	}
 	ok := true
 	switch name {
+	case "DisplayName":
+		// The 100-character limit is AWS's documented SMS limit; the rule is unverified.
+		ok = utf8.RuneCountInString(value) <= 100 && !strings.ContainsFunc(value, unicode.IsControl)
 	case "Policy", "DeliveryPolicy":
 		ok = value == "" || isJSONObject(value)
 	case "SignatureVersion":
@@ -93,6 +108,9 @@ func (e *Engine) SetTopicAttribute(ctx context.Context, arn, name, value string)
 	}
 	if err := checkTopicAttr(name, value); err != nil {
 		return err
+	}
+	if noopAttr(name, value) {
+		return nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()

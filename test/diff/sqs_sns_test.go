@@ -260,7 +260,7 @@ const snsVersion = "&Version=2010-03-31"
 
 func snsAttributesScenario() scenario {
 	const topic = "&TopicArn={topicArn}"
-	return scenario{name: "sns-topic-attributes", topics: []string{"{name}"}, steps: []step{
+	return scenario{name: "sns-topic-attributes", topics: []string{"{name}", "{name}.fifo"}, steps: []step{
 		snsStep("create-topic", "Action=CreateTopic&Name={name}&Attributes.entry.1.key=DisplayName&Attributes.entry.1.value=pail"+snsVersion),
 		snsStep("get-topic-attributes", "Action=GetTopicAttributes"+topic+snsVersion),
 		snsStep("set-display-name", "Action=SetTopicAttributes"+topic+"&AttributeName=DisplayName&AttributeValue=renamed"+snsVersion),

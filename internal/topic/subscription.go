@@ -2,7 +2,9 @@ package topic
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"slices"
 	"strings"
@@ -102,7 +104,7 @@ func (e *Engine) Unsubscribe(ctx context.Context, arn string) error {
 	if err != nil {
 		return err
 	}
-	if err := e.fs.Remove(subFile(s.ARN)); err != nil {
+	if err := e.fs.Remove(subFile(s.ARN)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("delete subscription %s: %w", s.ARN, err)
 	}
 	delete(e.subs, s.ARN)
@@ -173,6 +175,8 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		{attrRaw, subAttrValue(s, attrRaw)},
 		{"ConfirmationWasAuthenticated", "true"},
 		{"PendingConfirmation", "false"},
+		// AWS returns the caller's ARN here. The position and shape are unverified.
+		{"SubscriptionPrincipal", "arn:aws:iam::" + queue.Account + ":root"},
 	}, nil
 }
 
@@ -191,7 +195,11 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 		return err
 	}
 	updated := *s
-	updated.Attributes = map[string]string{name: value}
+	updated.Attributes = maps.Clone(s.Attributes)
+	if updated.Attributes == nil {
+		updated.Attributes = map[string]string{}
+	}
+	updated.Attributes[name] = value
 	if err := e.persistSub(&updated); err != nil {
 		return err
 	}

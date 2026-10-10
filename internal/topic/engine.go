@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"maps"
 	"path"
@@ -19,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/vfs"
@@ -272,6 +272,11 @@ func (e *Engine) CreateTopic(ctx context.Context, name string, attrs, tags map[s
 			return "", err
 		}
 	}
+	if err := checkTags(tags); err != nil {
+		return "", err
+	}
+	attrs = maps.Clone(attrs)
+	maps.DeleteFunc(attrs, noopAttr)
 	arn := e.topicARN(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -396,6 +401,9 @@ func (e *Engine) TagResource(ctx context.Context, arn string, tags map[string]st
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := checkTags(tags); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	t, err := e.resource(arn)
@@ -442,28 +450,16 @@ func (e *Engine) UntagResource(ctx context.Context, arn string, keys []string) e
 	return nil
 }
 
-// readFile reads a whole file from fsys.
-func readFile(fsys vfs.FS, name string) ([]byte, error) {
-	f, err := fsys.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	return io.ReadAll(f)
-}
-
-// writeFile commits b to name through a temp file.
-func writeFile(fsys vfs.FS, name string, b []byte) error {
-	tf, err := fsys.CreateTemp()
-	if err != nil {
-		return fmt.Errorf("create temp file for %s: %w", name, err)
-	}
-	defer func() { _ = tf.Abort() }()
-	if _, err := tf.Write(b); err != nil {
-		return fmt.Errorf("write %s: %w", name, err)
-	}
-	if err := tf.Commit(name); err != nil {
-		return fmt.Errorf("commit %s: %w", name, err)
+// checkTags applies the model's limits: a key has 1 to 128 characters and a
+// value 0 to 256. The error code is unverified.
+func checkTags(tags map[string]string) error {
+	for k, v := range tags {
+		if n := utf8.RuneCountInString(k); n < 1 || n > 128 {
+			return fmt.Errorf("tag key %q must be 1 to 128 characters: %w", k, ErrInvalidParameter)
+		}
+		if utf8.RuneCountInString(v) > 256 {
+			return fmt.Errorf("value of tag %q is longer than 256 characters: %w", k, ErrInvalidParameter)
+		}
 	}
 	return nil
 }

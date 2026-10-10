@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"maps"
-	"net/url"
 	"slices"
 	"strings"
 
@@ -58,7 +57,7 @@ func (n notification) envelope() string {
 	field("SignatureVersion", n.signatureVersion)
 	field("Signature", n.signature)
 	field("SigningCertURL", n.baseURL+"/_pail/sns/signing-cert.pem")
-	field("UnsubscribeURL", n.baseURL+"/?Action=Unsubscribe&SubscriptionArn="+url.QueryEscape(n.subscriptionARN))
+	field("UnsubscribeURL", n.baseURL+"/?Action=Unsubscribe&SubscriptionArn="+n.subscriptionARN)
 	if len(n.attrs) > 0 {
 		b.WriteString(`,"MessageAttributes":{`)
 		for i, name := range slices.Sorted(maps.Keys(n.attrs)) {

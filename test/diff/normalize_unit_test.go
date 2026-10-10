@@ -462,3 +462,16 @@ func TestCanonicalXMLDropsFailedBatchMessages(t *testing.T) {
 		t.Errorf("canonicalXML(%s) = %q, %v; want %q", in, got, err, want)
 	}
 }
+
+func TestCanonicalXMLMasksSubscriptionPrincipal(t *testing.T) {
+	const in = `<GetSubscriptionAttributesResponse><GetSubscriptionAttributesResult><Attributes>` +
+		`<entry><key>Owner</key><value>000000000000</value></entry>` +
+		`<entry><key>SubscriptionPrincipal</key><value>arn:aws:iam::123456789012:user/me</value></entry>` +
+		`</Attributes></GetSubscriptionAttributesResult></GetSubscriptionAttributesResponse>`
+	want := "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: Owner\n        value: 000000000000\n" +
+		"      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n"
+	got, _, err := canonicalXML(in)
+	if err != nil || got != want {
+		t.Errorf("canonicalXML(%s) = %q, %v; want %q", in, got, err, want)
+	}
+}

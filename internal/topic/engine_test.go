@@ -201,6 +201,13 @@ func TestCreateTopic(t *testing.T) {
 		{"bad tracing config", "new3", map[string]string{"TracingConfig": "Maybe"}, ErrInvalidParameter, ""},
 		{"policy not an object", "new4", map[string]string{"Policy": "[]"}, ErrInvalidParameter, ""},
 		{"fifo attribute", "new5", map[string]string{"FifoTopic": "true"}, ErrInvalidParameter, ""},
+		{"FifoTopic false", "new6", map[string]string{"FifoTopic": "false"}, nil, "arn:aws:sns:us-east-1:000000000000:new6"},
+		{"ContentBasedDeduplication false", "new7", map[string]string{"ContentBasedDeduplication": "false"}, nil, "arn:aws:sns:us-east-1:000000000000:new7"},
+		{"ContentBasedDeduplication true", "new8", map[string]string{"ContentBasedDeduplication": "true"}, ErrInvalidParameter, ""},
+		{"display name of 100", "new9", map[string]string{"DisplayName": strings.Repeat("d", 100)}, nil, "arn:aws:sns:us-east-1:000000000000:new9"},
+		{"display name of 101", "new10", map[string]string{"DisplayName": strings.Repeat("d", 101)}, ErrInvalidParameter, ""},
+		{"display name with a control character", "new11", map[string]string{"DisplayName": "a\nb"}, ErrInvalidParameter, ""},
+		{"same name, FifoTopic false", "orders", map[string]string{"FifoTopic": "false"}, nil, arn},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -212,6 +219,18 @@ func TestCreateTopic(t *testing.T) {
 				t.Errorf("CreateTopic(%q, %v) = %q, want %q", tt.topic, tt.attrs, got, tt.wantARN)
 			}
 		})
+	}
+	for name, tags := range map[string]map[string]string{
+		"empty key":  {"": "v"},
+		"long key":   {strings.Repeat("k", 129): "v"},
+		"long value": {"k": strings.Repeat("v", 257)},
+	} {
+		if _, err := e.CreateTopic(t.Context(), "badtags", nil, tags); !errors.Is(err, ErrInvalidParameter) {
+			t.Errorf("CreateTopic with a %s tag error = %v, want %v", name, err, ErrInvalidParameter)
+		}
+	}
+	if _, err := e.CreateTopic(t.Context(), "goodtags", nil, map[string]string{strings.Repeat("k", 128): "", "k": strings.Repeat("v", 256)}); err != nil {
+		t.Errorf("CreateTopic with tags at the limits error = %v, want success", err)
 	}
 	tags := map[string]string{}
 	for i := range 51 {
@@ -287,6 +306,7 @@ func TestTopicAttributes(t *testing.T) {
 		{"unknown attribute", arn, "Bogus", "x", ErrInvalidParameter},
 		{"read-only attribute", arn, "Owner", "x", ErrInvalidParameter},
 		{"bad delivery policy", arn, "DeliveryPolicy", "x", ErrInvalidParameter},
+		{"long display name", arn, "DisplayName", strings.Repeat("d", 101), ErrInvalidParameter},
 		{"missing topic", arn + "x", "DisplayName", "x", ErrNotFound},
 		{"not an ARN", "x", "DisplayName", "x", ErrInvalidParameter},
 	}
@@ -372,6 +392,7 @@ func TestSubscribe(t *testing.T) {
 	want := []Attribute{
 		{"SubscriptionArn", first}, {"TopicArn", arn}, {"Owner", "000000000000"}, {"Protocol", "sqs"}, {"Endpoint", ep},
 		{"RawMessageDelivery", "false"}, {"ConfirmationWasAuthenticated", "true"}, {"PendingConfirmation", "false"},
+		{"SubscriptionPrincipal", "arn:aws:iam::000000000000:root"},
 	}
 	if got, err := e.SubscriptionAttributes(t.Context(), first); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("SubscriptionAttributes = %v, %v\nwant %v", got, err, want)
@@ -382,6 +403,14 @@ func TestSubscribe(t *testing.T) {
 	if got, _ := e.SubscriptionAttributes(t.Context(), first); got[5] != (Attribute{"RawMessageDelivery", "true"}) {
 		t.Errorf("RawMessageDelivery after set = %v, want true", got[5])
 	}
+	// A set clones the stored map, so an earlier snapshot keeps its value.
+	before := e.subs[first].Attributes
+	if err := e.SetSubscriptionAttribute(t.Context(), first, "RawMessageDelivery", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if before["RawMessageDelivery"] != "true" || e.subs[first].Attributes["RawMessageDelivery"] != "false" {
+		t.Errorf("attributes after second set: old map %v, new map %v; want the old map unchanged", before, e.subs[first].Attributes)
+	}
 	for _, name := range []string{"FilterPolicy", "Bogus"} {
 		if err := e.SetSubscriptionAttribute(t.Context(), first, name, "{}"); !errors.Is(err, ErrInvalidParameter) {
 			t.Errorf("SetSubscriptionAttribute(%s) error = %v, want %v", name, err, ErrInvalidParameter)
@@ -391,6 +420,10 @@ func TestSubscribe(t *testing.T) {
 		t.Errorf("SetSubscriptionAttribute(missing) error = %v, want %v", err, ErrNotFound)
 	}
 
+	// A file that is already gone does not fail the unsubscribe.
+	if err := e.fs.Remove(subFile(first)); err != nil {
+		t.Fatal(err)
+	}
 	if err := e.Unsubscribe(t.Context(), first); err != nil {
 		t.Fatalf("Unsubscribe error = %v", err)
 	}
@@ -463,6 +496,11 @@ func TestTags(t *testing.T) {
 	}
 	if err := e.TagResource(t.Context(), arn, many); !errors.Is(err, ErrTagLimitExceeded) {
 		t.Errorf("TagResource past 50 tags error = %v, want %v", err, ErrTagLimitExceeded)
+	}
+	for name, tags := range map[string]map[string]string{"empty key": {"": "v"}, "long value": {"k": strings.Repeat("v", 257)}} {
+		if err := e.TagResource(t.Context(), arn, tags); !errors.Is(err, ErrInvalidParameter) {
+			t.Errorf("TagResource with a %s tag error = %v, want %v", name, err, ErrInvalidParameter)
+		}
 	}
 	missing := arn + "x"
 	for name, err := range map[string]error{

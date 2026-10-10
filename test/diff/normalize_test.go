@@ -307,9 +307,26 @@ func canonicalXML(body string) (string, bool, error) {
 		slices.SortStableFunc(root.children, func(a, b *xmlNode) int { return strings.Compare(nodeText(a), nodeText(b)) })
 	}
 	dropFailedMessages(root)
+	maskSubscriptionPrincipal(root)
 	var b strings.Builder
 	writeNode(&b, root, 0)
 	return b.String(), false, nil
+}
+
+// maskSubscriptionPrincipal keeps only the presence of the SubscriptionPrincipal
+// attribute: on AWS it is the ARN of the recording identity, which a golden file must not hold.
+func maskSubscriptionPrincipal(n *xmlNode) {
+	for _, c := range n.children {
+		maskSubscriptionPrincipal(c)
+	}
+	if n.name != "entry" || !slices.ContainsFunc(n.children, func(c *xmlNode) bool { return c.name == "key" && c.text == "SubscriptionPrincipal" }) {
+		return
+	}
+	for _, c := range n.children {
+		if c.name == "value" {
+			c.text = "<volatile>"
+		}
+	}
 }
 
 // dropFailedMessages removes the Message of every failed batch entry, as the

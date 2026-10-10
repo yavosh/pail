@@ -35,8 +35,8 @@ type signer struct {
 // loadSigner reads the persisted key and certificate. It returns nil when
 // either file is missing; the first signature then creates both.
 func loadSigner(fsys vfs.FS) (*signer, error) {
-	keyPEM, keyErr := readFile(fsys, signingKeyFile)
-	certPEM, certErr := readFile(fsys, signingCertFile)
+	keyPEM, keyErr := vfs.ReadFile(fsys, signingKeyFile)
+	certPEM, certErr := vfs.ReadFile(fsys, signingCertFile)
 	if errors.Is(keyErr, fs.ErrNotExist) || errors.Is(certErr, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -107,10 +107,10 @@ func (e *Engine) signing() (*signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := writeFile(e.fs, signingKeyFile, keyPEM); err != nil {
+	if err := vfs.WriteFile(e.fs, signingKeyFile, keyPEM); err != nil {
 		return nil, err
 	}
-	if err := writeFile(e.fs, signingCertFile, sg.certPEM); err != nil {
+	if err := vfs.WriteFile(e.fs, signingCertFile, sg.certPEM); err != nil {
 		return nil, err
 	}
 	e.sign = sg

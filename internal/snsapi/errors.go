@@ -25,7 +25,6 @@ var (
 	errSignatureMismatch   = apiError{http.StatusForbidden, "Sender", "SignatureDoesNotMatch"}
 	errIncompleteSignature = apiError{http.StatusBadRequest, "Sender", "IncompleteSignature"}
 	errTooLarge            = apiError{http.StatusRequestEntityTooLarge, "Sender", "RequestEntityTooLarge"}
-	errInternalFailure     = apiError{http.StatusInternalServerError, "Receiver", "InternalFailure"}
 
 	errNotFound            = apiError{http.StatusNotFound, "Sender", "NotFound"}
 	errInvalidParameter    = apiError{http.StatusBadRequest, "Sender", "InvalidParameter"}
@@ -86,5 +85,5 @@ func authError(err error) apiError {
 	case errors.Is(err, sigv4.ErrNotImplemented):
 		return errInvalidAction
 	}
-	return errInternalFailure
+	return errInternalError
 }
