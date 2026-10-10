@@ -64,7 +64,7 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, errCopyToSelf)
 		return
 	}
-	policy, apiErr, ok := h.writeACL(r, false)
+	policy, apiErr, ok := h.writeACL(r, t, false)
 	if !ok {
 		writeError(w, r, apiErr)
 		return

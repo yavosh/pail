@@ -163,6 +163,7 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | CORS | `PutBucketCors`, `GetBucketCors`, `DeleteBucketCors` |
 | Lifecycle | `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, `DeleteBucketLifecycle` |
 | ACLs | `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, `PutObjectAcl` |
+| Ownership controls | `PutBucketOwnershipControls`, `GetBucketOwnershipControls`, `DeleteBucketOwnershipControls` |
 | Browser forms | `POST Object` |
 | SQS | `CreateQueue`, `GetQueueUrl`, `DeleteQueue`, `PurgeQueue`, `ListQueues`, `ListDeadLetterSourceQueues`, `GetQueueAttributes`, `SetQueueAttributes`, `TagQueue`, `UntagQueue`, `ListQueueTags`, `SendMessage`, `SendMessageBatch`, `ReceiveMessage`, `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
 | SNS | `CreateTopic`, `DeleteTopic`, `ListTopics`, `GetTopicAttributes`, `SetTopicAttributes`, `TagResource`, `UntagResource`, `ListTagsForResource`, `Subscribe`, `ConfirmSubscription`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`, `Publish`, `PublishBatch` |

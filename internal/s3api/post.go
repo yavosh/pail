@@ -106,6 +106,10 @@ func (h *handler) handlePostObject(w http.ResponseWriter, r *http.Request, t tar
 					return
 				}
 			}
+			if e, ok := h.checkACLsEnabled(r.Context(), t.bucket, headers); !ok {
+				writeError(w, r, e)
+				return
+			}
 			policy, e, ok := h.requestACL(headers, false, ownerID)
 			if !ok {
 				writeError(w, r, e)

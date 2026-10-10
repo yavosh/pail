@@ -63,7 +63,7 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, apiErr)
 		return
 	}
-	policy, apiErr, valid := h.writeACL(r, false)
+	policy, apiErr, valid := h.writeACL(r, t, false)
 	if !valid {
 		writeError(w, r, apiErr)
 		return

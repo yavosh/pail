@@ -96,7 +96,7 @@ Recommendation: Define an account-ID model separately from canonical ACL owner I
 
 Code: `internal/s3api/buckets.go:124`, `internal/s3api/acl.go`.
 
-Status: open. No code reads `ObjectOwnership`. ACL support (`e53a83e`) keeps ACLs enabled on every bucket, and `docs/s3-compatibility.md` documents that.
+Status: fixed on branch feat/s3-ownership-controls. No code read `ObjectOwnership` before. ACL support (`e53a83e`) kept ACLs enabled on every bucket, and `docs/s3-compatibility.md` documents that.
 
 Recommendation: Reject unsupported ownership-control requests. Decide explicitly whether AWS's current defaults or a documented legacy-style mode should be pail's default.
 

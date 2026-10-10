@@ -129,7 +129,7 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 		writeError(w, r, errInvalidChecksum)
 		return
 	}
-	policy, apiErr, valid := h.writeACL(r, false)
+	policy, apiErr, valid := h.writeACL(r, t, false)
 	if !valid {
 		writeError(w, r, apiErr)
 		return

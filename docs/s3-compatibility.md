@@ -146,12 +146,23 @@ pail supports `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguratio
 
 pail supports `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, and `PutObjectAcl`.
 
-- pail enables ACLs on every bucket. New AWS buckets disable ACLs through Object Ownership by default. To compare ACL behavior with AWS, use an ACL-enabled AWS bucket.
+- pail enables ACLs on a bucket that has no ownership controls. New AWS buckets disable ACLs by default. See [Ownership controls](#ownership-controls). To compare ACL behavior with AWS, use an ACL-enabled AWS bucket.
 - Canned ACLs, XML grants, and `x-amz-grant-*` headers persist. Canonical grants round-trip.
 - Object writes, copies, forms, and multipart creation accept ACLs.
 - Public grants permit anonymous reads, listings, ACL access, and new object uploads. Anonymous uploads can't overwrite objects that the configured account owns.
 - pail authenticates only its configured account. A grant to another account doesn't let that account authenticate.
 - Email grantees return `501 NotImplemented`.
+
+## Ownership controls
+
+pail supports `PutBucketOwnershipControls`, `GetBucketOwnershipControls`, and `DeleteBucketOwnershipControls`. `CreateBucket` accepts `x-amz-object-ownership`.
+
+- Valid values are `BucketOwnerEnforced`, `BucketOwnerPreferred`, and `ObjectWriter`. Other values return `400 InvalidArgument` on `CreateBucket` and `400 MalformedXML` on `PutBucketOwnershipControls`.
+- `BucketOwnerEnforced` disables ACLs. `PutObjectAcl` and `PutBucketAcl` return `400 AccessControlListNotSupported`. Writes that set an ACL other than `private` or `bucket-owner-full-control`, or any `x-amz-grant-*` header, return the same error. This covers `PutObject`, `CopyObject`, `CreateMultipartUpload`, and browser forms.
+- `GetObjectAcl` and `GetBucketAcl` still work under `BucketOwnerEnforced`. They report the bucket owner with `FULL_CONTROL`. Stored grants allow nothing, so anonymous requests that a public ACL once allowed return `403`.
+- `BucketOwnerPreferred` and `ObjectWriter` keep ACLs enabled. pail doesn't change object ownership for either value.
+- Difference from AWS: a bucket created without `x-amz-object-ownership` has no ownership controls. ACLs stay enabled, and `GetBucketOwnershipControls` returns `404 OwnershipControlsNotFoundError`. AWS creates such a bucket with `BucketOwnerEnforced`. `DeleteBucketOwnershipControls` returns a bucket to this state.
+- Behavior for `CopyObject`, `CreateMultipartUpload`, and browser forms isn't recorded against AWS. The AWS documentation describes it.
 
 ## Browser forms
 

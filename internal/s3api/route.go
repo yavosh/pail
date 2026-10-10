@@ -21,6 +21,9 @@ const (
 	opGetBucketLifecycle      operation = "GetBucketLifecycleConfiguration"
 	opPutBucketLifecycle      operation = "PutBucketLifecycleConfiguration"
 	opDeleteBucketLifecycle   operation = "DeleteBucketLifecycle"
+	opGetBucketOwnership      operation = "GetBucketOwnershipControls"
+	opPutBucketOwnership      operation = "PutBucketOwnershipControls"
+	opDeleteBucketOwnership   operation = "DeleteBucketOwnershipControls"
 	opPostObject              operation = "PostObject"
 	opListBuckets             operation = "ListBuckets"
 	opCreateBucket            operation = "CreateBucket"
@@ -148,6 +151,15 @@ func resolve(method string, t target, q url.Values, h http.Header) operation {
 				return opPutBucketLifecycle
 			case http.MethodDelete:
 				return opDeleteBucketLifecycle
+			}
+		case only("ownershipControls"):
+			switch method {
+			case http.MethodGet:
+				return opGetBucketOwnership
+			case http.MethodPut:
+				return opPutBucketOwnership
+			case http.MethodDelete:
+				return opDeleteBucketOwnership
 			}
 		case method == http.MethodPost && only():
 			return opPostObject
