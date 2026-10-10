@@ -118,6 +118,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Update `README.md`, `docs/s3-compatibility.md`, `docs/sqs-sns-compatibility.md`, `docs/limitations.md`, and `AGENTS.md` in the same PR as the change. Stale docs are a bug.
 - `README.md` summarizes pail. Exact S3 behavior, limits, and AWS differences go in `docs/s3-compatibility.md`. What pail doesn't do goes in `docs/limitations.md`.
 - Exact SQS and SNS behavior goes in `docs/sqs-sns-compatibility.md`.
+- Storage paths and version transitions go in [`docs/storage.md`](docs/storage.md). Keep package comments short and link there.
 - Follow the [Google developer documentation style guide](https://developers.google.com/style).
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
 

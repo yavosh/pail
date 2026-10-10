@@ -48,13 +48,13 @@ type Options struct {
 	Topics          Topics
 }
 
-// operation runs one action. It returns the XML inside the Result element.
-// hasResult is true when the action's output shape in the service model has
-// a result wrapper; DeleteTopic, for one, has none (verified by sns-topic-basics).
-// anonymous is true for an action that SNS endpoints call without a signature.
+// operation runs one action and returns the XML inside the Result element.
 type operation struct {
-	run       func(r *http.Request, p params) (string, error)
+	run func(r *http.Request, p params) (string, error)
+	// hasResult marks actions with a result wrapper; DeleteTopic has none
+	// (verified by sns-topic-basics).
 	hasResult bool
+	// anonymous marks actions that SNS endpoints call without a signature.
 	anonymous bool
 }
 

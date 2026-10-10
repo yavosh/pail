@@ -16,11 +16,8 @@ type apiError struct {
 	queryCode string
 }
 
-// Entries marked verified match AWS recordings in test/diff. Still unverified:
-// MissingParameter for QueueUrl and ReceiptHandle, MessageDeduplicationId on a
-// standard queue, the per-entry InternalError code, list attribute values,
-// SerializationException for non-object bodies, and UnsupportedOperation for
-// model operations that pail does not implement.
+// Entries marked verified match AWS recordings in test/diff.
+// See docs/sqs-sns-compatibility.md for the unverified error cases.
 var (
 	// Verified.
 	errQueueDoesNotExist = apiError{http.StatusBadRequest, "com.amazonaws.sqs#QueueDoesNotExist", "AWS.SimpleQueueService.NonExistentQueue"}
