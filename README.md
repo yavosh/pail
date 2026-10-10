@@ -132,7 +132,7 @@ A topic ARN is `arn:aws:sns:<region>:000000000000:<name>`. To receive messages, 
 - A queue, with protocol `sqs` and the queue's ARN. pail confirms the subscription at once and doesn't check the queue policy.
 - A URL, with protocol `http` or `https`. pail posts a `SubscriptionConfirmation` to the URL, and the endpoint confirms through its `SubscribeURL`. pail then posts notifications in the background, with retries.
 
-Filter policies limit what a subscription receives. See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
+Filter policies limit what a subscription receives. A `DeliveryPolicy` sets the retries, rate, and content type of HTTP and HTTPS deliveries. See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
 ### Browser form uploads
 
@@ -194,6 +194,7 @@ Each setting is a flag with a `PAIL_*` environment variable fallback. A flag ove
 | `--region` | `PAIL_REGION` | `us-east-1` | Region. |
 | `--domain` | `PAIL_DOMAIN` | empty | Base domain for virtual-hosted-style requests. Empty turns them off. |
 | `--log-level` | `PAIL_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. Case-insensitive. |
+| `--sns-tls-skip-verify` | `PAIL_SNS_TLS_SKIP_VERIFY` | `false` | Do not verify the certificates of HTTPS SNS subscription endpoints. Use it only for local testing: it removes server authentication for every HTTPS subscription. |
 | `--healthcheck` | none | off | Check that a pail at `--addr` answers `/_pail/health`, then exit. Needs no keys. |
 | `--version` | none | none | Print the build version and exit. |
 

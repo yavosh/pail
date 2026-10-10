@@ -6,19 +6,21 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"strconv"
 )
 
 // Config holds the settings for one pail process.
 type Config struct {
-	Addr            string
-	DataDir         string
-	AccessKeyID     string
-	SecretAccessKey string
-	Region          string
-	Domain          string
-	LogLevel        slog.Level
-	Version         bool
-	Healthcheck     bool
+	Addr             string
+	DataDir          string
+	AccessKeyID      string
+	SecretAccessKey  string
+	Region           string
+	Domain           string
+	LogLevel         slog.Level
+	SNSTLSSkipVerify bool
+	Version          bool
+	Healthcheck      bool
 }
 
 // Parse reads args, then fills every setting a flag did not set from getenv.
@@ -35,6 +37,7 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 	fs.StringVar(&c.Region, "region", "us-east-1", "region (env PAIL_REGION)")
 	fs.StringVar(&c.Domain, "domain", "", "base domain for virtual-hosted-style requests; empty turns it off (env PAIL_DOMAIN)")
 	fs.StringVar(&level, "log-level", "info", "log level: debug, info, warn, or error (env PAIL_LOG_LEVEL)")
+	fs.BoolVar(&c.SNSTLSSkipVerify, "sns-tls-skip-verify", false, "do not verify the certificates of HTTPS subscription endpoints; for local testing only (env PAIL_SNS_TLS_SKIP_VERIFY)")
 	fs.BoolVar(&c.Version, "version", false, "print the version and exit")
 	fs.BoolVar(&c.Healthcheck, "healthcheck", false, "check that a pail at --addr answers /_pail/health, then exit; needs no keys")
 
@@ -66,6 +69,14 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 		if v := getenv(e.env); v != "" {
 			*e.dst = v
 		}
+	}
+
+	if v := getenv("PAIL_SNS_TLS_SKIP_VERIFY"); v != "" && !set["sns-tls-skip-verify"] {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("invalid PAIL_SNS_TLS_SKIP_VERIFY %q: set it to true or false: %w", v, err)
+		}
+		c.SNSTLSSkipVerify = b
 	}
 
 	if err := c.LogLevel.UnmarshalText([]byte(level)); err != nil {

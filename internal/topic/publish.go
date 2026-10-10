@@ -65,6 +65,7 @@ type PublishResult struct {
 type delivery struct {
 	arn, protocol, endpoint, queue, message string
 	raw                                     bool
+	plan                                    deliveryPlan // HTTP and HTTPS only
 }
 
 // Publish sends a message to every subscription of a topic and returns its
@@ -95,7 +96,11 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 			continue
 		}
 		name, _ := e.checkEndpoint(s.Protocol, s.Endpoint) // checked when stored
-		targets = append(targets, delivery{s.ARN, s.Protocol, s.Endpoint, name, message, s.rawDelivery()})
+		d := delivery{arn: s.ARN, protocol: s.Protocol, endpoint: s.Endpoint, queue: name, message: message, raw: s.rawDelivery()}
+		if s.Protocol != protocolSQS {
+			d.plan = effectivePolicy(t, s).plan()
+		}
+		targets = append(targets, d)
 	}
 	e.mu.Unlock()
 
@@ -123,7 +128,10 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 				n.subscriptionARN = d.arn
 				body = n.envelope()
 			}
-			e.enqueue(newJob(d.endpoint, body, "Notification", n.messageID, in.TopicARN, d.arn, d.raw))
+			j := newJob(d.endpoint, body, "Notification", n.messageID, in.TopicARN, d.arn, d.raw)
+			j.plan, j.sub = d.plan, d.arn
+			j.header.Set("Content-Type", d.plan.contentType)
+			e.enqueue(j)
 			continue
 		}
 		// Forwarding the group ID to SQS is unverified.

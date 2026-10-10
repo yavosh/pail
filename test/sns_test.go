@@ -491,3 +491,53 @@ func TestSNSHTTPDelivery(t *testing.T) {
 		t.Errorf("ListSubscriptionsByTopic after unsubscribe = %v, %v; want none", list, err)
 	}
 }
+
+func TestSNSDeliveryPolicy(t *testing.T) {
+	p := startPail(t)
+	sc := p.snsClient()
+	ctx := t.Context()
+	endpoint, _ := startSNSEndpoint(t)
+	topic, err := sc.CreateTopic(ctx, &sns.CreateTopicInput{Name: aws.String("policy")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topicARN := aws.ToString(topic.TopicArn)
+	const in = `{"http":{"defaultHealthyRetryPolicy":{"minDelayTarget":5,"maxDelayTarget":30,"numRetries":10,"numNoDelayRetries":1,"numMinDelayRetries":2,"numMaxDelayRetries":3,"backoffFunction":"exponential"},"defaultThrottlePolicy":{"maxReceivesPerSecond":5}}}`
+	const stored = `{"http":{"defaultHealthyRetryPolicy":{"minDelayTarget":5,"maxDelayTarget":30,"numRetries":10,"numMaxDelayRetries":3,"numNoDelayRetries":1,"numMinDelayRetries":2,"backoffFunction":"exponential"},"disableSubscriptionOverrides":false,"defaultThrottlePolicy":{"maxReceivesPerSecond":5}}}`
+	// The effective policy adds the default request policy that the input leaves out.
+	effective := strings.Replace(stored, `}}}`, `},"defaultRequestPolicy":{"headerContentType":"text/plain; charset=UTF-8"}}}`, 1)
+	set := func(value string) error {
+		_, err := sc.SetTopicAttributes(ctx, &sns.SetTopicAttributesInput{TopicArn: &topicARN, AttributeName: aws.String("DeliveryPolicy"), AttributeValue: aws.String(value)})
+		return err
+	}
+	if err := set(in); err != nil {
+		t.Fatalf("SetTopicAttributes(DeliveryPolicy) error = %v", err)
+	}
+	attrs, err := sc.GetTopicAttributes(ctx, &sns.GetTopicAttributesInput{TopicArn: &topicARN})
+	if err != nil || attrs.Attributes["DeliveryPolicy"] != stored || attrs.Attributes["EffectiveDeliveryPolicy"] != effective {
+		t.Errorf("GetTopicAttributes DeliveryPolicy, EffectiveDeliveryPolicy = %q, %q, %v; want %s and %s",
+			attrs.Attributes["DeliveryPolicy"], attrs.Attributes["EffectiveDeliveryPolicy"], err, stored, effective)
+	}
+	if err := set(strings.Replace(in, `"numRetries":10`, `"numRetries":101`, 1)); err == nil {
+		t.Error("SetTopicAttributes(numRetries 101) error = nil, want InvalidParameter")
+	}
+
+	sub, err := sc.Subscribe(ctx, &sns.SubscribeInput{TopicArn: &topicARN, Protocol: aws.String("http"), Endpoint: aws.String(endpoint), ReturnSubscriptionArn: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	subARN := sub.SubscriptionArn
+	const subIn = `{"healthyRetryPolicy":{"minDelayTarget":2,"maxDelayTarget":4,"numRetries":2,"backoffFunction":"linear"}}`
+	const subStored = `{"healthyRetryPolicy":{"minDelayTarget":2,"maxDelayTarget":4,"numRetries":2,"numMaxDelayRetries":0,"numNoDelayRetries":0,"numMinDelayRetries":0,"backoffFunction":"linear"},"sicklyRetryPolicy":null,"throttlePolicy":null,"requestPolicy":null,"guaranteed":false}`
+	if _, err := sc.SetSubscriptionAttributes(ctx, &sns.SetSubscriptionAttributesInput{SubscriptionArn: subARN, AttributeName: aws.String("DeliveryPolicy"), AttributeValue: aws.String(subIn)}); err != nil {
+		t.Fatalf("SetSubscriptionAttributes(DeliveryPolicy) error = %v", err)
+	}
+	got, err := sc.GetSubscriptionAttributes(ctx, &sns.GetSubscriptionAttributesInput{SubscriptionArn: subARN})
+	if err != nil || got.Attributes["DeliveryPolicy"] != subStored {
+		t.Errorf("GetSubscriptionAttributes DeliveryPolicy = %q, %v; want %s", got.Attributes["DeliveryPolicy"], err, subStored)
+	}
+	wantEffective := `{"healthyRetryPolicy":{"minDelayTarget":2,"maxDelayTarget":4,"numRetries":2,"numMaxDelayRetries":0,"numNoDelayRetries":0,"numMinDelayRetries":0,"backoffFunction":"linear"},"sicklyRetryPolicy":null,"throttlePolicy":{"maxReceivesPerSecond":5},"requestPolicy":{"headerContentType":"text/plain; charset=UTF-8"},"guaranteed":false}`
+	if got.Attributes["EffectiveDeliveryPolicy"] != wantEffective {
+		t.Errorf("EffectiveDeliveryPolicy = %s, want %s", got.Attributes["EffectiveDeliveryPolicy"], wantEffective)
+	}
+}

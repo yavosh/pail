@@ -81,9 +81,20 @@ func (n notification) envelope() string {
 type confirmation struct {
 	messageID, topicARN, token, timestamp string
 	signatureVersion, signature, baseURL  string
+	unsubscribe                           string // the removed subscription's ARN, for an UnsubscribeConfirmation
+}
+
+func (c confirmation) typ() string {
+	if c.unsubscribe != "" {
+		return "UnsubscribeConfirmation"
+	}
+	return "SubscriptionConfirmation"
 }
 
 func (c confirmation) message() string {
+	if c.unsubscribe != "" {
+		return "You have chosen to deactivate subscription " + c.unsubscribe + ".\nTo cancel this operation and restore the subscription, visit the SubscribeURL included in this message."
+	}
 	return "You have chosen to subscribe to the topic " + c.topicARN + ".\nTo confirm the subscription, visit the SubscribeURL included in this message."
 }
 
@@ -91,16 +102,16 @@ func (c confirmation) subscribeURL() string {
 	return c.baseURL + "/?Action=ConfirmSubscription&TopicArn=" + c.topicARN + "&Token=" + c.token
 }
 
-// stringToSign is the canonical text that SNS signs for a SubscriptionConfirmation.
+// stringToSign is the canonical text that SNS signs for a SubscriptionConfirmation or UnsubscribeConfirmation.
 func (c confirmation) stringToSign() string {
 	return "Message\n" + c.message() + "\nMessageId\n" + c.messageID + "\nSubscribeURL\n" + c.subscribeURL() +
-		"\nTimestamp\n" + c.timestamp + "\nToken\n" + c.token + "\nTopicArn\n" + c.topicARN + "\nType\nSubscriptionConfirmation\n"
+		"\nTimestamp\n" + c.timestamp + "\nToken\n" + c.token + "\nTopicArn\n" + c.topicARN + "\nType\n" + c.typ() + "\n"
 }
 
 // envelope returns the JSON body of the confirmation, with the keys in AWS's order.
 func (c confirmation) envelope() string {
 	var b strings.Builder
-	b.WriteString(`{"Type":"SubscriptionConfirmation"`)
+	b.WriteString(`{"Type":` + quote(c.typ()))
 	for _, f := range [][2]string{
 		{"MessageId", c.messageID}, {"Token", c.token}, {"TopicArn", c.topicARN}, {"Message", c.message()},
 		{"SubscribeURL", c.subscribeURL()}, {"Timestamp", c.timestamp}, {"SignatureVersion", c.signatureVersion},

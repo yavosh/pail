@@ -44,8 +44,13 @@ func checkTopicAttr(name, value string) error {
 	case "DisplayName":
 		// The 100-character limit is AWS's documented SMS limit; the rule is unverified.
 		ok = utf8.RuneCountInString(value) <= 100 && !strings.ContainsFunc(value, unicode.IsControl)
-	case "Policy", "DeliveryPolicy":
+	case "Policy":
 		ok = value == "" || isJSONObject(value)
+	case attrDelivery:
+		if value != "" {
+			_, err := normalizeTopicPolicy(value)
+			return err
+		}
 	case "SignatureVersion":
 		ok = value == "" || value == "1" || value == "2"
 	case "TracingConfig":
@@ -76,7 +81,7 @@ func (e *Engine) TopicAttributes(ctx context.Context, arn string) ([]Attribute, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	e.mu.Lock()
+	e.lock()
 	defer e.mu.Unlock()
 	t, err := e.findTopic(arn)
 	if err != nil {
@@ -90,19 +95,22 @@ func (e *Engine) TopicAttributes(ctx context.Context, arn string) ([]Attribute, 
 			confirmed++
 		}
 	}
-	// The default delivery policy stays even when DeliveryPolicy is set (unverified).
 	// AWS updates the subscription counts with a delay (unverified).
 	out := []Attribute{
 		{"Policy", topicAttrValue(t, arn, "Policy")},
 		{"Owner", queue.Account},
 		{"SubscriptionsPending", fmt.Sprint(pending)},
 		{"TopicArn", arn},
-		{"EffectiveDeliveryPolicy", defaultDeliveryPolicy},
+		{"EffectiveDeliveryPolicy", effectiveTopicPolicy(t)},
 		{"SubscriptionsConfirmed", fmt.Sprint(confirmed)},
 		{"DisplayName", t.Attributes["DisplayName"]},
-		{"SubscriptionsDeleted", "0"},
 	}
-	for _, k := range topicAttrNames[2:] {
+	// DeliveryPolicy sits between DisplayName and SubscriptionsDeleted (recorded in sns-delivery-policy).
+	if v, ok := t.Attributes[attrDelivery]; ok {
+		out = append(out, Attribute{attrDelivery, v})
+	}
+	out = append(out, Attribute{"SubscriptionsDeleted", "0"})
+	for _, k := range topicAttrNames[3:] {
 		if v, ok := t.Attributes[k]; ok {
 			out = append(out, Attribute{k, v})
 		}
@@ -135,7 +143,7 @@ func (e *Engine) SetTopicAttribute(ctx context.Context, arn, name, value string)
 	if value == "" {
 		delete(updated.Attributes, name)
 	} else {
-		updated.Attributes[name] = value
+		updated.Attributes[name] = canonTopicAttr(name, value)
 	}
 	if err := e.persistTopic(&updated); err != nil {
 		return err

@@ -207,18 +207,19 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 | --- | --- |
 | `Policy` | AWS's default policy for the topic, or the policy that a client set. |
 | `Owner` | `000000000000`. |
-| `SubscriptionsPending` | The number of pending subscriptions (unverified: AWS updates the count with a delay). |
+| `SubscriptionsPending` | The number of pending subscriptions. (unverified: AWS updates the counts with a delay). |
 | `TopicArn` | The topic ARN. |
-| `EffectiveDeliveryPolicy` | AWS's default delivery policy. pail returns it even when `DeliveryPolicy` is set (unverified). |
-| `SubscriptionsConfirmed` | The number of confirmed subscriptions (unverified: AWS updates the count with a delay). |
+| `EffectiveDeliveryPolicy` | AWS's default delivery policy, or the stored `DeliveryPolicy` when one is set (recorded in `sns-delivery-policy` for a full policy). A partial policy overlays the defaults, so `{}` reads as the default policy (unverified). |
+| `SubscriptionsConfirmed` | The number of confirmed subscriptions (unverified: AWS updates the counts with a delay). |
 | `DisplayName` | Empty by default. |
+| `DeliveryPolicy` | Only when a client set it. See [Delivery policies](#delivery-policies). |
 | `SubscriptionsDeleted` | `0`. |
 
-After these entries, pail lists the attributes that a client set, in this order (the position is unverified): `DeliveryPolicy`, `KmsMasterKeyId`, `SignatureVersion`, `TracingConfig`.
+After these entries, pail lists the other attributes that a client set, in this order (the position is unverified): `KmsMasterKeyId`, `SignatureVersion`, `TracingConfig`.
 
 `CreateTopic` accepts `FifoTopic` and `ContentBasedDeduplication` with the value `false` and ignores them. The value `true` returns `InvalidParameter`. `DisplayName` has at most 100 characters and no control characters (unverified). A tag key has 1 to 128 characters and a tag value has 0 to 256 characters (unverified).
 
-A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JSON object), `KmsMasterKeyId`, `SignatureVersion` (`1` or `2`), and `TracingConfig` (`PassThrough` or `Active`). Any other name returns `InvalidParameter`. An empty value unsets an attribute (unverified). pail stores `Policy`, `DeliveryPolicy`, and `KmsMasterKeyId` and enforces none of them.
+A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JSON object that pail validates), `KmsMasterKeyId`, `SignatureVersion` (`1` or `2`), and `TracingConfig` (`PassThrough` or `Active`). Any other name returns `InvalidParameter`. An empty value unsets an attribute (unverified). pail stores `Policy` and `KmsMasterKeyId` and enforces neither. pail applies `DeliveryPolicy` to HTTP and HTTPS deliveries.
 
 ### Subscriptions
 
@@ -233,11 +234,38 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 - `Unsubscribe` of a pending subscription returns `InvalidParameter`, signed or unsigned, and the subscription stays. It goes away with its topic.
 - An unsigned `Unsubscribe` removes only a subscription confirmed without `AuthenticateOnUnsubscribe` (unverified). An unsigned `Unsubscribe` of an SQS subscription returns `AuthorizationError`.
 - `Subscribe` is idempotent. The same topic, protocol, and endpoint return the existing ARN. Different attributes return `InvalidParameter` (unverified). A repeat `Subscribe` of a pending subscription sends the confirmation again with the same token (unverified).
-- Tokens never expire (unverified).
-- `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`), `FilterPolicy`, and `FilterPolicyScope`. `RedrivePolicy`, `DeliveryPolicy`, and `SubscriptionRoleArn` return `InvalidParameter`. An empty value for `FilterPolicy` or `FilterPolicyScope` unsets it. An empty policy object, `{}`, removes the policy too. pail checks a policy against its scope whenever either one changes, so a call that leaves them inconsistent returns `InvalidParameter`. See [Filter policies](#filter-policies).
-- `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `FilterPolicy`, `TopicArn`, `Endpoint`, `FilterPolicyScope`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. `PendingConfirmation` and `ConfirmationWasAuthenticated` follow the confirmation state. An HTTP or HTTPS subscription adds `EffectiveDeliveryPolicy` after `Endpoint`, with AWS's default HTTP retry policy as its value. Its position relative to `FilterPolicyScope` is unverified. `FilterPolicy` (the text you set) and `FilterPolicyScope` (`MessageAttributes` by default) appear only when a policy is set, even when you set the scope. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
+- A confirmation token and its pending subscription expire 3 days after the subscription was created (the AWS documentation; unverified). An expired token returns `InvalidParameter`. An expired subscription disappears from listings, attributes (`NotFound`), and counts. pail removes it, and its file, when `Subscribe`, `ConfirmSubscription`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`, or `GetTopicAttributes` runs. A confirmed subscription never expires.
+- `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`), `FilterPolicy`, `FilterPolicyScope`, and, for HTTP and HTTPS subscriptions, `DeliveryPolicy`. `RedrivePolicy` and `SubscriptionRoleArn` return `InvalidParameter`, and so does `DeliveryPolicy` on an SQS subscription (recorded for `SetSubscriptionAttributes`; unverified for `Subscribe`). An empty value for `FilterPolicy` or `FilterPolicyScope` unsets it. An empty policy object, `{}`, removes the policy too. pail checks a policy against its scope whenever either one changes, so a call that leaves them inconsistent returns `InvalidParameter`. See [Filter policies](#filter-policies).
+- `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `FilterPolicy`, `TopicArn`, `Endpoint`, `FilterPolicyScope`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. `PendingConfirmation` and `ConfirmationWasAuthenticated` follow the confirmation state. An HTTP or HTTPS subscription adds `EffectiveDeliveryPolicy` after `Endpoint`, and `DeliveryPolicy` right after it when one is set (recorded in `sns-delivery-policy`). Their position relative to `FilterPolicyScope` is unverified. See [Delivery policies](#delivery-policies). `FilterPolicy` (the text you set) and `FilterPolicyScope` (`MessageAttributes` by default) appear only when a policy is set, even when you set the scope. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
 - `Unsubscribe` of a subscription that does not exist returns `NotFound` (unverified).
 - pail does not check the queue policy. AWS delivers only when the policy allows the topic.
+
+### Delivery policies
+
+A delivery policy sets how pail posts to HTTP and HTTPS endpoints. A topic holds a default for its subscriptions. A subscription can override it.
+
+Verified in the `sns-delivery-policy` recording:
+
+- `SetTopicAttributes` with `DeliveryPolicy` validates the JSON and stores it again in a fixed key order: `http`, then `defaultHealthyRetryPolicy` (`minDelayTarget`, `maxDelayTarget`, `numRetries`, `numMaxDelayRetries`, `numNoDelayRetries`, `numMinDelayRetries`, `backoffFunction`), `disableSubscriptionOverrides`, `defaultThrottlePolicy` (`maxReceivesPerSecond`), and `defaultRequestPolicy` (`headerContentType`). A section that the input leaves out stays out. An empty value unsets the policy, and `EffectiveDeliveryPolicy` returns to the default.
+- `InvalidParameter` for `numRetries` above 100, a `backoffFunction` other than `linear`, `arithmetic`, `geometric`, or `exponential`, a `minDelayTarget` above `maxDelayTarget`, phase counts (`numNoDelayRetries`, `numMinDelayRetries`, `numMaxDelayRetries`) that add up to more than `numRetries`, a `headerContentType` of `text/bogus`, an unknown key, and text that is not JSON.
+- An HTTP or HTTPS subscription derives its `EffectiveDeliveryPolicy` from the topic: `{"healthyRetryPolicy": <defaultHealthyRetryPolicy>, "sicklyRetryPolicy": null, "throttlePolicy": <defaultThrottlePolicy>, "requestPolicy": <defaultRequestPolicy>, "guaranteed": false}`. The recording shows `sicklyRetryPolicy: null` only. A `throttlePolicy` or `requestPolicy` that is absent is `null` in the default policy, and `null` is also stored for an absent section of a subscription policy (both unverified).
+- `SetSubscriptionAttributes` with `DeliveryPolicy` works on a pending subscription. It stores `healthyRetryPolicy`, `sicklyRetryPolicy` (`null` when absent), `throttlePolicy`, `requestPolicy`, and `guaranteed` in that order, and the effective policy equals it. `numRetries` above 100 and any `DeliveryPolicy` on an SQS subscription return `InvalidParameter`.
+
+Unverified, and pail's choice:
+
+- A key that the input leaves out inside a retry policy takes AWS's default (`minDelayTarget` 20, `maxDelayTarget` 20, `numRetries` 3, the phase counts 0, `linear`). A missing `maxReceivesPerSecond` is invalid.
+- Delays are 1 to 3,600 seconds (the AWS documentation), and `maxReceivesPerSecond` is at least 1.
+- `headerContentType` accepts `text/plain`, `text/csv`, `application/json`, and `application/xml`, each with an optional `; charset=UTF-8`. Only `application/json`, `text/plain`, and the rejection of `text/bogus` are recorded.
+- A subscription policy fills only the sections it names. The topic supplies the rest. With `disableSubscriptionOverrides` set to `true`, pail ignores the subscription policy.
+- `Subscribe` accepts `DeliveryPolicy` for HTTP and HTTPS with the same rules.
+- When pail starts, it normalizes a stored `DeliveryPolicy` that is valid. It drops one that is not, with a warning that names the topic or subscription, so files from earlier versions still load.
+- `sicklyRetryPolicy` and `guaranteed` are stored and reported. pail does not use them.
+
+How pail applies the effective policy, all unverified:
+
+- **Retries.** `numRetries` is the number of retries after the first attempt. The phases follow the AWS documentation, in order: `numNoDelayRetries` retries at once, `numMinDelayRetries` retries after `minDelayTarget` seconds, a backoff phase, then `numMaxDelayRetries` retries after `maxDelayTarget` seconds. The backoff phase has `numRetries` minus the other three counts, called n. Retry i of n waits `minDelayTarget` (min) plus a share of the distance to `maxDelayTarget` (max), rounded to whole seconds. The share is i/(n+1) for `linear`, i(i+1) / ((n+1)(n+2)) for `arithmetic`, and (2^i - 1) / (2^(n+1) - 1) for `exponential`. `geometric` waits min × (max/min)^(i/(n+1)). The default policy gives attempts at 0, 20, 40, and 60 seconds, as before.
+- **Throttle.** `maxReceivesPerSecond` limits posts per second for each subscription. Retries count. pail spaces posts evenly, so a burst waits in a worker.
+- **Content type.** `headerContentType` sets the `Content-Type` of notifications. Confirmations always use `text/plain; charset=UTF-8`.
 
 ### Filter policies
 
@@ -311,10 +339,14 @@ pail posts to an HTTP or HTTPS endpoint in the background. `Publish` does not wa
 - After confirmation, `Publish` posts the [envelope](#delivery-to-sqs) to the endpoint. With `RawMessageDelivery` set to `true`, it posts the message text only, with no message attributes.
 - Every request is a `POST` with these headers: `Content-Type: text/plain; charset=UTF-8`, `User-Agent: Amazon Simple Notification Service Agent`, `x-amz-sns-message-type` (`Notification` or `SubscriptionConfirmation`), `x-amz-sns-message-id`, and `x-amz-sns-topic-arn`. A notification also sends `x-amz-sns-subscription-arn`. A raw delivery also sends `x-amz-sns-rawdelivery: true`.
 - A `2xx` answer is a success. A network error, a `5xx`, and a `429` are retried. Any other status ends the delivery without a retry.
-- pail makes at most 4 attempts, 20 seconds apart. This is the default `healthyRetryPolicy` of AWS. A custom `DeliveryPolicy` is not applied.
+- By default pail makes at most 4 attempts, 20 seconds apart. This is the default `healthyRetryPolicy` of AWS. A `DeliveryPolicy` changes the schedule, the rate, and the content type. See [Delivery policies](#delivery-policies).
 - Each attempt times out after 15 seconds. pail does not follow redirects.
-- pail verifies the TLS certificate of an HTTPS endpoint against the system roots. An endpoint with a self-signed certificate fails.
+- pail verifies the TLS certificate of an HTTPS endpoint against the system roots. An endpoint with a self-signed certificate fails. To accept any certificate, start pail with `--sns-tls-skip-verify` or `PAIL_SNS_TLS_SKIP_VERIFY=true`. This turns off server authentication for every HTTPS subscription, so use it only for local testing.
 - A fixed pool of 100 workers (pail's choice) posts at most 100 requests at once. A queue of 1,000 deliveries waits for a free worker. pail drops a delivery when the queue is full, and logs a warning. A worker holds a delivery through its retries, so a slow or unreachable endpoint can delay deliveries to other endpoints.
+- When an unsigned `Unsubscribe` removes an HTTP or HTTPS subscription, pail posts an `UnsubscribeConfirmation` to the endpoint. AWS sends a final message when the requester is not the owner (the AWS documentation; unverified). A signed `Unsubscribe` sends nothing.
+  - The body keys are in this order: `Type` (`UnsubscribeConfirmation`), `MessageId`, `Token`, `TopicArn`, `Message`, `SubscribeURL`, `Timestamp`, `SignatureVersion`, `Signature`, `SigningCertURL`. The `x-amz-sns-message-type` header is `UnsubscribeConfirmation`.
+  - `Message` is `You have chosen to deactivate subscription <subscription ARN>.` and `To cancel this operation and restore the subscription, visit the SubscribeURL included in this message.`, on two lines. The string to sign is the same as for a `SubscriptionConfirmation`, with the new `Type`.
+  - A visit to the `SubscribeURL` (`ConfirmSubscription` with the token) within 3 days restores the subscription with its ARN and attributes. The restore data is in memory, so a restart loses it. If the endpoint subscribed again meanwhile, the token returns that subscription's ARN and restores nothing. Deleting the topic drops its restore data, so a token from before then returns `InvalidParameter`. Both choices are unverified.
 - A delivery is in memory. A restart loses the deliveries that wait, and a pending subscription stays pending.
 - Any client with credentials can make pail send a `POST` to any URL that pail can reach. Run pail only where that is acceptable.
 
@@ -360,7 +392,8 @@ The recordings verify the auth rows, `NotFound`, `InvalidParameter`, `InvalidAct
 - pail does not enforce topic policies, queue policies, IAM, or KMS.
 - pail serves one account.
 - An SQS delivery is synchronous and has no retries. AWS delivers in the background with retries. HTTP and HTTPS deliveries run in the background, with the retries above.
-- pail sends no `UnsubscribeConfirmation` message. Tokens never expire, and a pending subscription stays until its topic is deleted. pail ignores a custom `DeliveryPolicy`.
+- The retry delays of the backoff functions, the `headerContentType` list, and the effect of `disableSubscriptionOverrides` are unverified. HTTP delivery as a whole is unverified.
+- pail accepts a `DeliveryPolicy` for HTTP and HTTPS only. It has no sickly-state logic, so `sicklyRetryPolicy` and `guaranteed` have no effect.
 - pail accepts endpoints on internal addresses, which AWS refuses with `AuthorizationError`.
 - An unsigned form `POST` with `Action` in the query still goes to S3. Only the two unsigned `GET` links above reach SNS.
 - The signing certificate belongs to pail, not to AWS.

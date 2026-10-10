@@ -58,7 +58,7 @@ func (s *Server) Listen(ctx context.Context) error {
 		_ = fsys.Close()
 		return fmt.Errorf("open queues in %s: %w", s.cfg.DataDir, err)
 	}
-	topics, err := topic.Open(ctx, fsys, s.cfg.Region, queues)
+	topics, err := topic.Open(ctx, fsys, s.cfg.Region, queues, topic.WithTLSSkipVerify(s.cfg.SNSTLSSkipVerify))
 	if err != nil {
 		_ = fsys.Close()
 		return fmt.Errorf("open topics in %s: %w", s.cfg.DataDir, err)

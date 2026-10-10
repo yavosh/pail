@@ -280,7 +280,8 @@ func TestTopicAttributes(t *testing.T) {
 		}
 	}
 	got, _ = e.TopicAttributes(t.Context(), arn)
-	wantKeys := []string{"Policy", "Owner", "SubscriptionsPending", "TopicArn", "EffectiveDeliveryPolicy", "SubscriptionsConfirmed", "DisplayName", "SubscriptionsDeleted", "DeliveryPolicy", "KmsMasterKeyId", "SignatureVersion", "TracingConfig"}
+	const storedDelivery = `{"http":{"disableSubscriptionOverrides":false}}` // normalized
+	wantKeys := []string{"Policy", "Owner", "SubscriptionsPending", "TopicArn", "EffectiveDeliveryPolicy", "SubscriptionsConfirmed", "DisplayName", "DeliveryPolicy", "SubscriptionsDeleted", "KmsMasterKeyId", "SignatureVersion", "TracingConfig"}
 	var keys []string
 	for _, a := range got {
 		keys = append(keys, a.Key)
@@ -288,8 +289,8 @@ func TestTopicAttributes(t *testing.T) {
 	if !reflect.DeepEqual(keys, wantKeys) {
 		t.Errorf("TopicAttributes keys after set = %v, want %v", keys, wantKeys)
 	}
-	if got[0].Value != `{"Version":"1"}` || got[6].Value != "renamed" || got[4].Value != goldenDelivery {
-		t.Errorf("TopicAttributes after set: Policy %q, DisplayName %q, EffectiveDeliveryPolicy %q", got[0].Value, got[6].Value, got[4].Value)
+	if got[0].Value != `{"Version":"1"}` || got[6].Value != "renamed" || got[4].Value != goldenDelivery || got[7].Value != storedDelivery {
+		t.Errorf("TopicAttributes after set: Policy %q, DisplayName %q, EffectiveDeliveryPolicy %q, DeliveryPolicy %q; want the default and %q", got[0].Value, got[6].Value, got[4].Value, got[7].Value, storedDelivery)
 	}
 
 	if err := e.SetTopicAttribute(t.Context(), arn, "DisplayName", ""); err != nil {
@@ -438,13 +439,13 @@ func TestSubscribe(t *testing.T) {
 	if err := e.fs.Remove(subFile(first)); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Unsubscribe(t.Context(), first, true); err != nil {
+	if err := e.Unsubscribe(t.Context(), first, true, testBase); err != nil {
 		t.Fatalf("Unsubscribe error = %v", err)
 	}
-	if err := e.Unsubscribe(t.Context(), first, true); !errors.Is(err, ErrNotFound) {
+	if err := e.Unsubscribe(t.Context(), first, true, testBase); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Unsubscribe again error = %v, want %v", err, ErrNotFound)
 	}
-	if err := e.Unsubscribe(t.Context(), "x", true); !errors.Is(err, ErrInvalidParameter) {
+	if err := e.Unsubscribe(t.Context(), "x", true, testBase); !errors.Is(err, ErrInvalidParameter) {
 		t.Errorf("Unsubscribe(x) error = %v, want %v", err, ErrInvalidParameter)
 	}
 }

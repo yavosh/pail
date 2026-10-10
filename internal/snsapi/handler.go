@@ -29,7 +29,7 @@ type Topics interface {
 	SetTopicAttribute(ctx context.Context, arn, name, value string) error
 	Subscribe(ctx context.Context, in topic.SubscribeInput) (arn string, pending bool, err error)
 	ConfirmSubscription(ctx context.Context, topicARN, token string, authenticated bool) (string, error)
-	Unsubscribe(ctx context.Context, arn string, signed bool) error
+	Unsubscribe(ctx context.Context, arn string, signed bool, baseURL string) error
 	ListSubscriptions(ctx context.Context, next string) ([]topic.Subscription, string, error)
 	ListSubscriptionsByTopic(ctx context.Context, topicARN, next string) ([]topic.Subscription, string, error)
 	SubscriptionAttributes(ctx context.Context, arn string) ([]topic.Attribute, error)
