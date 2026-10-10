@@ -83,14 +83,14 @@ func (h *handler) handleObjectTagging(w http.ResponseWriter, r *http.Request, t 
 			return
 		}
 		if err := h.opts.Store.PutObjectTags(r.Context(), t.bucket, t.key, versionID, tags); err != nil {
-			writeError(w, r, toAPIError(err))
+			writeReadError(w, r, err)
 			return
 		}
 		setRequestedVersion(w, versionID)
 		w.WriteHeader(http.StatusOK)
 	case http.MethodDelete:
 		if err := h.opts.Store.PutObjectTags(r.Context(), t.bucket, t.key, versionID, nil); err != nil {
-			writeError(w, r, toAPIError(err))
+			writeReadError(w, r, err)
 			return
 		}
 		setRequestedVersion(w, versionID)

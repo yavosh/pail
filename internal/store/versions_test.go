@@ -679,3 +679,70 @@ func TestVersionFilesStayUnderVersionsDir(t *testing.T) {
 		t.Errorf("version files = %v, %v, want one under versions/", entries, err)
 	}
 }
+
+func TestFailedCommitDoesNotResurrectDeletedVersion(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		older bool
+	}{{"with older versions", true}, {"only the current version", false}} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			s, fsys := newStore(t)
+			mustCreate(t, s, "b")
+			setVersioning(t, s, "b", VersioningEnabled)
+			var older ObjectInfo
+			if tt.older {
+				older = mustPut(t, s, "b", "k", "zero")
+			}
+			cur := mustPut(t, s, "b", "k", "one")
+			armed := true
+			broken := &Store{fs: &failCommitFS{FS: fsys, fail: func(name string) bool { return armed && name == metaFile("b", "k") }}, buckets: s.buckets}
+			if _, err := broken.PutObject(ctx, "b", "k", strings.NewReader("two"), PutOptions{}); err == nil {
+				t.Fatal("PutObject with a failing commit succeeded")
+			}
+			armed = false
+			mustDelete(t, s, "b", "k", DeleteOptions{VersionID: cur.VersionID})
+
+			want := []string(nil)
+			if tt.older {
+				want = []string{"k:v0*"}
+			}
+			names := map[string]string{older.VersionID: "v0"}
+			check := func(st *Store, when string) {
+				t.Helper()
+				if got := versionList(t, st, "b", names); !slices.Equal(got, want) {
+					t.Errorf("%s: ListVersions = %v, want %v", when, got, want)
+				}
+				if tt.older {
+					if body, _ := mustGet(t, st, "b", "k"); body != "zero" {
+						t.Errorf("%s: body = %q, want zero", when, body)
+					}
+				} else if _, err := st.HeadObject(ctx, "b", "k"); !errors.Is(err, ErrNoSuchKey) {
+					t.Errorf("%s: HeadObject error = %v, want ErrNoSuchKey", when, err)
+				}
+			}
+			check(s, "after the delete")
+			reopened, err := Open(ctx, fsys)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check(reopened, "after Open")
+		})
+	}
+}
+
+func TestOpenRemovesEmptyVersionsDirectory(t *testing.T) {
+	s, fsys := newStore(t)
+	mustCreate(t, s, "b")
+	dir := keyVersionsDir("b", "gone")
+	if err := fsys.MkdirAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(t.Context(), fsys); err != nil {
+		t.Fatalf("Open with an empty versions directory error = %v", err)
+	}
+	if _, err := fsys.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("empty directory after Open: Stat error = %v, want not exist", err)
+	}
+	_ = s
+}

@@ -153,10 +153,9 @@ type versionPage struct {
 	nextKey, nextVersion string
 }
 
-// pageVersions pages entries, which are sorted by key and filtered to prefix,
-// as listEntries does for objects. The page starts after the version named
-// by keyMarker and versionMarker; with no versionMarker it skips keyMarker's
-// key whole. A version that the marker does not find skips its key too.
+// pageVersions pages entries as listEntries does for objects. The page starts
+// after the version that keyMarker and versionMarker name; without a
+// versionMarker, or if it is not found, the whole key is skipped.
 func pageVersions(entries []store.VersionInfo, prefix, delimiter, keyMarker, versionMarker string, limit int) versionPage {
 	var p versionPage
 	if limit == 0 {

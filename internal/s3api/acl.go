@@ -45,7 +45,7 @@ func (h *handler) handleACL(w http.ResponseWriter, r *http.Request, t target) {
 	}
 	current, err := h.resourceACL(r, t)
 	if err != nil {
-		writeError(w, r, toAPIError(err))
+		writeReadError(w, r, err)
 		return
 	}
 	enforced, err := h.ownerEnforced(r.Context(), t.bucket)
@@ -99,7 +99,7 @@ func (h *handler) handleACL(w http.ResponseWriter, r *http.Request, t target) {
 		err = h.opts.Store.PutObjectACL(r.Context(), t.bucket, t.key, r.URL.Query().Get("versionId"), policy)
 	}
 	if err != nil {
-		writeError(w, r, toAPIError(err))
+		writeReadError(w, r, err)
 		return
 	}
 	setRequestedVersion(w, r.URL.Query().Get("versionId"))

@@ -132,6 +132,7 @@ pail supports `PutBucketVersioning`, `GetBucketVersioning`, and `ListObjectVersi
 - An object that was written before versioning is the `null` version.
 - `If-Match` and `If-None-Match` on a write apply to the current version. A delete marker counts as a missing key. This is unverified.
 - ACLs, tags, storage class, and the other object options belong to one version. `PutObjectAcl`, `GetObjectAcl`, `PutObjectTagging`, `GetObjectTagging`, `DeleteObjectTagging`, and `GetObjectAttributes` take `versionId`. Writes to a version echo `x-amz-version-id`.
+- The ACL and tagging operations answer a delete marker as `GetObject` and `HeadObject` do: `404 NoSuchKey` with the marker headers for the current marker, and `405 MethodNotAllowed` for a marker named by its version ID. This is unverified against AWS.
 
 ### Reads
 
@@ -254,7 +255,7 @@ pail supports `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguratio
 - Tag filters aren't recorded against AWS. pail follows the AWS documentation.
 - A rule with a tag filter can't also abort multipart uploads. It returns `400 InvalidArgument`.
 - Transitions and noncurrent-version actions return `501 NotImplemented`.
-- In a bucket with versioning, expiration of the current version adds a delete marker, as on AWS, and keeps the data. This is unverified. The marker is a null marker when versioning is suspended.
+- In a bucket with versioning, expiration of the current version adds a delete marker, as on AWS. This is unverified. With versioning enabled, the data stays as a noncurrent version. When versioning is suspended, the marker is a null marker. It replaces a null current version, and pail then removes that version's data, as on AWS.
 
 ## Event notifications
 

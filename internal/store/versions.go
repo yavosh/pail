@@ -195,10 +195,9 @@ func cmpSeq(a, b record) int {
 	return 0
 }
 
-// install makes rec the current version of its key and retires old, the
-// current record, if hasOld. The caller holds the key lock, or the exclusive
-// bucket lock. Each step leaves a state that recoverVersions repairs: the old
-// version is saved before rec replaces it, and replaced files go last.
+// install makes rec the current version of its key and retires old, if hasOld.
+// The caller holds the key lock or the exclusive bucket lock. The old version
+// is saved first and replaced files go last, so recoverVersions can repair a crash.
 func (s *Store) install(bucket, status string, old record, hasOld bool, rec *record) error {
 	if status == "" {
 		if err := s.writeJSON(metaFile(bucket, rec.Key), *rec); err != nil {
@@ -219,12 +218,15 @@ func (s *Store) install(bucket, status string, old record, hasOld bool, rec *rec
 	}
 	var replaced []record
 	nullAside := false // the null version being replaced is a noncurrent one
+	saved := false     // old was written to versions/
 	oldIsNull := hasOld && old.VersionID == ""
 	if hasOld {
 		if status == VersioningSuspended && oldIsNull {
 			replaced = append(replaced, old)
 		} else if err := s.writeVersion(bucket, old); err != nil {
 			return err
+		} else {
+			saved = true
 		}
 	}
 	if status == VersioningSuspended && !oldIsNull {
@@ -237,6 +239,10 @@ func (s *Store) install(bucket, status string, old record, hasOld bool, rec *rec
 		}
 	}
 	if err := s.writeJSON(metaFile(bucket, rec.Key), *rec); err != nil {
+		if saved {
+			// old stays current, so its copy would resurrect it after a delete.
+			_ = s.fs.Remove(versionFile(bucket, rec.Key, old.VersionID))
+		}
 		return fmt.Errorf("commit metadata: %w", err)
 	}
 	if nullAside {
@@ -250,10 +256,9 @@ func (s *Store) install(bucket, status string, old record, hasOld bool, rec *rec
 	return nil
 }
 
-// ListVersions returns every version and delete marker of the keys that start
-// with prefix and sort at or after fromKey. Keys come in UTF-8 byte order and,
-// within a key, the newest entry first. A bucket that was never versioned
-// lists each object as its null version. It reads every metadata file, as ListObjects does.
+// ListVersions returns the versions and delete markers of keys with prefix at
+// or after fromKey, in key order and newest first within a key. An unversioned
+// bucket lists each object as its null version. It reads every metadata file.
 func (s *Store) ListVersions(ctx context.Context, bucket, prefix, fromKey string) ([]VersionInfo, error) {
 	if _, err := s.HeadBucket(ctx, bucket); err != nil {
 		return nil, err
@@ -309,6 +314,8 @@ func (s *Store) deleteVersion(bucket, status string, cur record, hasCur bool, op
 	}
 	result.DeleteMarker = target.DeleteMarker
 	if isCurrent {
+		// A current ID never has a versions/ file; a failed write may have left one.
+		_ = s.fs.Remove(versionFile(bucket, key, cur.VersionID))
 		older, err := s.noncurrent(bucket, cur)
 		if err != nil {
 			return DeleteResult{}, err
@@ -339,10 +346,9 @@ func etagMatches(ifMatch, etag string) bool {
 	return ifMatch == "*" || ifMatch == etag || ifMatch == `"`+etag+`"`
 }
 
-// recoverVersions repairs what a crash between the steps of install or
-// deleteVersion left: a noncurrent record that repeats the current one is
-// removed, and a key with noncurrent records but no current one gets its
-// newest promoted.
+// recoverVersions repairs what a crash in install or deleteVersion left: it
+// removes a noncurrent record that repeats the current one, and promotes the
+// newest noncurrent record of a key that has no current one.
 func (s *Store) recoverVersions(ctx context.Context, bucket string) error {
 	dirs, err := s.fs.ReadDir(versionsDir(bucket))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -380,7 +386,9 @@ func (s *Store) recoverKeyVersions(bucket, hash string) error {
 	var cur record
 	err = s.readJSON(path.Join(objectsDir(bucket), hash+".json"), &cur)
 	switch {
-	case errors.Is(err, fs.ErrNotExist) && len(all) > 0:
+	case errors.Is(err, fs.ErrNotExist) && len(all) == 0:
+		return s.fs.Remove(dir) // an empty directory of no key
+	case errors.Is(err, fs.ErrNotExist):
 		if err := s.writeJSON(path.Join(objectsDir(bucket), hash+".json"), all[0]); err != nil {
 			return err
 		}
