@@ -30,6 +30,9 @@ func (h *handler) publish(r *http.Request, p params) (string, error) {
 	if p.has("TargetArn") || p.has("PhoneNumber") {
 		return "", fmt.Errorf("publishing to TargetArn or PhoneNumber is not supported: %w", topic.ErrInvalidParameter)
 	}
+	if !p.has("Message") {
+		return "", fmt.Errorf("parameter Message is required: %w", errValidation)
+	}
 	arn, err := p.required("TopicArn")
 	if err != nil {
 		return "", err
@@ -82,7 +85,7 @@ func (p params) batchEntries() ([]topic.PublishEntry, error) {
 
 func checkBatch(entries []topic.PublishEntry) error {
 	if len(entries) == 0 {
-		return fmt.Errorf("the batch has no entries: %w", errEmptyBatch)
+		return fmt.Errorf("the batch has no entries: %w", errValidation)
 	}
 	if len(entries) > maxBatchEntries {
 		return fmt.Errorf("the batch has %d entries, at most %d: %w", len(entries), maxBatchEntries, errTooManyInBatch)
@@ -125,39 +128,42 @@ func (h *handler) publishBatch(r *http.Request, p params) (string, error) {
 	for _, res := range results {
 		if res.Err == nil {
 			ok.open("member")
-			ok.elem("Id", res.ID)
 			ok.elem("MessageId", res.MessageID)
+			ok.elem("Id", res.ID)
 			ok.close("member")
 			continue
 		}
 		code := entryCode(res.Err)
 		failed.open("member")
-		failed.elem("Id", res.ID)
 		failed.elem("Code", code)
-		failed.elem("Message", res.Err.Error())
+		failed.elem("Message", res.Err.Error()) // the position is unverified; test/diff drops the text
 		failed.elem("SenderFault", fmt.Sprint(code != "InternalError"))
+		failed.elem("Id", res.ID)
 		failed.close("member")
 	}
-	// An empty list element is omitted (unverified).
+	// AWS always writes Failed, first, and empty when nothing failed. An empty
+	// Successful is written the same way (unverified).
 	var x xmlBuf
-	if ok.Len() > 0 {
-		x.open("Successful")
-		x.WriteString(ok.String())
-		x.close("Successful")
-	}
-	if failed.Len() > 0 {
-		x.open("Failed")
-		x.WriteString(failed.String())
-		x.close("Failed")
+	for _, list := range []struct {
+		name string
+		body *xmlBuf
+	}{{"Failed", &failed}, {"Successful", &ok}} {
+		if list.body.Len() == 0 {
+			x.WriteString("<" + list.name + "/>")
+			continue
+		}
+		x.open(list.name)
+		x.WriteString(list.body.String())
+		x.close(list.name)
 	}
 	return x.String(), nil
 }
 
 // The API's own errors for batch rules. Handlers wrap them with %w.
 var (
-	errEmptyBatch      = errors.New("empty batch")
 	errTooManyInBatch  = errors.New("too many entries in batch")
 	errBatchIDsNotUniq = errors.New("batch entry ids not distinct")
 	errBadBatchEntryID = errors.New("invalid batch entry id")
 	errBatchTooLong    = errors.New("batch too long")
+	errValidation      = errors.New("validation error")
 )

@@ -390,9 +390,9 @@ func TestSubscribe(t *testing.T) {
 	}
 
 	want := []Attribute{
-		{"SubscriptionArn", first}, {"TopicArn", arn}, {"Owner", "000000000000"}, {"Protocol", "sqs"}, {"Endpoint", ep},
-		{"RawMessageDelivery", "false"}, {"ConfirmationWasAuthenticated", "true"}, {"PendingConfirmation", "false"},
-		{"SubscriptionPrincipal", "arn:aws:iam::000000000000:root"},
+		{"SubscriptionPrincipal", "arn:aws:iam::000000000000:root"}, {"Owner", "000000000000"}, {"RawMessageDelivery", "false"},
+		{"TopicArn", arn}, {"Endpoint", ep}, {"Protocol", "sqs"}, {"PendingConfirmation", "false"},
+		{"ConfirmationWasAuthenticated", "true"}, {"SubscriptionArn", first},
 	}
 	if got, err := e.SubscriptionAttributes(t.Context(), first); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("SubscriptionAttributes = %v, %v\nwant %v", got, err, want)
@@ -400,8 +400,8 @@ func TestSubscribe(t *testing.T) {
 	if err := e.SetSubscriptionAttribute(t.Context(), first, "RawMessageDelivery", "true"); err != nil {
 		t.Fatalf("SetSubscriptionAttribute error = %v", err)
 	}
-	if got, _ := e.SubscriptionAttributes(t.Context(), first); got[5] != (Attribute{"RawMessageDelivery", "true"}) {
-		t.Errorf("RawMessageDelivery after set = %v, want true", got[5])
+	if got, _ := e.SubscriptionAttributes(t.Context(), first); got[2] != (Attribute{"RawMessageDelivery", "true"}) {
+		t.Errorf("RawMessageDelivery after set = %v, want true", got[2])
 	}
 	// A set clones the stored map, so an earlier snapshot keeps its value.
 	before := e.subs[first].Attributes

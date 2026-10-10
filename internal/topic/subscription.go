@@ -154,8 +154,8 @@ func (e *Engine) ListSubscriptionsByTopic(ctx context.Context, topicARN, next st
 	return out, after, nil
 }
 
-// SubscriptionAttributes returns the attributes of a subscription. The order
-// is unverified until a recording settles it.
+// SubscriptionAttributes returns the attributes of a subscription in the order
+// AWS lists them (recorded in sns-sqs-delivery).
 func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attribute, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -166,17 +166,17 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 	if err != nil {
 		return nil, err
 	}
+	// AWS returns the caller's ARN as SubscriptionPrincipal; the value's shape is unverified.
 	return []Attribute{
-		{"SubscriptionArn", s.ARN},
-		{"TopicArn", s.TopicARN},
-		{"Owner", queue.Account},
-		{"Protocol", s.Protocol},
-		{"Endpoint", s.Endpoint},
-		{attrRaw, subAttrValue(s, attrRaw)},
-		{"ConfirmationWasAuthenticated", "true"},
-		{"PendingConfirmation", "false"},
-		// AWS returns the caller's ARN here. The position and shape are unverified.
 		{"SubscriptionPrincipal", "arn:aws:iam::" + queue.Account + ":root"},
+		{"Owner", queue.Account},
+		{attrRaw, subAttrValue(s, attrRaw)},
+		{"TopicArn", s.TopicARN},
+		{"Endpoint", s.Endpoint},
+		{"Protocol", s.Protocol},
+		{"PendingConfirmation", "false"},
+		{"ConfirmationWasAuthenticated", "true"},
+		{"SubscriptionArn", s.ARN},
 	}, nil
 }
 

@@ -1,0 +1,159 @@
+{
+  "scenario": "sns-topic-attributes",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "15e28de4f14ddc4f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-topic-attributes",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "8590881ac066dd33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetTopicAttributesResponse\n  GetTopicAttributesResult\n    Attributes\n      entry\n        key: Policy\n        value: {\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:{account}:{name}\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"{account}\"}}}]}\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: SubscriptionsPending\n        value: 0\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"disableSubscriptionOverrides\":false,\"defaultRequestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"}}}\n      entry\n        key: SubscriptionsConfirmed\n        value: 0\n      entry\n        key: DisplayName\n        value: pail\n      entry\n        key: SubscriptionsDeleted\n        value: 0\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-display-name",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "f4afd47a38b9708a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-after-set",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "8590881ac066dd33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetTopicAttributesResponse\n  GetTopicAttributesResult\n    Attributes\n      entry\n        key: Policy\n        value: {\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:{account}:{name}\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"{account}\"}}}]}\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: SubscriptionsPending\n        value: 0\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"disableSubscriptionOverrides\":false,\"defaultRequestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"}}}\n      entry\n        key: SubscriptionsConfirmed\n        value: 0\n      entry\n        key: DisplayName\n        value: renamed\n      entry\n        key: SubscriptionsDeleted\n        value: 0\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-topic-again",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "6a33e4edc56aa74a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-topic-conflict",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "879ba3b98a905245",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "create-invalid-name",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "b6ab4c0197b3fe86",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "create-fifo-name",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "89b7be92508f2730",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "tag-resource",
+      "request": "POST sns TagResource",
+      "fingerprint": "1d1175eb7aca9526",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "TagResourceResponse\n  TagResourceResult: \n  ResponseMetadata\n"
+    },
+    {
+      "step": "list-tags",
+      "request": "POST sns ListTagsForResource",
+      "fingerprint": "b65635ae92c48e7f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ListTagsForResourceResponse\n  ListTagsForResourceResult\n    Tags\n      member\n        Value: test\n        Key: env\n  ResponseMetadata\n"
+    },
+    {
+      "step": "untag-resource",
+      "request": "POST sns UntagResource",
+      "fingerprint": "41b895dad66c2e4c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "UntagResourceResponse\n  UntagResourceResult: \n  ResponseMetadata\n"
+    },
+    {
+      "step": "list-tags-empty",
+      "request": "POST sns ListTagsForResource",
+      "fingerprint": "b65635ae92c48e7f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ListTagsForResourceResponse\n  ListTagsForResourceResult\n    Tags: \n  ResponseMetadata\n"
+    },
+    {
+      "step": "delete-topic",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "delete-topic-again",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    }
+  ]
+}

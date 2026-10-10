@@ -55,7 +55,7 @@ func (h *handler) listSubscriptionsByTopic(r *http.Request, p params) (string, e
 	return subscriptionList(subs, after, err)
 }
 
-// subscriptionList writes the Subscriptions list in the model's member order.
+// subscriptionList writes the Subscriptions list in AWS's member order (recorded for ListSubscriptionsByTopic).
 func subscriptionList(subs []topic.Subscription, after string, err error) (string, error) {
 	if err != nil {
 		return "", err
@@ -67,10 +67,10 @@ func subscriptionList(subs []topic.Subscription, after string, err error) (strin
 		x.open("Subscriptions")
 		for _, s := range subs {
 			x.open("member")
-			x.elem("SubscriptionArn", s.ARN)
 			x.elem("Owner", s.Owner)
 			x.elem("Protocol", s.Protocol)
 			x.elem("Endpoint", s.Endpoint)
+			x.elem("SubscriptionArn", s.ARN)
 			x.elem("TopicArn", s.TopicARN)
 			x.close("member")
 		}

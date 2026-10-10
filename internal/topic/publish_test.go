@@ -52,7 +52,7 @@ func TestPublishValidation(t *testing.T) {
 		{"subject of 101", func(in *PublishInput) { in.Subject = strings.Repeat("s", 101) }, ErrInvalidParameter},
 		{"subject with a line break", func(in *PublishInput) { in.Subject = "a\nb" }, ErrInvalidParameter},
 		{"subject with non-ASCII", func(in *PublishInput) { in.Subject = "café" }, ErrInvalidParameter},
-		{"group ID on a standard topic", func(in *PublishInput) { in.GroupID = "g" }, ErrInvalidParameter},
+		{"group ID on a standard topic", func(in *PublishInput) { in.GroupID = "g" }, nil},
 		{"deduplication ID on a standard topic", func(in *PublishInput) { in.DeduplicationID = "d" }, ErrInvalidParameter},
 		{"unknown message structure", func(in *PublishInput) { in.MessageStructure = "xml" }, ErrInvalidParameter},
 		{"json without default", func(in *PublishInput) { in.MessageStructure = "json"; in.Message = `{"sqs":"x"}` }, ErrInvalidParameter},
@@ -246,6 +246,22 @@ func TestPublishMessageStructure(t *testing.T) {
 					t.Errorf("delivered message = %q, want %q", got, tt.want)
 				}
 			})
+		}
+	}
+}
+
+func TestPublishForwardsGroupID(t *testing.T) {
+	for _, raw := range []string{"false", "true"} {
+		e, fq := newEngine(t)
+		arn := mustTopic(t, e, "grouped")
+		mustSubscribe(t, e, arn, "q1", map[string]string{"RawMessageDelivery": raw})
+		in := publishInput(arn)
+		in.GroupID = "tenant"
+		if _, err := e.Publish(t.Context(), in); err != nil {
+			t.Fatal(err)
+		}
+		if len(fq.sent) != 1 || fq.sent[0].In.GroupID != "tenant" {
+			t.Errorf("RawMessageDelivery %s: sent = %+v, want one message with GroupID tenant", raw, fq.sent)
 		}
 	}
 }

@@ -135,7 +135,7 @@ func TestTopicShapes(t *testing.T) {
 			t.Errorf("attributes %s lack %s", body, want)
 		}
 	}
-	if body := g.ok(t, "Action=ListTagsForResource&ResourceArn="+esc(arn2)); !strings.Contains(body, `<Tags><member><Key>env</Key><Value>test</Value></member></Tags>`) {
+	if body := g.ok(t, "Action=ListTagsForResource&ResourceArn="+esc(arn2)); !strings.Contains(body, `<Tags><member><Value>test</Value><Key>env</Key></member></Tags>`) {
 		t.Errorf("ListTagsForResource = %s, want the env tag", body)
 	}
 
@@ -149,7 +149,7 @@ func TestTopicShapes(t *testing.T) {
 	if body := g.ok(t, "Action=TagResource&ResourceArn="+esc(arn)+"&Tags.member.1.Key=a&Tags.member.1.Value=1&Tags.member.2.Key=b&Tags.member.2.Value=2"); body != `<TagResourceResponse`+ns+`><TagResourceResult/><ResponseMetadata><RequestId>ID</RequestId></ResponseMetadata></TagResourceResponse>` {
 		t.Errorf("TagResource body = %s", body)
 	}
-	if body := g.ok(t, "Action=ListTagsForResource&ResourceArn="+esc(arn)); !strings.Contains(body, `<Tags><member><Key>a</Key><Value>1</Value></member><member><Key>b</Key><Value>2</Value></member></Tags>`) {
+	if body := g.ok(t, "Action=ListTagsForResource&ResourceArn="+esc(arn)); !strings.Contains(body, `<Tags><member><Value>1</Value><Key>a</Key></member><member><Value>2</Value><Key>b</Key></member></Tags>`) {
 		t.Errorf("ListTagsForResource = %s, want a and b sorted", body)
 	}
 	g.ok(t, "Action=UntagResource&ResourceArn="+esc(arn)+"&TagKeys.member.1=a&TagKeys.member.2=b")
@@ -201,11 +201,11 @@ func TestSubscriptionShapes(t *testing.T) {
 		t.Errorf("Subscribe again = %q, want %q", again, sub)
 	}
 
-	want := `<ListSubscriptionsByTopicResponse` + ns + `><ListSubscriptionsByTopicResult><Subscriptions><member><SubscriptionArn>` + sub + `</SubscriptionArn><Owner>000000000000</Owner><Protocol>sqs</Protocol><Endpoint>` + qarn + `</Endpoint><TopicArn>` + arn + `</TopicArn></member></Subscriptions></ListSubscriptionsByTopicResult><ResponseMetadata><RequestId>ID</RequestId></ResponseMetadata></ListSubscriptionsByTopicResponse>`
+	want := `<ListSubscriptionsByTopicResponse` + ns + `><ListSubscriptionsByTopicResult><Subscriptions><member><Owner>000000000000</Owner><Protocol>sqs</Protocol><Endpoint>` + qarn + `</Endpoint><SubscriptionArn>` + sub + `</SubscriptionArn><TopicArn>` + arn + `</TopicArn></member></Subscriptions></ListSubscriptionsByTopicResult><ResponseMetadata><RequestId>ID</RequestId></ResponseMetadata></ListSubscriptionsByTopicResponse>`
 	if got := g.ok(t, "Action=ListSubscriptionsByTopic&TopicArn="+esc(arn)); got != want {
 		t.Errorf("ListSubscriptionsByTopic = %s\nwant %s", got, want)
 	}
-	if got := g.ok(t, "Action=ListSubscriptions"); !strings.Contains(got, "<ListSubscriptionsResult><Subscriptions><member><SubscriptionArn>"+sub) {
+	if got := g.ok(t, "Action=ListSubscriptions"); !strings.Contains(got, "<ListSubscriptionsResult><Subscriptions><member><Owner>000000000000</Owner>") || !strings.Contains(got, "<SubscriptionArn>"+sub+"</SubscriptionArn>") {
 		t.Errorf("ListSubscriptions = %s, want the subscription", got)
 	}
 
@@ -249,7 +249,9 @@ func TestErrors(t *testing.T) {
 		{"get a missing subscription", "Action=GetSubscriptionAttributes&SubscriptionArn=" + esc(arn+":00000000-0000-0000-0000-000000000000"), 404, "NotFound"},
 		{"unsubscribe a missing subscription", "Action=Unsubscribe&SubscriptionArn=" + esc(arn+":00000000-0000-0000-0000-000000000000"), 404, "NotFound"},
 		{"list subscriptions of a missing topic", "Action=ListSubscriptionsByTopic&TopicArn=" + esc(missing), 404, "NotFound"},
-		{"publish without a message", "Action=Publish&TopicArn=" + esc(arn), 400, "InvalidParameter"},
+		{"publish without a message", "Action=Publish&TopicArn=" + esc(arn), 400, "ValidationError"},
+		{"publish with an empty message", "Action=Publish&Message=&TopicArn=" + esc(arn), 400, "InvalidParameter"},
+		{"publish with a deduplication ID", "Action=Publish&Message=x&MessageDeduplicationId=d&TopicArn=" + esc(arn), 400, "InvalidParameter"},
 		{"publish without a topic", "Action=Publish&Message=x", 400, "InvalidParameter"},
 		{"publish to a target", "Action=Publish&Message=x&TargetArn=" + esc(arn), 400, "InvalidParameter"},
 		{"publish to a phone number", "Action=Publish&Message=x&PhoneNumber=%2B15555550100", 400, "InvalidParameter"},
@@ -368,15 +370,21 @@ func TestPublishBatch(t *testing.T) {
 	if len(got.OK) != 2 || got.OK[0].ID != "a" || got.OK[1].ID != "c" || len(got.Failed) != 1 || got.Failed[0].ID != "b" || got.Failed[0].Code != "InvalidParameter" || got.Failed[0].SenderFault != "true" {
 		t.Errorf("PublishBatch = %+v, want a and c delivered and b failed", got)
 	}
-	if strings.Index(body, "<Successful>") > strings.Index(body, "<Failed>") {
-		t.Errorf("body %s lists Failed before Successful", body)
+	if strings.Index(body, "<Failed>") > strings.Index(body, "<Successful>") {
+		t.Errorf("body %s lists Successful before Failed", body)
+	}
+	if !strings.Contains(body, "<member><Code>InvalidParameter</Code><Message>") || !strings.Contains(body, "</Message><SenderFault>true</SenderFault><Id>b</Id></member>") || !strings.Contains(body, "<member><MessageId>") {
+		t.Errorf("body %s lacks the AWS member element order", body)
 	}
 	msgs := g.receive(t, "q")
 	if len(msgs) != 2 || msgs[0].Body != "one" || msgs[0].Attributes["color"].StringValue != "blue" {
 		t.Errorf("queue = %+v, want one (with its attribute) and three", msgs)
 	}
-	if body := g.ok(t, "Action=PublishBatch&TopicArn="+esc(arn)+p+"1.Id=a"+p+"1.Message=x"); strings.Contains(body, "<Failed>") {
-		t.Errorf("all-success batch = %s, want no Failed element", body)
+	if body := g.ok(t, "Action=PublishBatch&TopicArn="+esc(arn)+p+"1.Id=a"+p+"1.Message=x"); !strings.Contains(body, "<PublishBatchResult><Failed/><Successful><member>") {
+		t.Errorf("all-success batch = %s, want an empty Failed before Successful", body)
+	}
+	if body := g.ok(t, "Action=PublishBatch&TopicArn="+esc(arn)+p+"1.Id=a"+p+"1.Message="); !strings.Contains(body, "<Successful/></PublishBatchResult>") {
+		t.Errorf("all-failed batch = %s, want an empty Successful", body)
 	}
 }
 
@@ -394,7 +402,7 @@ func TestPublishBatchValidation(t *testing.T) {
 	tests := []struct {
 		name, form, code string
 	}{
-		{"no entries", "", "EmptyBatchRequest"},
+		{"no entries", "", "ValidationError"},
 		{"11 entries", entries(11), "TooManyEntriesInBatchRequest"},
 		{"duplicate ids", p + "1.Id=a" + p + "1.Message=m" + p + "2.Id=a" + p + "2.Message=m", "BatchEntryIdsNotDistinct"},
 		{"id with a space", p + "1.Id=bad+id" + p + "1.Message=m", "InvalidBatchEntryId"},

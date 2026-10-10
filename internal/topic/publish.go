@@ -100,10 +100,11 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 		}
 	}
 	for _, d := range targets {
-		send := queue.SendInput{Body: n.message, Attributes: rawAttributes(in.Attributes)}
+		// Forwarding the group ID to SQS is unverified.
+		send := queue.SendInput{Body: n.message, Attributes: rawAttributes(in.Attributes), GroupID: in.GroupID}
 		if !d.raw {
 			n.subscriptionARN = d.arn
-			send = queue.SendInput{Body: n.envelope()}
+			send = queue.SendInput{Body: n.envelope(), GroupID: in.GroupID}
 		}
 		e.deliver(ctx, in.TopicARN, d.queue, send)
 	}
@@ -168,8 +169,9 @@ func validatePublish(in PublishInput) error {
 	switch {
 	case in.Message == "":
 		return invalid("empty message")
-	case in.GroupID != "" || in.DeduplicationID != "":
-		return invalid("MessageGroupId and MessageDeduplicationId are for FIFO topics, which are not supported")
+	case in.DeduplicationID != "":
+		// Unverified. A standard topic does accept MessageGroupId (sns-errors).
+		return invalid("MessageDeduplicationId is for FIFO topics, which are not supported")
 	case len(in.Subject) > maxSubject:
 		return invalid("subject is longer than %d characters", maxSubject)
 	case strings.ContainsFunc(in.Subject, func(r rune) bool { return r < 0x20 || r > 0x7e }):

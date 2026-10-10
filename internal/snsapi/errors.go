@@ -15,9 +15,11 @@ type apiError struct {
 	code   string
 }
 
-// The auth entries, NotFound, and the InvalidAction status match the AWS
-// recordings in test/diff (sns-auth-errors, sns-topic-basics). The other codes
-// and statuses come from the service model and are unverified until recorded.
+// The auth entries, NotFound, InvalidParameter, InvalidAction, ValidationError,
+// TooManyEntriesInBatchRequest, BatchEntryIdsNotDistinct, and InvalidBatchEntryId
+// match the AWS recordings in test/diff. The others come from the service
+// model and are unverified: ResourceNotFound, TagLimitExceeded, BatchRequestTooLong,
+// and InternalError.
 var (
 	errInvalidAction       = apiError{http.StatusBadRequest, "Sender", "InvalidAction"}
 	errMissingAuth         = apiError{http.StatusForbidden, "Sender", "MissingAuthenticationToken"}
@@ -30,7 +32,7 @@ var (
 	errInvalidParameter    = apiError{http.StatusBadRequest, "Sender", "InvalidParameter"}
 	errResourceNotFound    = apiError{http.StatusNotFound, "Sender", "ResourceNotFound"}
 	errTagLimitExceeded    = apiError{http.StatusBadRequest, "Sender", "TagLimitExceeded"}
-	errEmptyBatchRequest   = apiError{http.StatusBadRequest, "Sender", "EmptyBatchRequest"}
+	errValidationError     = apiError{http.StatusBadRequest, "Sender", "ValidationError"}
 	errTooManyEntries      = apiError{http.StatusBadRequest, "Sender", "TooManyEntriesInBatchRequest"}
 	errEntryIDsNotDistinct = apiError{http.StatusBadRequest, "Sender", "BatchEntryIdsNotDistinct"}
 	errInvalidBatchEntryID = apiError{http.StatusBadRequest, "Sender", "InvalidBatchEntryId"}
@@ -47,7 +49,7 @@ var mappings = []struct {
 	{topic.ErrInvalidParameter, errInvalidParameter},
 	{topic.ErrResourceNotFound, errResourceNotFound},
 	{topic.ErrTagLimitExceeded, errTagLimitExceeded},
-	{errEmptyBatch, errEmptyBatchRequest},
+	{errValidation, errValidationError},
 	{errTooManyInBatch, errTooManyEntries},
 	{errBatchIDsNotUniq, errEntryIDsNotDistinct},
 	{errBadBatchEntryID, errInvalidBatchEntryID},

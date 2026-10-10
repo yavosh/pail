@@ -143,8 +143,8 @@ func (h *handler) listTagsForResource(r *http.Request, p params) (string, error)
 	x.open("Tags")
 	for _, k := range slices.Sorted(maps.Keys(tags)) {
 		x.open("member")
-		x.elem("Key", k)
 		x.elem("Value", tags[k])
+		x.elem("Key", k)
 		x.close("member")
 	}
 	x.close("Tags")

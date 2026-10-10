@@ -169,13 +169,13 @@ A failed batch entry uses the code `InvalidParameterValue`, `MissingParameter`, 
 
 ## SNS
 
-pail serves SNS on the same listener and port as S3 and SQS. It routes a request to SNS by the `sns` service in the SigV4 credential scope. It uses the S3 access key pair. This page marks behavior that no AWS recording has verified as unverified.
+pail serves SNS on the same listener and port as S3 and SQS. It routes a request to SNS by the `sns` service in the SigV4 credential scope. It uses the S3 access key pair. AWS recordings in `test/diff` verify the behavior on this page, except what it marks as unverified.
 
 ### Protocol
 
 - pail speaks the AWS query protocol: a form-encoded `POST /` with `Action=<Operation>&Version=2010-03-31`. A `GET` with the same fields in the query also works.
 - Responses are XML with `Content-Type: text/xml`. Every response carries `x-amzn-RequestId`.
-- A success is `<{Action}Response><{Action}Result>...</{Action}Result><ResponseMetadata>...`. `DeleteTopic`, `SetTopicAttributes`, `Unsubscribe`, and `SetSubscriptionAttributes` have no `Result` element, as in the service model. `TagResource` and `UntagResource` return an empty `Result` element (unverified).
+- A success is `<{Action}Response><{Action}Result>...</{Action}Result><ResponseMetadata>...`. `DeleteTopic`, `SetTopicAttributes`, `Unsubscribe`, and `SetSubscriptionAttributes` have no `Result` element, as in the service model. `TagResource` and `UntagResource` return an empty `Result` element.
 - A request body is limited to 4 MiB.
 
 ### Operations
@@ -193,15 +193,15 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 
 - A topic ARN is `arn:aws:sns:<region>:000000000000:<name>`. The region is the `--region` setting.
 - A topic name is 1 to 256 letters, digits, hyphens, or underscores. A name that ends in `.fifo` returns `InvalidParameter`, because pail has no FIFO topics.
-- `CreateTopic` is idempotent. For a topic that exists, it returns the ARN. If a given attribute differs from the stored value, it returns `InvalidParameter` (unverified).
-- `DeleteTopic` removes the topic and its subscriptions. For a topic that does not exist, it succeeds (unverified).
-- A topic has at most 50 tags. More return `TagLimitExceeded` (unverified). The tag operations answer `ResourceNotFound` for an unknown topic (unverified).
+- `CreateTopic` is idempotent. For a topic that exists, it returns the ARN. If a given attribute differs from the stored value, it returns `InvalidParameter`.
+- `DeleteTopic` removes the topic and its subscriptions. For a topic that does not exist, it succeeds.
+- A topic has at most 50 tags. More return `TagLimitExceeded` (unverified). The tag operations answer `ResourceNotFound` for an unknown topic (unverified). `ListTagsForResource` writes `Value` before `Key` in each member.
 - `ListTopics` and the subscription lists return 100 entries a page. `NextToken` is an opaque value from the previous page.
 - `CreateTopic` with `DataProtectionPolicy` returns `InvalidParameter`.
 
 ### Topic attributes
 
-`GetTopicAttributes` returns these entries in this order. The recording `sns-topic-basics` verifies the order and the default values.
+`GetTopicAttributes` returns these entries in this order. The recordings `sns-topic-basics` and `sns-topic-attributes` verify the order and the default values. `DisplayName` set at creation and by `SetTopicAttributes` shows in the next read.
 
 | Attribute | Value |
 | --- | --- |
@@ -224,11 +224,11 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 
 - pail supports the protocol `sqs` only. Any other protocol returns `InvalidParameter` with the message `protocol is not supported`.
 - The endpoint must be the ARN of an SQS queue in the same region and account, `arn:aws:sqs:<region>:000000000000:<name>`. The queue need not exist when you subscribe. A delivery to a queue that does not exist is logged and dropped.
-- An endpoint that names a FIFO queue returns `InvalidParameter`, because pail has no FIFO topics (the message is unverified).
+- An endpoint that names a FIFO queue returns `InvalidParameter`, because pail has no FIFO topics (unverified).
 - pail confirms an SQS subscription at once. A subscription ARN is the topic ARN, a colon, and a lowercase UUID.
 - `Subscribe` is idempotent. The same topic, protocol, and endpoint return the existing ARN. Different attributes return `InvalidParameter` (unverified).
 - `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`). `FilterPolicy`, `FilterPolicyScope`, `RedrivePolicy`, `DeliveryPolicy`, and `SubscriptionRoleArn` return `InvalidParameter` for now. Filter policies arrive in a later version.
-- `GetSubscriptionAttributes` returns `SubscriptionArn`, `TopicArn`, `Owner`, `Protocol`, `Endpoint`, `RawMessageDelivery`, `ConfirmationWasAuthenticated`, `PendingConfirmation`, and `SubscriptionPrincipal`, in this order. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The order, the set, and the shape of that value are unverified.
+- `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `TopicArn`, `Endpoint`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
 - `Unsubscribe` of a subscription that does not exist returns `NotFound` (unverified).
 - pail does not check the queue policy. AWS delivers only when the policy allows the topic.
 
@@ -239,10 +239,10 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 - `Subject` is at most 100 printable ASCII characters, with no line breaks.
 - `MessageStructure` is empty or `json`. With `json`, the message is a JSON object of string values with a `default` key. pail delivers the `sqs` value when it exists, and `default` otherwise.
 - A message has at most 10 attributes. Names follow the SQS rules. The types are `String`, `String.Array` (the value is a JSON array), `Number`, and `Binary`, with an optional custom label such as `String.json`.
-- `MessageGroupId` and `MessageDeduplicationId` return `InvalidParameter`, because topics are standard (unverified).
-- Every rule above returns `InvalidParameter`. AWS may use `ParameterValueInvalid` for some attribute errors (unverified).
+- A standard topic accepts `MessageGroupId`. pail forwards it as the `MessageGroupId` of the SQS message (unverified). `MessageDeduplicationId` returns `InvalidParameter` (unverified).
+- A missing `Message` parameter returns `ValidationError`. An empty `Message`, a long `Subject`, and a bad `MessageStructure` return `InvalidParameter`. The other rules above return `InvalidParameter` too (unverified for attribute errors; AWS may use `ParameterValueInvalid`).
 - `Publish` returns after pail sends to every subscribed queue, so a receive right after it sees the message. A missing queue or a failed send is logged and does not fail the publish.
-- `PublishBatch` takes 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique. The entries total at most 262,144 bytes. A request that breaks these rules fails as a whole with `EmptyBatchRequest`, `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong`. An invalid entry fails alone and appears in `Failed` with `Id`, `Code`, `Message`, and `SenderFault`. An empty `Successful` or `Failed` list is omitted (unverified). A failed entry's `Message` text is not compared with AWS.
+- `PublishBatch` takes 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique. The entries total at most 262,144 bytes. A request that breaks these rules fails as a whole with `ValidationError` (no entries), `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong` (unverified). An invalid entry fails alone and appears in `Failed` with `Code`, `Message`, `SenderFault`, and `Id`, in this order (the `Message` position is unverified). The result always has `Failed` first, empty when nothing failed, then `Successful`. A `Successful` member is `MessageId` then `Id`. pail writes an empty `Successful` when every entry failed (unverified). A failed entry's `Message` text is not compared with AWS.
 
 ### Delivery to SQS
 
@@ -274,7 +274,7 @@ With `RawMessageDelivery` set to `true`, the queue receives the message text as 
 
 ### Errors
 
-The recordings `sns-auth-errors` and `sns-topic-basics` verify the auth rows and `NotFound`. The other rows come from the service model and are unverified until recorded. Every error is an `ErrorResponse` with `Type`, `Code`, and `Message`.
+The recordings verify the auth rows, `NotFound`, `InvalidParameter`, `InvalidAction`, `ValidationError`, `TooManyEntriesInBatchRequest`, `BatchEntryIdsNotDistinct`, and `InvalidBatchEntryId`. The other rows come from the service model and are unverified. Every error is an `ErrorResponse` with `Type`, `Code`, and `Message`.
 
 | Condition | Status | `Type` | `Code` |
 | --- | --- | --- | --- |
@@ -284,7 +284,8 @@ The recordings `sns-auth-errors` and `sns-topic-basics` verify the auth rows and
 | Bad parameter, name, attribute, protocol, or endpoint | 400 | `Sender` | `InvalidParameter` |
 | More than 50 tags | 400 | `Sender` | `TagLimitExceeded` |
 | Action that pail does not implement, or no `Action` | 400 | `Sender` | `InvalidAction` |
-| Batch rule broken | 400 | `Sender` | `EmptyBatchRequest`, `TooManyEntriesInBatchRequest`, `BatchEntryIdsNotDistinct`, `InvalidBatchEntryId`, or `BatchRequestTooLong` |
+| Missing `Message`, or an empty batch | 400 | `Sender` | `ValidationError` |
+| Batch rule broken | 400 | `Sender` | `TooManyEntriesInBatchRequest`, `BatchEntryIdsNotDistinct`, `InvalidBatchEntryId`, or `BatchRequestTooLong` (unverified) |
 | Server fault | 500 | `Receiver` | `InternalError` |
 
 ### Differences from AWS
