@@ -36,7 +36,7 @@ func TestHandler(t *testing.T) {
 		{"unsigned", "", listBody, 403, "MissingAuthenticationToken", ""},
 		{"wrong secret", "wrong", listBody, 403, "SignatureDoesNotMatch", ""},
 		// A missing Token or SubscriptionArn shows that the unsigned request reached the action.
-		{"unsigned ConfirmSubscription reaches the action", "", "Action=ConfirmSubscription&TopicArn=arn&Version=2010-03-31", 400, "InvalidParameter", "Token is required: invalid parameter"},
+		{"unsigned ConfirmSubscription reaches the action", "", "Action=ConfirmSubscription&TopicArn=arn&Version=2010-03-31", 400, "ValidationError", "TopicArn and Token are required: validation error"},
 		{"unsigned Unsubscribe reaches the action", "", "Action=Unsubscribe&Version=2010-03-31", 400, "InvalidParameter", "SubscriptionArn is required: invalid parameter"},
 		{"unsigned Publish", "", "Action=Publish&TopicArn=arn&Message=m&Version=2010-03-31", 403, "MissingAuthenticationToken", ""},
 		{"unsigned unknown action", "", "Action=Bogus&Version=2010-03-31", 403, "MissingAuthenticationToken", ""},

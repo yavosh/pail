@@ -481,23 +481,22 @@ func snsFilterEdgeCasesScenario() scenario {
 	}}
 }
 
-// snsHTTPSubscriptionsScenario covers HTTP subscriptions that stay pending. The
-// endpoint is in TEST-NET-1, so AWS's confirmation goes nowhere. Delivery,
-// retries, and headers need a public endpoint and are not recorded.
+// snsHTTPSubscriptionsScenario covers HTTP subscriptions that stay pending.
+// {httpEndpoint} differs by target, so pail never posts to the public one.
+// Delivery, retries, and headers are not recorded.
 func snsHTTPSubscriptionsScenario() scenario {
-	const endpoint = "http://192.0.2.1/pail"
 	subscribe := func(protocol, ep string) string {
-		return "Action=Subscribe&TopicArn={topicArn}&Protocol=" + protocol + "&Endpoint=" + url.QueryEscape(ep)
+		return "Action=Subscribe&TopicArn={topicArn}&Protocol=" + protocol + "&Endpoint=" + ep
 	}
 	unsigned := func(name, query string) step {
 		return step{name: name, method: http.MethodGet, service: "sns", query: query + snsVersion, auth: authNone}
 	}
 	return scenario{name: "sns-http-subscriptions", topics: []string{"{name}"}, queues: []string{"{name}"}, steps: []step{
 		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
-		snsStep("subscribe-protocol-mismatch", subscribe("http", "https://192.0.2.1/pail")+snsVersion),
+		snsStep("subscribe-protocol-mismatch", subscribe("http", "{httpEndpoint}")+snsVersion),
 		snsStep("subscribe-not-url", subscribe("https", "not-a-url")+snsVersion),
-		snsStep("subscribe-http", subscribe("http", endpoint)+snsVersion),
-		snsStep("subscribe-http-return-arn", subscribe("http", endpoint)+"&ReturnSubscriptionArn=true"+snsVersion),
+		snsStep("subscribe-https", subscribe("https", "{httpEndpoint}")+snsVersion),
+		snsStep("subscribe-https-return-arn", subscribe("https", "{httpEndpoint}")+"&ReturnSubscriptionArn=true"+snsVersion),
 		snsStep("get-pending-attributes", "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}"+snsVersion),
 		snsStep("list-pending", "Action=ListSubscriptionsByTopic&TopicArn={topicArn}"+snsVersion),
 		snsStep("confirm-bad-token", "Action=ConfirmSubscription&TopicArn={topicArn}&Token=bad"+snsVersion),
@@ -505,11 +504,16 @@ func snsHTTPSubscriptionsScenario() scenario {
 		unsigned("confirm-unsigned-bad-token", "Action=ConfirmSubscription&TopicArn={topicArn}&Token=bad"),
 		unsigned("unsubscribe-unsigned-pending", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"),
 		snsStep("list-after-unsigned-pending", "Action=ListSubscriptionsByTopic&TopicArn={topicArn}"+snsVersion),
+		snsStep("unsubscribe-pending", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("list-after-pending", "Action=ListSubscriptionsByTopic&TopicArn={topicArn}"+snsVersion),
 		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
 		sqsStep("get-queue-arn", "GetQueueAttributes", `{"QueueUrl":"{queueUrl}","AttributeNames":["QueueArn"]}`),
 		snsStep("subscribe-sqs", "Action=Subscribe&TopicArn={topicArn}&Protocol=sqs&Endpoint={queueArn}"+snsVersion),
 		unsigned("unsubscribe-unsigned-sqs", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"),
-		snsStep("list-after-unsigned-sqs", "Action=ListSubscriptionsByTopic&TopicArn={topicArn}"+snsVersion),
+		// AWS lists the topic's subscriptions in random order, so read this one alone.
+		snsStep("get-sqs-after-unsigned", "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}"+snsVersion),
+		// Last, so the pail-only subscription changes no listing above.
+		snsStep("subscribe-internal-endpoint", subscribe("http", url.QueryEscape("http://127.0.0.1:1/internal"))+snsVersion),
 		snsStep("delete-topic", "Action=DeleteTopic&TopicArn={topicArn}"+snsVersion),
 		sqsStep("delete-queue", "DeleteQueue", `{"QueueUrl":"{queueUrl}"}`),
 	}}

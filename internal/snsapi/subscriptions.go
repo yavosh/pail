@@ -1,6 +1,7 @@
 package snsapi
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -31,13 +32,10 @@ func (h *handler) subscribe(r *http.Request, p params) (string, error) {
 }
 
 func (h *handler) confirmSubscription(r *http.Request, p params) (string, error) {
-	arn, err := p.required("TopicArn")
-	if err != nil {
-		return "", err
-	}
-	token, err := p.required("Token")
-	if err != nil {
-		return "", err
+	// A missing Token is ValidationError (recorded in sns-http-subscriptions); TopicArn is unverified.
+	arn, token := p.get("TopicArn"), p.get("Token")
+	if arn == "" || token == "" {
+		return "", fmt.Errorf("TopicArn and Token are required: %w", errValidation)
 	}
 	authenticated := signed(r) && strings.EqualFold(p.get("AuthenticateOnUnsubscribe"), "true")
 	sub, err := h.topics.ConfirmSubscription(r.Context(), arn, token, authenticated)

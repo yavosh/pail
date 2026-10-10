@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -92,8 +93,15 @@ func TestHTTPPendingSubscription(t *testing.T) {
 			t.Errorf("pending attribute %s = %q, want %q", k, got[k], v)
 		}
 	}
-	if last := attrs[len(attrs)-1]; last.Key != "EffectiveDeliveryPolicy" {
-		t.Errorf("last attribute = %q, want EffectiveDeliveryPolicy", last.Key)
+	// AWS's order, recorded in sns-http-subscriptions.
+	var keys []string
+	for _, a := range attrs {
+		keys = append(keys, a.Key)
+	}
+	wantKeys := []string{"SubscriptionPrincipal", "Owner", "RawMessageDelivery", "TopicArn", "Endpoint", "EffectiveDeliveryPolicy",
+		"Protocol", "PendingConfirmation", "ConfirmationWasAuthenticated", "SubscriptionArn"}
+	if !slices.Equal(keys, wantKeys) {
+		t.Errorf("attribute order = %v, want %v", keys, wantKeys)
 	}
 
 	list, _, err := e.ListSubscriptionsByTopic(t.Context(), arn, "")
@@ -215,7 +223,7 @@ func TestHTTPUnsignedUnsubscribe(t *testing.T) {
 		{"sqs", sqs, ErrAuthorization},
 		{"confirmed authenticated", auth, ErrAuthorization},
 		{"missing", arn + ":x", ErrNotFound},
-		{"pending", pending, nil},
+		{"pending", pending, ErrInvalidParameter},
 		{"confirmed unauthenticated", unauth, nil},
 	}
 	for _, tt := range tests {
@@ -224,6 +232,12 @@ func TestHTTPUnsignedUnsubscribe(t *testing.T) {
 				t.Errorf("Unsubscribe(%q, unsigned) error = %v, want %v", tt.sub, err, tt.want)
 			}
 		})
+	}
+	if err := e.Unsubscribe(t.Context(), pending, true); !errors.Is(err, ErrInvalidParameter) {
+		t.Errorf("Unsubscribe(pending, signed) error = %v, want %v", err, ErrInvalidParameter)
+	}
+	if _, ok := e.subs[pending]; !ok {
+		t.Error("pending subscription was removed, want it kept")
 	}
 	if err := e.Unsubscribe(t.Context(), auth, true); err != nil {
 		t.Errorf("Unsubscribe(authenticated, signed) error = %v, want nil", err)

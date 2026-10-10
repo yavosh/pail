@@ -213,6 +213,10 @@ func (e *Engine) Unsubscribe(ctx context.Context, arn string, signed bool) error
 	if err != nil {
 		return err
 	}
+	if s.Pending {
+		// Signed or not, AWS keeps a pending subscription (recorded in sns-http-subscriptions).
+		return fmt.Errorf("subscription %s is pending confirmation: %w", arn, ErrInvalidParameter)
+	}
 	if !signed && s.authenticated() {
 		return fmt.Errorf("subscription %s needs a signed request: %w", arn, ErrAuthorization)
 	}
@@ -291,15 +295,16 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		{attrFilter, policy},
 		{"TopicArn", s.TopicARN},
 		{"Endpoint", s.Endpoint},
+		{"EffectiveDeliveryPolicy", httpDeliveryPolicy},
 		{attrScope, subAttrValue(s, attrScope)},
 		{"Protocol", s.Protocol},
 		{"PendingConfirmation", strconv.FormatBool(s.Pending)},
 		{"ConfirmationWasAuthenticated", strconv.FormatBool(s.authenticated())},
 		{"SubscriptionArn", s.ARN},
 	}
-	if s.Protocol != protocolSQS {
-		// The value and its position are unverified until the sns-http-subscriptions recording.
-		out = append(out, Attribute{"EffectiveDeliveryPolicy", httpDeliveryPolicy})
+	if s.Protocol == protocolSQS {
+		// AWS lists EffectiveDeliveryPolicy for HTTP subscriptions (recorded in sns-http-subscriptions).
+		out = slices.DeleteFunc(out, func(a Attribute) bool { return a.Key == "EffectiveDeliveryPolicy" })
 	}
 	if policy == "" {
 		// Without a policy, AWS lists neither filter attribute, even with a scope set.

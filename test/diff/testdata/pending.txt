@@ -4,22 +4,3 @@
 # Replay tolerates differences in a pending step and logs them (go test -v).
 # Differences in any other step still fail. Once a pending step has no
 # unlisted difference, the test fails until you remove its line.
-sns-http-subscriptions/create-topic waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/subscribe-protocol-mismatch waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/subscribe-not-url waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/subscribe-http waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/subscribe-http-return-arn waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/get-pending-attributes waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/list-pending waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/confirm-bad-token waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/confirm-missing-token waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/confirm-unsigned-bad-token waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/unsubscribe-unsigned-pending waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/list-after-unsigned-pending waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/create-queue waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/get-queue-arn waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/subscribe-sqs waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/unsubscribe-unsigned-sqs waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/list-after-unsigned-sqs waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/delete-topic waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
-sns-http-subscriptions/delete-queue waits for a maintainer recording against AWS (PR 8 of docs/plans/2026-10-09-sqs-sns.md)
