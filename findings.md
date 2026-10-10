@@ -38,7 +38,7 @@ Source conditions are supported, but destination conditions are not. Copying ove
 
 Code: `internal/s3api/copy.go:65`.
 
-Status: open. `CopyObject` checks only the `x-amz-copy-source-if-*` conditions (`internal/s3api/copy.go`).
+Status: fixed on branch feat/s3-copy-conditions-owner. `CopyObject` passes `If-Match` and `If-None-Match` to the store's conditional write, as `PutObject` does.
 
 Recommendation: Pass destination conditions through to the existing conditional-write storage implementation.
 
@@ -84,7 +84,7 @@ The configuration check compares against pail's derived canonical owner ID, wher
 
 Code: `internal/s3api/configuration.go:29`, `internal/s3api/buckets.go:73`.
 
-Status: open. Only `internal/s3api/configuration.go` checks `x-amz-expected-bucket-owner`.
+Status: fixed on branch feat/s3-copy-conditions-owner. `expectedOwner` in `internal/s3api/handler.go` checks the header for every bucket and object request, and `CopyObject` also checks `x-amz-source-expected-bucket-owner`.
 
 Recommendation: Define an account-ID model separately from canonical ACL owner IDs and enforce checks consistently.
 
@@ -164,7 +164,7 @@ The differential suite has 15 golden fixtures and 266 exchanges, with no entries
 1. Stop silent success: reject unsupported security, checksum, storage, and ownership options.
    Status: partly fixed on branch feat/s3-object-options. Encryption, Object Lock, checksum, and storage options are fixed. Ownership options remain.
 2. Fix destructive-operation conditions: single/batch delete and destination-conditional copy.
-   Status: partly fixed. Single and batch delete are fixed (PR #49). Destination-conditional copy is open.
+   Status: fixed. Single and batch delete are fixed (PR #49). Destination-conditional copy is fixed on branch feat/s3-copy-conditions-owner.
 3. Complete smaller gaps: expected-owner checks, multipart size validation, null versions, multipart URL encoding, redirect metadata.
    Status: partly fixed on branch feat/s3-object-options. Redirect metadata is fixed. The other gaps are open.
 4. Add high-value APIs: UploadPartCopy, GetObjectAttributes, part-number reads.

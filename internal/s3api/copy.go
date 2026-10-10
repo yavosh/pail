@@ -58,6 +58,10 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, apiErr)
 		return
 	}
+	if apiErr, ok := checkExpectedOwner(r.Header, "x-amz-source-expected-bucket-owner"); !ok {
+		writeError(w, r, apiErr)
+		return
+	}
 	// A copy onto itself must change the metadata, storage class, website redirect, or encryption.
 	changes := replace || r.Header.Get("x-amz-storage-class") != "" || options.ServerSideEncryption != "" || options.WebsiteRedirect != ""
 	if src.bucket == t.bucket && src.key == t.key && !changes {
@@ -70,6 +74,11 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		return
 	}
 	opts := store.PutOptions{ACL: &policy, ObjectOptions: options}
+	if apiErr, ok := writeConditions(r.Header, &opts); !ok {
+		w.Header().Set("Cache-Control", "no-store") // AWS adds it to this NotImplemented answer
+		writeError(w, r, apiErr)
+		return
+	}
 	if replace {
 		if opts.Metadata, apiErr, ok = requestMetadata(r.Header, false); !ok {
 			writeError(w, r, apiErr)

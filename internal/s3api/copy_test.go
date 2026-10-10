@@ -121,7 +121,6 @@ func TestCopyObject(t *testing.T) {
 		{"if-modified-since now", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-modified-since": "{now}"}, 412, "PreconditionFailed", "", "", "", ""},
 		{"if-unmodified-since future", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-unmodified-since": future}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"if-unmodified-since past", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-if-unmodified-since": past}, 412, "PreconditionFailed", "", "", "", ""},
-		{"destination if-match is not a copy condition", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "If-Match": `"nope"`}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"source without a key", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt"}, 400, "InvalidArgument", "", "", "", ""},
 		{"source with a bad escape", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/a%zz"}, 400, "InvalidArgument", "", "", "", ""},
 		{"missing source key", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/nope"}, 404, "NoSuchKey", "", "", "", ""},

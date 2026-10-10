@@ -94,10 +94,6 @@ func (h *handler) handleOwnershipControls(w http.ResponseWriter, r *http.Request
 		writeError(w, r, errInvalidBucketName)
 		return
 	}
-	if expected := r.Header.Get("x-amz-expected-bucket-owner"); expected != "" && expected != h.bucketOwner().ID {
-		writeError(w, r, errAccessDenied)
-		return
-	}
 	switch r.Method {
 	case http.MethodGet:
 		cfg, err := h.opts.Store.GetBucketConfiguration(r.Context(), t.bucket, "ownership")

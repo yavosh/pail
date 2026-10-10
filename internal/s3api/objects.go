@@ -83,15 +83,10 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		}
 		opts.ContentMD5 = sum
 	}
-	switch inm := r.Header.Get("If-None-Match"); inm {
-	case "":
-	case "*":
-		opts.IfNoneMatch = true
-	default:
-		writeError(w, r, errNotImplemented) // S3 supports only If-None-Match: * on writes
+	if apiErr, ok := writeConditions(r.Header, &opts); !ok {
+		writeError(w, r, apiErr)
 		return
 	}
-	opts.IfMatch = r.Header.Get("If-Match")
 	var (
 		inTrailer bool
 		ok        bool
@@ -125,6 +120,19 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	setChecksumHeaders(w.Header(), info)
 	setOptionHeaders(w.Header(), info.ObjectOptions)
 	w.WriteHeader(http.StatusOK)
+}
+
+// writeConditions sets the store's commit conditions from If-None-Match and If-Match.
+func writeConditions(header http.Header, opts *store.PutOptions) (apiError, bool) {
+	switch header.Get("If-None-Match") {
+	case "":
+	case "*":
+		opts.IfNoneMatch = true
+	default:
+		return errNotImplemented, false // S3 supports only If-None-Match: * on writes
+	}
+	opts.IfMatch = header.Get("If-Match")
+	return apiError{}, true
 }
 
 // requestMetadata reads the metadata a write request stores with the object:

@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -301,4 +302,113 @@ func TestDeleteObjectsChecksumSent(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestCopyObjectDestinationConditions(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "docs")
+		put := func(key, body string) *s3.PutObjectOutput {
+			t.Helper()
+			out, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("docs"), Key: aws.String(key), Body: strings.NewReader(body)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return out
+		}
+		put("src", "source")
+		dest := put("dest", "dest")
+		tests := []struct {
+			name     string
+			key      string
+			set      func(*s3.CopyObjectInput)
+			want     string // the error code, or "" for success
+			wantBody string // the destination body afterwards; "" means no object
+		}{
+			{"if-none-match star on existing", "dest", func(in *s3.CopyObjectInput) { in.IfNoneMatch = aws.String("*") }, "PreconditionFailed", "dest"},
+			{"if-none-match star on new", "fresh", func(in *s3.CopyObjectInput) { in.IfNoneMatch = aws.String("*") }, "", "source"},
+			{"if-match wrong", "dest", func(in *s3.CopyObjectInput) { in.IfMatch = aws.String(`"wrong"`) }, "PreconditionFailed", "dest"},
+			{"if-match missing key", "missing", func(in *s3.CopyObjectInput) { in.IfMatch = dest.ETag }, "NoSuchKey", ""},
+			{"if-none-match with an ETag", "dest", func(in *s3.CopyObjectInput) { in.IfNoneMatch = dest.ETag }, "NotImplemented", "dest"},
+			{"if-match right", "dest", func(in *s3.CopyObjectInput) { in.IfMatch = dest.ETag }, "", "source"},
+		}
+		for _, tt := range tests {
+			in := &s3.CopyObjectInput{Bucket: aws.String("docs"), Key: aws.String(tt.key), CopySource: aws.String("docs/src")}
+			tt.set(in)
+			_, err := c.CopyObject(ctx, in)
+			if got := errorCode(err); got != tt.want {
+				t.Errorf("%s: CopyObject error = %v, want code %q", tt.name, err, tt.want)
+			}
+			out, err := c.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String("docs"), Key: aws.String(tt.key)})
+			got := ""
+			if err == nil {
+				b, _ := io.ReadAll(out.Body)
+				_ = out.Body.Close()
+				got = string(b)
+			}
+			if got != tt.wantBody {
+				t.Errorf("%s: destination body = %q, want %q", tt.name, got, tt.wantBody)
+			}
+		}
+	})
+}
+
+func TestExpectedBucketOwner(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "docs")
+		const account, wrong = "000000000000", "111111111111"
+		src := &s3.PutObjectInput{Bucket: aws.String("docs"), Key: aws.String("src"), Body: strings.NewReader("source")}
+		if _, err := c.PutObject(ctx, src); err != nil {
+			t.Fatal(err)
+		}
+		tests := []struct {
+			name  string
+			owner string
+			want  string
+		}{
+			{"right owner", account, ""},
+			{"wrong owner", wrong, "AccessDenied"},
+			{"malformed owner", "abc", "InvalidBucketOwnerAWSAccountID"},
+		}
+		for _, tt := range tests {
+			owner := aws.String(tt.owner)
+			calls := map[string]func() error{
+				"GetObject": func() error {
+					out, err := c.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String("docs"), Key: aws.String("src"), ExpectedBucketOwner: owner})
+					if err == nil {
+						_ = out.Body.Close()
+					}
+					return err
+				},
+				"PutObject": func() error {
+					_, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("docs"), Key: aws.String("put"), Body: strings.NewReader("x"), ExpectedBucketOwner: owner})
+					return err
+				},
+				"CopyObject": func() error {
+					_, err := c.CopyObject(ctx, &s3.CopyObjectInput{Bucket: aws.String("docs"), Key: aws.String("copy"), CopySource: aws.String("docs/src"), ExpectedBucketOwner: owner})
+					return err
+				},
+				"CopyObject source": func() error {
+					_, err := c.CopyObject(ctx, &s3.CopyObjectInput{Bucket: aws.String("docs"), Key: aws.String("copy-source"), CopySource: aws.String("docs/src"), ExpectedSourceBucketOwner: owner})
+					return err
+				},
+				"DeleteObject": func() error {
+					_, err := c.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String("docs"), Key: aws.String("src"), ExpectedBucketOwner: owner})
+					return err
+				},
+			}
+			for _, op := range []string{"GetObject", "PutObject", "CopyObject", "CopyObject source", "DeleteObject"} {
+				if op == "DeleteObject" && tt.want == "" {
+					continue // a deletion that succeeds would remove the source for later cases
+				}
+				if got := errorCode(calls[op]()); got != tt.want {
+					t.Errorf("%s with %s: error code = %q, want %q", op, tt.name, got, tt.want)
+				}
+			}
+		}
+		if _, err := c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String("docs"), Key: aws.String("src")}); err != nil {
+			t.Errorf("HeadObject(src) after failed owner checks error = %v, want nil", err)
+		}
+	})
 }

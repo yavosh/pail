@@ -23,6 +23,7 @@ var (
 	errNotImplemented            = apiError{"NotImplemented", http.StatusNotImplemented, "A header or query you provided implies functionality that is not implemented."}
 	errInternal                  = apiError{"InternalError", http.StatusInternalServerError, "We encountered an internal error. Please try again."}
 	errAccessDenied              = apiError{"AccessDenied", http.StatusForbidden, "Access Denied"}
+	errInvalidBucketOwner        = apiError{"InvalidBucketOwnerAWSAccountID", http.StatusBadRequest, "The value of the expected bucket owner parameter must be an AWS Account ID"}
 	errCORSForbidden             = apiError{"AccessForbidden", http.StatusForbidden, "CORSResponse: This CORS request is not allowed."}
 	errInvalidLifecycleDays      = apiError{"InvalidRequest", http.StatusBadRequest, "Days must be a positive integer."}
 	errUnsignedHeader            = apiError{"AccessDenied", http.StatusForbidden, "There were headers present in the request which were not signed"}

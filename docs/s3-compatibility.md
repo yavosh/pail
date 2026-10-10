@@ -7,7 +7,7 @@ This page describes how pail implements the S3 operations it supports, and where
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
 - Virtual-hosted-style requests work when `--domain` is set. For example, with `--domain localhost`, pail serves `http://<bucket>.localhost:9000/<key>`.
 - An operation that pail doesn't support returns `501 NotImplemented` with an S3 XML error. Requests with `x-amz-tagging` or `x-amz-tagging-directive` also return `501 NotImplemented`.
-- pail ignores `x-amz-expected-bucket-owner` outside CORS and lifecycle requests. It also ignores destination preconditions on `CopyObject`. The next section lists the object write options that pail checks.
+- pail checks `x-amz-expected-bucket-owner` on every bucket and object request. See [Expected bucket owner](#expected-bucket-owner). The next section lists the object write options that pail checks.
 - A browser form field for an unsupported `x-amz-*` option returns `501 NotImplemented`.
 - Like AWS, pail answers a request path with a literal `..` segment with an empty `400 Bad Request`. For GET and DELETE requests, that response includes request IDs. AWS front ends vary in sending them.
 - pail doesn't check percent-encoded dots, such as `%2E%2E`. An object with a `..` key that an older pail stored is reachable only through the encoded form.
@@ -62,6 +62,10 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 - `x-amz-copy-source` is a URL-encoded `bucket/key`.
 - `x-amz-metadata-directive` is `COPY`, the default, or `REPLACE`. Like AWS, a copy onto itself needs `REPLACE`.
 - If an `x-amz-copy-source-if-match`, `x-amz-copy-source-if-none-match`, `x-amz-copy-source-if-modified-since`, or `x-amz-copy-source-if-unmodified-since` condition isn't met, the copy fails with `412 PreconditionFailed`.
+- `CopyObject` also accepts `If-Match` and `If-None-Match` for the destination. pail evaluates them atomically with the write, as `PutObject` does, and a failed condition writes nothing.
+  - `If-None-Match: *` returns `412 PreconditionFailed` when the destination exists.
+  - `If-Match` returns `412 PreconditionFailed` when the destination's ETag differs, and `404 NoSuchKey` when the destination doesn't exist.
+  - `If-None-Match` with an ETag returns `501 NotImplemented`, as `PutObject` does.
 - A copy from a source larger than 5 GiB fails.
 - pail has no versioning, so it accepts only `versionId=null`.
 
@@ -152,6 +156,16 @@ pail supports `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, and `PutObjectAcl`
 - Public grants permit anonymous reads, listings, ACL access, and new object uploads. Anonymous uploads can't overwrite objects that the configured account owns.
 - pail authenticates only its configured account. A grant to another account doesn't let that account authenticate.
 - Email grantees return `501 NotImplemented`.
+
+## Expected bucket owner
+
+pail serves one account, `000000000000`. It checks `x-amz-expected-bucket-owner` after authentication and before the operation runs, so a failed check changes nothing.
+
+- A value that isn't exactly 12 digits returns `400 InvalidBucketOwnerAWSAccountID`.
+- A 12-digit value other than the account returns `403 AccessDenied`.
+- The account ID has no effect.
+- `CopyObject` applies the same rules to `x-amz-source-expected-bucket-owner` for the source bucket.
+- The check covers bucket and object requests, signed or anonymous. It doesn't cover `CreateBucket`, because the bucket doesn't exist yet, or `ListBuckets`. Browser POST forms ignore the header. The AWS recording covers the common operations, not these three.
 
 ## Ownership controls
 

@@ -68,6 +68,8 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Lifecycle cleanup holds the bucket lock exclusively. It reads current metadata before deleting eligible objects.
 - `internal/acl` holds ACL documents. Object ACLs travel with metadata through uploads and multipart completion.
 - ACL grants use the literal `xsi:type` prefix in responses because SDK decoders require it.
+- `internal/account` holds the one account ID that S3, SQS, and SNS share. `expectedOwner` in `internal/s3api/handler.go` checks `x-amz-expected-bucket-owner` for every bucket request before the operation runs. Call `checkExpectedOwner` for other owner headers, such as `x-amz-source-expected-bucket-owner`.
+- `CopyObject` sets `PutOptions.IfMatch` and `IfNoneMatch` through `writeConditions`, so the store evaluates destination conditions with the write.
 - Anonymous overwrites check ownership again under the object lock before committing.
 - Anonymous GET and HEAD check the ACL from the metadata snapshot used for the response.
 - Conditional deletes read current metadata under the object lock and hold it through deletion. `store.DeleteOptions.IfMatch` distinguishes an absent condition from an empty one. Single deletes use `If-Match`; batch deletes use each XML `ETag` and preserve errors in `Quiet` mode.

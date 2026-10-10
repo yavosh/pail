@@ -134,6 +134,7 @@ func scenarios() []scenario {
 		conditionalDeleteScenario(),
 		objectOptionsScenario(),
 		ownershipScenario(),
+		copyConditionsOwnerScenario(),
 		sqsAuthErrorsScenario(),
 		sqsQueueBasicsScenario(),
 		sqsMessageAttributesScenario(),
