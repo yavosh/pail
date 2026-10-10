@@ -31,6 +31,8 @@ const (
 	pageSize      = 100
 	protocolSQS   = "sqs"
 	attrRaw       = "RawMessageDelivery"
+	attrFilter    = "FilterPolicy"
+	attrScope     = "FilterPolicyScope"
 	sqsARNPrefix  = "arn:aws:sqs:"
 	topicARNStart = "arn:aws:sns:"
 )

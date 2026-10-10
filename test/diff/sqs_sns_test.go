@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -278,20 +279,21 @@ func snsAttributesScenario() scenario {
 	}}
 }
 
+// snsQueuePolicy is a JSON string inside a JSON body, so its quotes are escaped. AWS
+// delivers to an SQS queue only when the queue policy allows the topic.
+const snsQueuePolicy = `{"QueueUrl":"{queueUrl}","Attributes":{"Policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",` +
+	`\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"{queueArn}\",` +
+	`\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"{topicArn}\"}}}]}"}}`
+
 func snsSQSDeliveryScenario() scenario {
 	const topic = "&TopicArn={topicArn}"
 	const url = `"QueueUrl":"{queueUrl}"`
-	// The policy is a JSON string inside the JSON body, so its quotes are escaped. AWS
-	// delivers to an SQS queue only when the queue policy allows the topic.
-	policy := `{"QueueUrl":"{queueUrl}","Attributes":{"Policy":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",` +
-		`\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"{queueArn}\",` +
-		`\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"{topicArn}\"}}}]}"}}`
 	const attr = "&MessageAttributes.entry.1.Name=color&MessageAttributes.entry.1.Value.DataType=String&MessageAttributes.entry.1.Value.StringValue=blue"
 	return scenario{name: "sns-sqs-delivery", topics: []string{"{name}"}, queues: []string{"{name}"}, steps: []step{
 		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
 		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
 		sqsStep("get-queue-arn", "GetQueueAttributes", `{`+url+`,"AttributeNames":["QueueArn"]}`),
-		sqsStep("set-queue-policy", "SetQueueAttributes", policy),
+		sqsStep("set-queue-policy", "SetQueueAttributes", snsQueuePolicy),
 		snsStep("subscribe", "Action=Subscribe"+topic+"&Protocol=sqs&Endpoint={queueArn}"+snsVersion),
 		snsStep("get-subscription-attributes", "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}"+snsVersion),
 		snsStep("list-subscriptions-by-topic", "Action=ListSubscriptionsByTopic"+topic+snsVersion),
@@ -349,6 +351,133 @@ func snsErrorsScenario() scenario {
 		snsStep("unknown-action", "Action=Bogus"+snsVersion),
 		snsStep("delete-topic", "Action=DeleteTopic"+topic+snsVersion),
 		snsStep("publish-to-deleted", "Action=Publish"+topic+"&Message=x"+snsVersion),
+	}}
+}
+
+// The filter scenarios deliver raw to one queue. A receive takes up to 10
+// messages, so a wrongly delivered message shows up next to the expected one.
+const (
+	filterQueueURL = `"QueueUrl":"{queueUrl}"`
+	filterReceive  = `{` + filterQueueURL + `,"WaitTimeSeconds":10,"MaxNumberOfMessages":10,"MessageAttributeNames":["All"]}`
+	filterDelete   = `{` + filterQueueURL + `,"ReceiptHandle":"{receiptHandle}"}`
+)
+
+func filterSubscribe(policy string) string {
+	return "Action=Subscribe&TopicArn={topicArn}&Protocol=sqs&Endpoint={queueArn}&Attributes.entry.1.key=RawMessageDelivery&Attributes.entry.1.value=true" +
+		"&Attributes.entry.2.key=FilterPolicy&Attributes.entry.2.value=" + url.QueryEscape(policy) + snsVersion
+}
+
+func filterSet(name, value string) string {
+	return "Action=SetSubscriptionAttributes&SubscriptionArn={subscriptionArn}&AttributeName=" + name +
+		"&AttributeValue=" + url.QueryEscape(value) + snsVersion
+}
+
+// filterPublish builds a Publish form; attrs holds name, data type, and value triples.
+func filterPublish(message string, attrs ...string) string {
+	form := "Action=Publish&TopicArn={topicArn}&Message=" + url.QueryEscape(message)
+	for i := 0; i < len(attrs); i += 3 {
+		n := i/3 + 1
+		form += fmt.Sprintf("&MessageAttributes.entry.%d.Name=%s&MessageAttributes.entry.%d.Value.DataType=%s&MessageAttributes.entry.%d.Value.StringValue=%s",
+			n, attrs[i], n, attrs[i+1], n, url.QueryEscape(attrs[i+2]))
+	}
+	return form + snsVersion
+}
+
+func snsFilterPoliciesScenario() scenario {
+	const topic = "&TopicArn={topicArn}"
+	const queueURL, receive, del = filterQueueURL, filterReceive, filterDelete
+	subscribe, set, publish := filterSubscribe, filterSet, filterPublish
+	words := func(prefix string, n int) string {
+		var list []string
+		for i := range n {
+			list = append(list, fmt.Sprintf("%q", fmt.Sprint(prefix, i)))
+		}
+		return "[" + strings.Join(list, ",") + "]"
+	}
+	return scenario{name: "sns-filter-policies", topics: []string{"{name}"}, queues: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
+		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
+		sqsStep("get-queue-arn", "GetQueueAttributes", `{`+queueURL+`,"AttributeNames":["QueueArn"]}`),
+		sqsStep("set-queue-policy", "SetQueueAttributes", snsQueuePolicy),
+		snsStep("subscribe-bad-filter", subscribe(`{"color":[{"bogus":"x"}]}`)),
+		snsStep("subscribe", subscribe(`{"color":["blue","green"],"size":[{"numeric":[">",10,"<=",20]}]}`)),
+		snsStep("get-subscription-attributes", "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("publish-wrong-color", publish("wrong-color", "color", "String", "red", "size", "Number", "15")),
+		snsStep("publish-size-as-string", publish("size-as-string", "color", "String", "blue", "size", "String", "15")),
+		snsStep("publish-match", publish("match", "color", "String", "blue", "size", "Number", "15")),
+		sqsStep("receive-match", "ReceiveMessage", receive),
+		sqsStep("delete-match", "DeleteMessage", del),
+		snsStep("set-array-policy", set("FilterPolicy", `{"tags":["b"],"region":[{"prefix":"eu-"}],"env":[{"anything-but":["prod","stage"]}],"trace":[{"exists":false}]}`)),
+		snsStep("publish-anything-but-miss", publish("anything-but-miss", "tags", "String.Array", `["a","b"]`, "region", "String", "eu-west-1", "env", "String", "prod")),
+		snsStep("publish-exists-miss", publish("exists-miss", "tags", "String.Array", `["b"]`, "region", "String", "eu-west-1", "env", "String", "dev", "trace", "String", "x")),
+		snsStep("publish-array-match", publish("array", "tags", "String.Array", `["a","b"]`, "region", "String", "eu-west-1", "env", "String", "dev")),
+		sqsStep("receive-array", "ReceiveMessage", receive),
+		sqsStep("delete-array", "DeleteMessage", del),
+		snsStep("set-body-scope", set("FilterPolicyScope", "MessageBody")),
+		snsStep("set-body-policy", set("FilterPolicy", `{"order":{"total":[{"numeric":[">=",100]}],"kind":["book"]}}`)),
+		snsStep("publish-body-miss", publish(`{"order":{"total":5,"kind":"book"}}`)),
+		snsStep("publish-body-not-json", publish("plain")),
+		snsStep("publish-body-match", publish(`{"order":{"total":150,"kind":["book","pen"]}}`)),
+		sqsStep("receive-body", "ReceiveMessage", receive),
+		sqsStep("delete-body", "DeleteMessage", del),
+		snsStep("set-scope-attributes-nested", set("FilterPolicyScope", "MessageAttributes")),
+		snsStep("set-not-json", set("FilterPolicy", "{")),
+		snsStep("set-too-many-keys", set("FilterPolicy", `{"a":["x"],"b":["x"],"c":["x"],"d":["x"],"e":["x"],"f":["x"]}`)),
+		snsStep("set-too-complex", set("FilterPolicy", `{"a":`+words("a", 12)+`,"b":`+words("b", 13)+`}`)),
+		snsStep("set-empty-policy", set("FilterPolicy", "{}")),
+		snsStep("get-attributes-after-empty", "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("unsubscribe", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("delete-topic", "Action=DeleteTopic"+topic+snsVersion),
+		sqsStep("delete-queue", "DeleteQueue", `{`+queueURL+`}`),
+	}}
+}
+
+func snsFilterEdgeCasesScenario() scenario {
+	const structured = `{"default":"{\"kind\":\"default\"}","sqs":"{\"kind\":\"sqs\"}"}`
+	publishStructured := "Action=Publish&TopicArn={topicArn}&MessageStructure=json&Message=" + url.QueryEscape(structured) + snsVersion
+	receive := func(name string) step { return sqsStep(name, "ReceiveMessage", filterReceive) }
+	del := func(name string) step { return sqsStep(name, "DeleteMessage", filterDelete) }
+	// A sentinel that matches follows each probe that pail drops, so every
+	// receive expects one message.
+	return scenario{name: "sns-filter-edge-cases", topics: []string{"{name}"}, queues: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
+		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
+		sqsStep("get-queue-arn", "GetQueueAttributes", `{`+filterQueueURL+`,"AttributeNames":["QueueArn"]}`),
+		sqsStep("set-queue-policy", "SetQueueAttributes", snsQueuePolicy),
+		snsStep("subscribe", filterSubscribe(`{"env":[{"anything-but":["prod"]}]}`)),
+		snsStep("publish-anything-but-absent", filterPublish("absent", "other", "String", "x")),
+		snsStep("publish-anything-but-sentinel", filterPublish("sentinel", "env", "String", "dev")),
+		receive("receive-anything-but-absent"),
+		del("delete-anything-but-absent"),
+		snsStep("publish-anything-but-number", filterPublish("number", "env", "Number", "5")),
+		receive("receive-anything-but-number"),
+		del("delete-anything-but-number"),
+		snsStep("set-anything-but-number-policy", filterSet("FilterPolicy", `{"size":[{"anything-but":[100]}]}`)),
+		snsStep("publish-anything-but-string", filterPublish("string", "size", "String", "abc")),
+		receive("receive-anything-but-string"),
+		del("delete-anything-but-string"),
+		snsStep("set-body-scope", filterSet("FilterPolicyScope", "MessageBody")),
+		snsStep("set-nested-six-leaves", filterSet("FilterPolicy", `{"a":{"b":["x"],"c":["x"],"d":["x"],"e":["x"],"f":["x"],"g":["x"]}}`)),
+		snsStep("set-nested-five-leaves", filterSet("FilterPolicy", `{"a":{"b":["x"],"c":["x"],"d":["x"]},"e":{"f":["x"],"g":["x"]}}`)),
+		snsStep("set-exists-false-policy", filterSet("FilterPolicy", `{"order":{"coupon":[{"exists":false}]}}`)),
+		snsStep("publish-missing-leaf", filterPublish(`{"order":{"total":1}}`)),
+		receive("receive-missing-leaf"),
+		del("delete-missing-leaf"),
+		snsStep("publish-missing-parent", filterPublish(`{"other":1}`)),
+		receive("receive-missing-parent"),
+		del("delete-missing-parent"),
+		snsStep("set-structure-sqs-policy", filterSet("FilterPolicy", `{"kind":["sqs"]}`)),
+		snsStep("publish-structured-sqs", publishStructured),
+		receive("receive-structured-sqs"),
+		del("delete-structured-sqs"),
+		snsStep("set-structure-default-policy", filterSet("FilterPolicy", `{"kind":["default"]}`)),
+		snsStep("publish-structured-default", publishStructured),
+		snsStep("publish-structured-sentinel", filterPublish(`{"kind":"default"}`)),
+		receive("receive-structured-default"),
+		del("delete-structured-default"),
+		snsStep("unsubscribe", "Action=Unsubscribe&SubscriptionArn={subscriptionArn}"+snsVersion),
+		snsStep("delete-topic", "Action=DeleteTopic&TopicArn={topicArn}"+snsVersion),
+		sqsStep("delete-queue", "DeleteQueue", `{`+filterQueueURL+`}`),
 	}}
 }
 

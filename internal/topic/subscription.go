@@ -2,6 +2,7 @@ package topic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -30,16 +31,29 @@ func (e *Engine) checkEndpoint(protocol, endpoint string) (string, error) {
 	return name, nil
 }
 
-// checkSubAttrs validates subscription attributes. RawMessageDelivery is the
-// only one that pail supports; filter policies come later.
+// checkSubAttrs validates subscription attributes. pail supports
+// RawMessageDelivery, FilterPolicy, and FilterPolicyScope; the policy is
+// checked against its scope.
 func checkSubAttrs(attrs map[string]string) error {
 	for k, v := range attrs {
-		if k != attrRaw {
-			return fmt.Errorf("subscription attribute %q is not supported: %w", k, ErrInvalidParameter)
+		if err := checkSubAttr(k, v); err != nil {
+			return err
 		}
+	}
+	_, err := compileFilter(attrs)
+	return err
+}
+
+// checkSubAttr checks one attribute name and value without the filter policy.
+func checkSubAttr(k, v string) error {
+	switch k {
+	case attrFilter, attrScope:
+	case attrRaw:
 		if v != "true" && v != "false" {
 			return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
 		}
+	default:
+		return fmt.Errorf("subscription attribute %q is not supported: %w", k, ErrInvalidParameter)
 	}
 	return nil
 }
@@ -65,11 +79,13 @@ func (e *Engine) Subscribe(ctx context.Context, topicARN, protocol, endpoint str
 	if err := checkSubAttrs(attrs); err != nil {
 		return "", err
 	}
+	stored := maps.Clone(attrs)
+	maps.DeleteFunc(stored, unsetValue)
 	for _, s := range e.topicSubs(topicARN) {
 		if s.Protocol != protocol || s.Endpoint != endpoint {
 			continue
 		}
-		for k, v := range attrs {
+		for k, v := range stored {
 			if subAttrValue(s, k) != v {
 				// The message text is unverified.
 				return "", fmt.Errorf("subscription %s already exists with different attributes: %w", s.ARN, ErrInvalidParameter)
@@ -77,7 +93,7 @@ func (e *Engine) Subscribe(ctx context.Context, topicARN, protocol, endpoint str
 		}
 		return s.ARN, nil
 	}
-	def := &subDef{ARN: topicARN + ":" + newUUID(), TopicARN: topicARN, Protocol: protocol, Endpoint: endpoint, Attributes: maps.Clone(attrs), Created: time.Now().Unix()}
+	def := &subDef{ARN: topicARN + ":" + newUUID(), TopicARN: topicARN, Protocol: protocol, Endpoint: endpoint, Attributes: stored, Created: time.Now().Unix()}
 	if err := e.persistSub(def); err != nil {
 		return "", err
 	}
@@ -90,7 +106,20 @@ func subAttrValue(s *subDef, k string) string {
 	if v, ok := s.Attributes[k]; ok {
 		return v
 	}
-	return "false"
+	switch k {
+	case attrRaw:
+		return "false"
+	case attrScope:
+		return scopeAttributes
+	}
+	return ""
+}
+
+// unsetValue reports whether v removes attribute k: "" does, and so does an
+// empty FilterPolicy object (recorded in sns-filter-policies).
+func unsetValue(k, v string) bool {
+	var m map[string]json.RawMessage
+	return v == "" || k == attrFilter && json.Unmarshal([]byte(v), &m) == nil && m != nil && len(m) == 0
 }
 
 // Unsubscribe removes a subscription. A missing one is ErrNotFound (unverified).
@@ -155,7 +184,7 @@ func (e *Engine) ListSubscriptionsByTopic(ctx context.Context, topicARN, next st
 }
 
 // SubscriptionAttributes returns the attributes of a subscription in the order
-// AWS lists them (recorded in sns-sqs-delivery).
+// AWS lists them (recorded in sns-sqs-delivery and sns-filter-policies).
 func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attribute, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -167,17 +196,25 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		return nil, err
 	}
 	// AWS returns the caller's ARN as SubscriptionPrincipal; the value's shape is unverified.
-	return []Attribute{
+	policy := s.Attributes[attrFilter]
+	out := []Attribute{
 		{"SubscriptionPrincipal", "arn:aws:iam::" + queue.Account + ":root"},
 		{"Owner", queue.Account},
 		{attrRaw, subAttrValue(s, attrRaw)},
+		{attrFilter, policy},
 		{"TopicArn", s.TopicARN},
 		{"Endpoint", s.Endpoint},
+		{attrScope, subAttrValue(s, attrScope)},
 		{"Protocol", s.Protocol},
 		{"PendingConfirmation", "false"},
 		{"ConfirmationWasAuthenticated", "true"},
 		{"SubscriptionArn", s.ARN},
-	}, nil
+	}
+	if policy == "" {
+		// Without a policy, AWS lists neither filter attribute, even with a scope set.
+		out = slices.DeleteFunc(out, func(a Attribute) bool { return a.Key == attrFilter || a.Key == attrScope })
+	}
+	return out, nil
 }
 
 // SetSubscriptionAttribute sets one attribute of a subscription.
@@ -185,7 +222,7 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := checkSubAttrs(map[string]string{name: value}); err != nil {
+	if err := checkSubAttr(name, value); err != nil {
 		return err
 	}
 	e.mu.Lock()
@@ -199,7 +236,14 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 	if updated.Attributes == nil {
 		updated.Attributes = map[string]string{}
 	}
-	updated.Attributes[name] = value
+	if unsetValue(name, value) {
+		delete(updated.Attributes, name)
+	} else {
+		updated.Attributes[name] = value
+	}
+	if err := checkSubAttrs(updated.Attributes); err != nil {
+		return err
+	}
 	if err := e.persistSub(&updated); err != nil {
 		return err
 	}

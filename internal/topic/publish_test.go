@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -431,5 +432,52 @@ func TestOpenRejectsBadSigningMaterial(t *testing.T) {
 	}
 	if _, err := Open(t.Context(), e.fs, testRegion, &fakeQueues{}); err == nil {
 		t.Error("Open with a bad signing key = nil error, want a failure")
+	}
+}
+
+func TestPublishFilterPolicy(t *testing.T) {
+	str := func(v string) map[string]MessageAttribute {
+		return map[string]MessageAttribute{"color": {DataType: "String", StringValue: v}}
+	}
+	tests := []struct {
+		name   string
+		attrs  map[string]string
+		modify func(*PublishInput)
+		want   bool
+	}{
+		{"attribute match", map[string]string{"FilterPolicy": `{"color":["blue"]}`}, func(in *PublishInput) { in.Attributes = str("blue") }, true},
+		{"attribute miss", map[string]string{"FilterPolicy": `{"color":["blue"]}`}, func(in *PublishInput) { in.Attributes = str("red") }, false},
+		{"attribute policy ignores the body", map[string]string{"FilterPolicy": `{"color":["blue"]}`}, func(in *PublishInput) { in.Message = `{"color":"blue"}` }, false},
+		{"body match", map[string]string{"FilterPolicy": `{"o":{"k":["book"]}}`, "FilterPolicyScope": "MessageBody"}, func(in *PublishInput) { in.Message = `{"o":{"k":"book"}}` }, true},
+		{"body miss", map[string]string{"FilterPolicy": `{"o":{"k":["book"]}}`, "FilterPolicyScope": "MessageBody"}, func(in *PublishInput) { in.Message = `{"o":{"k":"pen"}}` }, false},
+		{"body not JSON", map[string]string{"FilterPolicy": `{"o":{"k":["book"]}}`, "FilterPolicyScope": "MessageBody"}, func(in *PublishInput) { in.Message = "plain" }, false},
+		{"body policy sees the SQS message", map[string]string{"FilterPolicy": `{"k":["book"]}`, "FilterPolicyScope": "MessageBody"}, func(in *PublishInput) {
+			in.MessageStructure = "json"
+			in.Message = `{"default":"plain","sqs":"{\"k\":\"book\"}"}`
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, fq := newEngine(t)
+			arn := mustTopic(t, e, "filtered")
+			mustSubscribe(t, e, arn, "filtered", tt.attrs)
+			mustSubscribe(t, e, arn, "everything", nil)
+			in := publishInput(arn)
+			tt.modify(&in)
+			if _, err := e.Publish(t.Context(), in); err != nil {
+				t.Fatalf("Publish error = %v", err)
+			}
+			var got []string
+			for _, s := range fq.sent {
+				got = append(got, s.Queue)
+			}
+			want := []string{"everything"}
+			if tt.want {
+				want = []string{"filtered", "everything"}
+			}
+			if !reflect.DeepEqual(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(want))) {
+				t.Errorf("Publish(%+v) delivered to %v, want %v", in, got, want)
+			}
+		})
 	}
 }
