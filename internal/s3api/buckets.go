@@ -148,6 +148,10 @@ func (h *handler) handleCreateBucket(w http.ResponseWriter, r *http.Request, t t
 			return
 		}
 	}
+	if strings.EqualFold(r.Header.Get("x-amz-bucket-object-lock-enabled"), "true") {
+		writeError(w, r, errNotImplemented) // pail has no Object Lock buckets
+		return
+	}
 	policy, apiErr, valid := h.writeACL(r, true)
 	if !valid {
 		writeError(w, r, apiErr)

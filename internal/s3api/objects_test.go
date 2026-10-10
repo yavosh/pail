@@ -319,8 +319,19 @@ func TestPutObjectChecksumHeaders(t *testing.T) {
 		{"wrong length", map[string]string{"x-amz-checksum-crc32": "AAAAAAAAAAA="}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"two values", map[string]string{"x-amz-checksum-crc32": "DUoRhQ==", "x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"algorithm disagrees with value", map[string]string{"x-amz-sdk-checksum-algorithm": "SHA1", "x-amz-checksum-crc32": "DUoRhQ=="}, http.StatusBadRequest, "InvalidRequest", ""},
-		{"unknown algorithm", map[string]string{"x-amz-sdk-checksum-algorithm": "MD5"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"unknown algorithm", map[string]string{"x-amz-sdk-checksum-algorithm": "BOGUS"}, http.StatusBadRequest, "InvalidRequest", ""},
 		{"trailer without aws-chunked", map[string]string{"x-amz-trailer": "x-amz-checksum-crc32"}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"sha512 value", map[string]string{"x-amz-checksum-sha512": "MJ7MSJwS1utMxA9QyQLytNDtd+5RGnx6m808qG1M2G+YndNbxf9JlnDaNCVbRbDP2DDoH2Bdz33FVC6TrpzXbw=="}, http.StatusOK, "", "SHA512"},
+		{"md5 value", map[string]string{"x-amz-checksum-md5": "XrY7u+Ae7tCTyyK7j1rNww=="}, http.StatusOK, "", "MD5"},
+		{"xxhash64 value", map[string]string{"x-amz-checksum-xxhash64": "RatnNLIeaWg="}, http.StatusOK, "", "XXHASH64"},
+		{"xxhash64 named by the sdk", map[string]string{"x-amz-sdk-checksum-algorithm": "xxhash64", "x-amz-checksum-xxhash64": "RatnNLIeaWg="}, http.StatusOK, "", "XXHASH64"},
+		{"xxhash64 wrong value", map[string]string{"x-amz-checksum-xxhash64": "AAAAAAAAAAA="}, http.StatusBadRequest, "BadDigest", ""},
+		{"md5 wrong length", map[string]string{"x-amz-checksum-md5": "AAAAAAAAAAA="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"xxhash3 header", map[string]string{"x-amz-checksum-xxhash3": "AAAAAAAAAAA="}, http.StatusNotImplemented, "NotImplemented", ""},
+		{"xxhash128 header", map[string]string{"x-amz-checksum-xxhash128": "AAAAAAAAAAAAAAAAAAAAAA=="}, http.StatusNotImplemented, "NotImplemented", ""},
+		{"xxhash3 named by the sdk", map[string]string{"x-amz-sdk-checksum-algorithm": "XXHASH3"}, http.StatusNotImplemented, "NotImplemented", ""},
+		{"unknown checksum header", map[string]string{"x-amz-checksum-bogus": "AAAAAA=="}, http.StatusBadRequest, "InvalidRequest", ""},
+		{"checksum mode is not a checksum", map[string]string{"x-amz-checksum-mode": "ENABLED"}, http.StatusOK, "", "CRC64NVME"},
 	}
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, srv.URL+"/bkt/k", strings.NewReader("hello world"))

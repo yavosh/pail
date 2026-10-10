@@ -92,8 +92,13 @@ func TestUploadChecksum(t *testing.T) {
 		{"SHA256 composite", "SHA256", "COMPOSITE", "SHA256", "COMPOSITE", true},
 		{"SHA256 full object", "SHA256", "FULL_OBJECT", "", "", false},
 		{"SHA1 full object", "SHA1", "FULL_OBJECT", "", "", false},
+		// The AWS rules for these three are unverified: they follow SHA1 and SHA256.
+		{"SHA512 default", "SHA512", "", "SHA512", "COMPOSITE", true},
+		{"MD5 composite", "MD5", "COMPOSITE", "MD5", "COMPOSITE", true},
+		{"XXHASH64 full object", "XXHASH64", "FULL_OBJECT", "", "", false},
+		{"XXHASH3 is not supported", "XXHASH3", "", "", "", false},
 		{"lower-case algorithm", "crc32", "", "CRC32", "COMPOSITE", true},
-		{"unknown algorithm", "MD5", "", "", "", false},
+		{"unknown algorithm", "BOGUS", "", "", "", false},
 		{"unknown type", "CRC32", "PARTIAL", "", "", false},
 	}
 	for _, tt := range tests {
@@ -142,7 +147,7 @@ func TestMultipartErrors(t *testing.T) {
 	}{
 		{"create in a missing bucket", http.MethodPost, "/nope/k?uploads", "", nil, 404, "NoSuchBucket"},
 		{"create in an invalid bucket", http.MethodPost, "/Bad_Name/k?uploads", "", nil, 400, "InvalidBucketName"},
-		{"create with an unknown algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "MD5"}, 400, "InvalidRequest"},
+		{"create with an unknown algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "BOGUS"}, 400, "InvalidRequest"},
 		{"create with a type but no algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-type": "FULL_OBJECT"}, 400, "InvalidRequest"},
 		{"create CRC64NVME composite", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "CRC64NVME", "x-amz-checksum-type": "COMPOSITE"}, 400, "InvalidRequest"},
 		{"create SHA256 full object", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "SHA256", "x-amz-checksum-type": "FULL_OBJECT"}, 400, "InvalidRequest"},

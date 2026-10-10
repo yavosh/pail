@@ -7,9 +7,32 @@ This page describes how pail implements the S3 operations it supports, and where
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
 - Virtual-hosted-style requests work when `--domain` is set. For example, with `--domain localhost`, pail serves `http://<bucket>.localhost:9000/<key>`.
 - An operation that pail doesn't support returns `501 NotImplemented` with an S3 XML error. Requests with `x-amz-tagging` or `x-amz-tagging-directive` also return `501 NotImplemented`.
-- pail ignores options that it doesn't implement on object writes. Examples are server-side encryption, Object Lock, storage class, website redirect, and `x-amz-expected-bucket-owner` (checked only on CORS and lifecycle requests). It also ignores destination preconditions on `CopyObject`, and a standalone checksum header for an algorithm it doesn't support, such as `x-amz-checksum-sha512`. A browser form field for an unsupported `x-amz-*` option returns `501 NotImplemented`.
+- pail ignores `x-amz-expected-bucket-owner` outside CORS and lifecycle requests. It also ignores destination preconditions on `CopyObject`. The next section lists the object write options that pail checks.
+- A browser form field for an unsupported `x-amz-*` option returns `501 NotImplemented`.
 - Like AWS, pail answers a request path with a literal `..` segment with an empty `400 Bad Request`. For GET and DELETE requests, that response includes request IDs. AWS front ends vary in sending them.
 - pail doesn't check percent-encoded dots, such as `%2E%2E`. An object with a `..` key that an older pail stored is reachable only through the encoded form.
+
+## Object options
+
+These headers apply to `PutObject`, `CopyObject`, `CreateMultipartUpload`, and the matching browser form fields. pail stores and returns the values. It doesn't encrypt, archive, or lock anything.
+
+- Server-side encryption: `x-amz-server-side-encryption` accepts `AES256`, `aws:kms`, and `aws:kms:dsse`. Any other value returns `400 InvalidArgument`.
+  - `PutObject`, `GetObject`, `HeadObject`, `CopyObject`, `UploadPart`, and `CompleteMultipartUpload` return the stored value. If the request set none, they return `AES256`, as AWS does with default encryption. `CreateMultipartUpload` returns the header only when the request set it.
+  - pail returns no KMS key ID header and ignores the KMS key ID, context, and bucket key headers.
+  - An SSE-KMS `ETag` on AWS isn't the MD5 digest of the body. pail returns the MD5 digest.
+  - `CopyObject` takes the method from its own request, not from the source.
+- SSE-C: any `x-amz-server-side-encryption-customer-*` header returns `403 AccessDenied`, as AWS does on new buckets. `x-amz-copy-source-server-side-encryption-customer-*` headers get the same answer. This is unverified.
+- Object Lock: `x-amz-object-lock-mode`, `x-amz-object-lock-retain-until-date`, and `x-amz-object-lock-legal-hold` return `400 InvalidRequest`, as on an AWS bucket without Object Lock. `CreateBucket` with `x-amz-bucket-object-lock-enabled: true` returns `501 NotImplemented`. AWS creates the bucket, so this difference is unverified.
+- Storage class: `x-amz-storage-class` accepts `STANDARD`, `REDUCED_REDUNDANCY`, `STANDARD_IA`, `ONEZONE_IA`, `INTELLIGENT_TIERING`, `GLACIER`, `DEEP_ARCHIVE`, and `GLACIER_IR`. Any other value returns `400 InvalidStorageClass`.
+  - `PutObject`, `HeadObject`, `GetObject`, and `UploadPart` return `x-amz-storage-class` for a class other than `STANDARD`. `GetObject` is unverified.
+  - `ListObjectsV2`, `ListObjects`, `ListMultipartUploads`, and `ListParts` show the class. `ListParts` is unverified.
+  - A completed multipart upload keeps the class of the upload.
+  - `CopyObject` sets the class from its request. Without the header, the copy is `STANDARD`. A copy onto the same key is valid when the request changes the metadata, storage class, or encryption.
+  - `GetObject` of a `GLACIER` or `DEEP_ARCHIVE` object returns `403 InvalidObjectState`. `HeadObject` works. `CopyObject` from such an object returns the same error, which is unverified. pail has no transitions and no restore.
+- Website redirect: `x-amz-website-redirect-location` must start with `/`, `http://`, or `https://`. Otherwise the request returns `400 InvalidRedirectLocation`.
+  - `HeadObject` and `GetObject` return the value (`GetObject` is unverified). `PutObject` doesn't echo it.
+  - `CopyObject` keeps a redirect only with `x-amz-metadata-directive: REPLACE` and a new header. The default `COPY` directive drops it.
+  - pail doesn't serve website hosting, so it never follows the redirect.
 
 ## Buckets
 
@@ -82,9 +105,10 @@ pail supports `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`, 
 | CRC64NVME | `FULL_OBJECT` |
 | CRC32 or CRC32C | `COMPOSITE` by default, or `FULL_OBJECT` on request |
 | SHA-1 or SHA-256 | `COMPOSITE` |
+| SHA-512, MD5, or XXHASH64 | `COMPOSITE` (unverified) |
 | None | CRC64NVME `FULL_OBJECT` |
 
-Any other combination fails with `InvalidRequest`.
+Any other combination fails with `InvalidRequest`. For SHA-512, MD5, and XXHASH64, pail follows the SHA-1 and SHA-256 rules, because no AWS recording covers multipart uploads with them.
 
 - pail checks each part's checksum on upload.
 - A `COMPOSITE` object gets the checksum of its part checksums, as `<value>-<parts>`. To complete a composite upload, send each part checksum, with consecutive part numbers starting at 1.
@@ -93,7 +117,11 @@ Any other combination fails with `InvalidRequest`.
 
 ## Checksums
 
-- pail supports CRC32, CRC32C, CRC64NVME, SHA-1, and SHA-256, sent as an `x-amz-checksum-*` header or an `aws-chunked` trailer.
+- pail supports CRC32, CRC32C, CRC64NVME, SHA-1, SHA-256, SHA-512, MD5, and XXHASH64, sent as an `x-amz-checksum-*` header or an `aws-chunked` trailer.
+  - `x-amz-checksum-md5` is a flexible checksum. It's separate from `Content-MD5`.
+  - The `XXHASH64` value is the 8-byte big-endian digest of XXH64 with seed 0, in base64.
+- `x-amz-checksum-xxhash3` and `x-amz-checksum-xxhash128`, and `x-amz-sdk-checksum-algorithm` values that name them, return `501 NotImplemented`. AWS supports both algorithms.
+- Any other `x-amz-checksum-<name>` header returns `400 InvalidRequest`. pail never ignores a checksum that it can't verify. The exceptions are the real headers `x-amz-checksum-type`, `x-amz-checksum-mode`, and `x-amz-checksum-algorithm`.
 - pail verifies and stores one checksum per object. Like AWS, it computes CRC64NVME when a client sends none.
 - Reads with `x-amz-checksum-mode: ENABLED` and listings return the checksum.
 
@@ -129,7 +157,7 @@ pail supports `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, and `PutObjectAcl`
 
 - `POST Object` accepts SigV4 policies from boto3 and aws-sdk-go-v2.
 - Policies enforce expiration, exact matches, prefixes, required fields, and file size bounds.
-- Forms support `${filename}`, metadata, ACLs, MD5 and flexible checksums, redirects, and the success statuses `200`, `201`, and `204`.
+- Forms support `${filename}`, metadata, ACLs, the object options above, MD5 and flexible checksums, redirects, and the success statuses `200`, `201`, and `204`.
 - The file field must come last.
 
 ## Authentication

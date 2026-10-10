@@ -19,8 +19,18 @@ import (
 	"github.com/yavosh/pail/internal/vfs"
 )
 
+// ObjectOptions are write options that the store keeps and returns but does
+// not act on. An empty field means the client set none.
+type ObjectOptions struct {
+	ServerSideEncryption string `json:"serverSideEncryption,omitempty"`
+	// StorageClass is empty for STANDARD.
+	StorageClass    string `json:"storageClass,omitempty"`
+	WebsiteRedirect string `json:"websiteRedirect,omitempty"`
+}
+
 // ObjectInfo describes a stored object.
 type ObjectInfo struct {
+	ObjectOptions
 	ACL          *acl.Policy `json:"acl,omitempty"`
 	Key          string      `json:"key"`
 	Size         int64       `json:"size"`
@@ -47,6 +57,7 @@ type PutOptions struct {
 	Anonymous bool
 	ACL       *acl.Policy
 	Metadata  map[string]string
+	ObjectOptions
 	// ContentMD5 is the digest the client sent; nil means none was sent. A
 	// mismatch, including an empty slice, fails with ErrBadDigest.
 	ContentMD5 []byte
@@ -118,6 +129,7 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 		ACL:          opts.ACL,
 		Blob:         blob,
 
+		ObjectOptions:     opts.ObjectOptions,
 		ChecksumAlgorithm: algorithm,
 		Checksum:          checksum.Encode(flexibleSum),
 		ChecksumType:      checksum.FullObject,

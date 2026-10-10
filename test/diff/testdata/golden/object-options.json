@@ -1,0 +1,589 @@
+{
+  "scenario": "object-options",
+  "exchanges": [
+    {
+      "step": "create-bucket",
+      "request": "PUT /",
+      "fingerprint": "58b9f8c2268041b2",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Location": "/{bucket}",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-sse-s3",
+      "request": "PUT /sse",
+      "fingerprint": "cef370388e824e1a",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Checksum-Crc64nvme": "93WhyIA7ll4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "head-sse-s3",
+      "request": "HEAD /sse",
+      "fingerprint": "29d005af151242cf",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "put-default",
+      "request": "PUT /plain",
+      "fingerprint": "efaa875c951bbb1b",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Checksum-Crc64nvme": "93WhyIA7ll4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "get-default",
+      "request": "GET /plain",
+      "fingerprint": "606c244d3faa73b8",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      },
+      "body": "hello options"
+    },
+    {
+      "step": "put-sse-kms",
+      "request": "PUT /kms",
+      "fingerprint": "97e1d5a7073a39c8",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"b179c4ca0d1dd4eebce020a5905c5dc1\"",
+        "X-Amz-Checksum-Crc64nvme": "93WhyIA7ll4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "aws:kms"
+      }
+    },
+    {
+      "step": "delete-kms",
+      "request": "DELETE /kms",
+      "fingerprint": "bc274842dd0e0b5d",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-sse-bogus",
+      "request": "PUT /bogus",
+      "fingerprint": "b4642b9c71cea872",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
+      "step": "put-sse-c",
+      "request": "PUT /ssec",
+      "fingerprint": "31b0184960f32cfd",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: AccessDenied\n"
+    },
+    {
+      "step": "put-legal-hold",
+      "request": "PUT /locked",
+      "fingerprint": "daf4f6638cf74be7",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "put-retention",
+      "request": "PUT /locked",
+      "fingerprint": "400b453ecb11dc4a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "put-sha512",
+      "request": "PUT /sha512",
+      "fingerprint": "73954e20b5d28392",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Checksum-Sha512": "/ZgMNnwwgNMjl0guBnSk85W/A8h+K1/K/zzbMpuKz9vDKINtRnPaFnejwO0JMb9cW58Z2Ig/wsp0DbmEDykvjA==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "get-sha512",
+      "request": "GET /sha512",
+      "fingerprint": "d2e0cfbe9dcd81b1",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Checksum-Sha512": "/ZgMNnwwgNMjl0guBnSk85W/A8h+K1/K/zzbMpuKz9vDKINtRnPaFnejwO0JMb9cW58Z2Ig/wsp0DbmEDykvjA==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      },
+      "body": "hello options"
+    },
+    {
+      "step": "put-sha512-wrong",
+      "request": "PUT /bad",
+      "fingerprint": "04f643778516c57c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadDigest\n"
+    },
+    {
+      "step": "put-md5-checksum",
+      "request": "PUT /md5sum",
+      "fingerprint": "ff418f6e896fdaad",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Checksum-Md5": "UrqZqX5rtqAaoKA1j8UJIw==",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "put-xxhash64-wrong",
+      "request": "PUT /bad",
+      "fingerprint": "b361e67466741c92",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadDigest\n"
+    },
+    {
+      "step": "put-xxhash3-wrong",
+      "request": "PUT /bad",
+      "fingerprint": "06ccb6f94ab129b3",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadDigest\n"
+    },
+    {
+      "step": "put-xxhash128-wrong",
+      "request": "PUT /bad",
+      "fingerprint": "6f368604b8b5359a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: BadDigest\n"
+    },
+    {
+      "step": "put-unknown-checksum",
+      "request": "PUT /bad",
+      "fingerprint": "312bced90714a38b",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "head-bad",
+      "request": "HEAD /bad",
+      "fingerprint": "50819c089c12ac40",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "put-standard-ia",
+      "request": "PUT /ia",
+      "fingerprint": "3f7c69271beab29e",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Checksum-Crc64nvme": "93WhyIA7ll4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Storage-Class": "STANDARD_IA"
+      }
+    },
+    {
+      "step": "head-standard-ia",
+      "request": "HEAD /ia",
+      "fingerprint": "f72754dfcf969617",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Storage-Class": "STANDARD_IA"
+      }
+    },
+    {
+      "step": "put-glacier",
+      "request": "PUT /glacier",
+      "fingerprint": "09c7756e355a7fd0",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Checksum-Crc64nvme": "93WhyIA7ll4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Storage-Class": "GLACIER"
+      }
+    },
+    {
+      "step": "head-glacier",
+      "request": "HEAD /glacier",
+      "fingerprint": "1c18cb7ae87037df",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Storage-Class": "GLACIER"
+      }
+    },
+    {
+      "step": "get-glacier",
+      "request": "GET /glacier",
+      "fingerprint": "dcb47e60680e0212",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidObjectState\n"
+    },
+    {
+      "step": "put-storage-bogus",
+      "request": "PUT /bogus",
+      "fingerprint": "b549322cdeed715d",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidStorageClass\n"
+    },
+    {
+      "step": "list-classes",
+      "request": "GET /?list-type=2",
+      "fingerprint": "57cb7d1e9075e05d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Bucket-Region": "us-east-1",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListBucketResult\n  Name: {bucket}\n  Prefix: \n  KeyCount: 6\n  MaxKeys: 1000\n  IsTruncated: false\n  Contents\n    Key: glacier\n    LastModified: <volatile>\n    ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 13\n    StorageClass: GLACIER\n  Contents\n    Key: ia\n    LastModified: <volatile>\n    ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 13\n    StorageClass: STANDARD_IA\n  Contents\n    Key: md5sum\n    LastModified: <volatile>\n    ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n    ChecksumAlgorithm: MD5\n    ChecksumType: FULL_OBJECT\n    Size: 13\n    StorageClass: STANDARD\n  Contents\n    Key: plain\n    LastModified: <volatile>\n    ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 13\n    StorageClass: STANDARD\n  Contents\n    Key: sha512\n    LastModified: <volatile>\n    ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n    ChecksumAlgorithm: SHA512\n    ChecksumType: FULL_OBJECT\n    Size: 13\n    StorageClass: STANDARD\n  Contents\n    Key: sse\n    LastModified: <volatile>\n    ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n    ChecksumAlgorithm: CRC64NVME\n    ChecksumType: FULL_OBJECT\n    Size: 13\n    StorageClass: STANDARD\n"
+    },
+    {
+      "step": "put-redirect",
+      "request": "PUT /redirect",
+      "fingerprint": "c4e9dd7a2d42903c",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Checksum-Crc64nvme": "93WhyIA7ll4=",
+        "X-Amz-Checksum-Type": "FULL_OBJECT",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "head-redirect",
+      "request": "HEAD /redirect",
+      "fingerprint": "13dd4a44b3eb4881",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Website-Redirect-Location": "/target"
+      }
+    },
+    {
+      "step": "put-redirect-invalid",
+      "request": "PUT /bogus",
+      "fingerprint": "4e24631f4c6bee3b",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRedirectLocation\n"
+    },
+    {
+      "step": "copy-ia",
+      "request": "PUT /copy-ia",
+      "fingerprint": "fe055e8412693ad6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n  ChecksumCRC64NVME: 93WhyIA7ll4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-copy-ia",
+      "request": "HEAD /copy-ia",
+      "fingerprint": "9d5fab158e33f226",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "copy-redirect",
+      "request": "PUT /copy-redirect",
+      "fingerprint": "36298a66ef003047",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n  ChecksumCRC64NVME: 93WhyIA7ll4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-copy-redirect",
+      "request": "HEAD /copy-redirect",
+      "fingerprint": "d3a970c8a92123bb",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      }
+    },
+    {
+      "step": "create-upload-ia",
+      "request": "POST /upload?uploads",
+      "fingerprint": "f64146e3d1fac4cc",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: upload\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "list-uploads",
+      "request": "GET /?uploads",
+      "fingerprint": "4fcf59e099bd15b4",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "ListMultipartUploadsResult\n  Bucket: {bucket}\n  KeyMarker: \n  UploadIdMarker: <volatile>\n  NextKeyMarker: upload\n  NextUploadIdMarker: <volatile>\n  MaxUploads: 1000\n  IsTruncated: false\n  Upload\n    Key: upload\n    UploadId: <volatile>\n    Initiator\n      ID: <volatile>\n      DisplayName: <volatile>\n    Owner\n      ID: <volatile>\n    StorageClass: STANDARD_IA\n    Initiated: <volatile>\n"
+    },
+    {
+      "step": "upload-part",
+      "request": "PUT /upload?partNumber=1&uploadId={uploadId}",
+      "fingerprint": "a4675e0d1b2984d4",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Storage-Class": "STANDARD_IA"
+      }
+    },
+    {
+      "step": "complete-upload",
+      "request": "POST /upload?uploadId={uploadId}",
+      "fingerprint": "a45ba876346b36c4",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      },
+      "body": "CompleteMultipartUploadResult\n  Location: <volatile>\n  Bucket: {bucket}\n  Key: upload\n  ETag: \"c7cb9bf65041572c2389b0ed8129a699-1\"\n  ChecksumCRC64NVME: 93WhyIA7ll4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-upload",
+      "request": "HEAD /upload",
+      "fingerprint": "120fe1d33553a7ec",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"c7cb9bf65041572c2389b0ed8129a699-1\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Storage-Class": "STANDARD_IA"
+      }
+    },
+    {
+      "step": "create-upload-aborted",
+      "request": "POST /aborted?uploads",
+      "fingerprint": "a3239f7bcf57074e",
+      "status": 200,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: aborted\n  UploadId: <volatile>\n"
+    },
+    {
+      "step": "abort-upload",
+      "request": "DELETE /aborted?uploadId={uploadId}",
+      "fingerprint": "d139a2436a03830a",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "delete-objects",
+      "request": "POST /?delete",
+      "fingerprint": "c288d264e76f8139",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "DeleteResult\n  Deleted\n    Key: copy-ia\n  Deleted\n    Key: copy-redirect\n  Deleted\n    Key: glacier\n  Deleted\n    Key: ia\n  Deleted\n    Key: md5sum\n  Deleted\n    Key: plain\n  Deleted\n    Key: redirect\n  Deleted\n    Key: sha512\n  Deleted\n    Key: sse\n  Deleted\n    Key: ssec\n  Deleted\n    Key: upload\n"
+    },
+    {
+      "step": "delete-bucket",
+      "request": "DELETE /",
+      "fingerprint": "434a8222e47bf43f",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    }
+  ]
+}

@@ -2,8 +2,10 @@
 package checksum
 
 import (
+	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"hash"
 	"hash/crc32"
@@ -19,6 +21,9 @@ const (
 	CRC64NVME = "CRC64NVME"
 	SHA1      = "SHA1"
 	SHA256    = "SHA256"
+	SHA512    = "SHA512"
+	MD5       = "MD5"
+	XXHASH64  = "XXHASH64"
 	Default   = CRC64NVME
 )
 
@@ -36,7 +41,7 @@ var nvme = crc64.MakeTable(0x9A6C9329AC4BC9B5)
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
 // Algorithms lists every supported algorithm.
-var Algorithms = []string{CRC32, CRC32C, CRC64NVME, SHA1, SHA256}
+var Algorithms = []string{CRC32, CRC32C, CRC64NVME, SHA1, SHA256, SHA512, MD5, XXHASH64}
 
 // New returns a hash for algorithm, or false for an unknown one. The name is
 // case-insensitive, as in the x-amz-sdk-checksum-algorithm header.
@@ -52,6 +57,12 @@ func New(algorithm string) (hash.Hash, bool) {
 		return sha1.New(), true
 	case SHA256:
 		return sha256.New(), true
+	case SHA512:
+		return sha512.New(), true
+	case MD5:
+		return md5.New(), true
+	case XXHASH64:
+		return newXXH64(), true
 	}
 	return nil, false
 }

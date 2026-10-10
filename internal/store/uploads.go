@@ -51,6 +51,7 @@ type UploadInfo struct {
 	Initiated time.Time   `json:"initiated"`
 	// Metadata is stored with the object that Complete creates.
 	Metadata map[string]string `json:"metadata,omitempty"`
+	ObjectOptions
 	// ChecksumAlgorithm and ChecksumType are empty when the client chose none.
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
 	ChecksumType      string `json:"checksumType,omitempty"`
@@ -58,8 +59,9 @@ type UploadInfo struct {
 
 // UploadOptions are the optional parts of a CreateUpload.
 type UploadOptions struct {
-	ACL               *acl.Policy
-	Metadata          map[string]string
+	ACL      *acl.Policy
+	Metadata map[string]string
+	ObjectOptions
 	ChecksumAlgorithm string
 	ChecksumType      string
 }
@@ -70,6 +72,8 @@ type PartInfo struct {
 	Size         int64     `json:"size"`
 	ETag         string    `json:"etag"` // hex MD5, without quotes
 	LastModified time.Time `json:"lastModified"`
+	// ObjectOptions come from the upload. PutPart fills them; they are not stored with the part.
+	ObjectOptions `json:"-"`
 	// ChecksumAlgorithm and Checksum (base64) are empty when the part has none.
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
 	Checksum          string `json:"checksum,omitempty"`
@@ -188,6 +192,7 @@ func (s *Store) CreateUpload(ctx context.Context, bucket, key string, opts Uploa
 		Initiated:         time.Now().UTC(),
 		Metadata:          opts.Metadata,
 		ACL:               opts.ACL,
+		ObjectOptions:     opts.ObjectOptions,
 		ChecksumAlgorithm: checksum.Canonical(opts.ChecksumAlgorithm),
 		ChecksumType:      opts.ChecksumType,
 	}
@@ -276,6 +281,7 @@ func (s *Store) PutPart(ctx context.Context, bucket, key, uploadID string, partN
 	if oldErr == nil {
 		_ = s.fs.Remove(path.Join(uploadDir(bucket, uploadID), old.File))
 	}
+	rec.ObjectOptions = up.ObjectOptions
 	return rec.PartInfo, nil
 }
 
@@ -512,6 +518,8 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 		LastModified: time.Now().UTC(),
 		Metadata:     up.Metadata,
 		ACL:          up.ACL,
+
+		ObjectOptions: up.ObjectOptions,
 	}
 	if full != nil {
 		fullSum := full.Sum(nil)

@@ -2,6 +2,7 @@ package s3api
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/base64"
 	"errors"
 	"hash"
@@ -67,7 +68,12 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		writeError(w, r, apiErr)
 		return
 	}
-	opts := store.PutOptions{Metadata: metadata, ACL: &policy, Anonymous: policy.Owner.ID == acl.AnonymousID}
+	options, apiErr, valid := parseObjectOptions(r.Header)
+	if !valid {
+		writeError(w, r, apiErr)
+		return
+	}
+	opts := store.PutOptions{Metadata: metadata, ACL: &policy, ObjectOptions: options, Anonymous: policy.Owner.ID == acl.AnonymousID}
 	// A present but empty Content-MD5 is invalid, not absent.
 	if values, ok := r.Header["Content-Md5"]; ok {
 		sum, err := base64.StdEncoding.DecodeString(values[0])
@@ -91,8 +97,8 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 		ok        bool
 	)
 	// Only an aws-chunked body has trailers; fail before reading the body.
-	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
-		writeError(w, r, errInvalidChecksum)
+	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, apiErr, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
+		writeError(w, r, cmp.Or(apiErr, errInvalidChecksum))
 		return
 	}
 	var body io.Reader = r.Body
@@ -117,6 +123,7 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	h.setExpiration(w, r, t.bucket, info)
 	w.Header().Set("ETag", quoteETag(info.ETag))
 	setChecksumHeaders(w.Header(), info)
+	setOptionHeaders(w.Header(), info.ObjectOptions)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -158,15 +165,29 @@ func requestMetadata(h http.Header, streaming bool) (map[string]string, apiError
 
 // parseChecksum reads the flexible checksum of a write: one x-amz-checksum-*
 // header or x-amz-trailer naming one (inTrailer), optionally named by
-// x-amz-sdk-checksum-algorithm. No checksum means the default algorithm.
-func parseChecksum(h http.Header) (algorithm string, value []byte, inTrailer, ok bool) {
+// x-amz-sdk-checksum-algorithm. No checksum means the default algorithm. A
+// failure is errInvalidChecksum unless apiErr says otherwise.
+func parseChecksum(h http.Header) (algorithm string, value []byte, inTrailer bool, apiErr apiError, ok bool) {
+	for name := range h {
+		suffix, isChecksum := strings.CutPrefix(strings.ToLower(name), "x-amz-checksum-")
+		switch {
+		case !isChecksum || suffix == "type" || suffix == "mode" || suffix == "algorithm":
+		case isUnsupportedChecksum(suffix):
+			return "", nil, false, errNotImplemented, false
+		case checksum.Canonical(suffix) == "":
+			return "", nil, false, apiError{}, false // never ignore a checksum that pail cannot verify
+		}
+	}
 	named := ""
 	if v := h.Values("x-amz-sdk-checksum-algorithm"); len(v) > 0 {
 		if len(v) > 1 {
-			return "", nil, false, false
+			return "", nil, false, apiError{}, false
+		}
+		if isUnsupportedChecksum(v[0]) {
+			return "", nil, false, errNotImplemented, false
 		}
 		if named = checksum.Canonical(v[0]); named == "" {
-			return "", nil, false, false
+			return "", nil, false, apiError{}, false
 		}
 	}
 	found, raw := "", ""
@@ -177,30 +198,39 @@ func parseChecksum(h http.Header) (algorithm string, value []byte, inTrailer, ok
 			continue
 		}
 		if found != "" || len(values) != 1 {
-			return "", nil, false, false // AWS takes a single checksum per request
+			return "", nil, false, apiError{}, false // AWS takes a single checksum per request
 		}
 		found, raw = a, values[0]
 	}
 	if values, present := h["X-Amz-Trailer"]; present {
 		if found != "" || len(values) != 1 {
-			return "", nil, false, false
+			return "", nil, false, apiError{}, false
 		}
 		name, isChecksum := strings.CutPrefix(strings.ToLower(strings.TrimSpace(values[0])), "x-amz-checksum-")
+		if isChecksum && isUnsupportedChecksum(name) {
+			return "", nil, false, errNotImplemented, false
+		}
 		found = checksum.Canonical(name)
 		if !isChecksum || found == "" || named != "" && named != found {
-			return "", nil, false, false
+			return "", nil, false, apiError{}, false
 		}
-		return found, nil, true, true
+		return found, nil, true, apiError{}, true
 	}
 	if found == "" {
 		// AWS needs the value with a named algorithm, in a header or a trailer.
-		return "", nil, false, named == ""
+		return "", nil, false, apiError{}, named == ""
 	}
 	if named != "" && named != found {
-		return "", nil, false, false
+		return "", nil, false, apiError{}, false
 	}
 	value, ok = checksum.Decode(found, raw)
-	return found, value, false, ok
+	return found, value, false, apiError{}, ok
+}
+
+// isUnsupportedChecksum reports whether name is an S3 checksum algorithm that
+// pail does not implement.
+func isUnsupportedChecksum(name string) bool {
+	return strings.EqualFold(name, "xxhash3") || strings.EqualFold(name, "xxhash128")
 }
 
 // errBadTrailerChecksum is a checksum trailer that is missing or not valid base64.
@@ -296,6 +326,11 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 		return
 	}
 
+	if withBody && isArchived(info.ObjectOptions) {
+		writeError(w, r, errInvalidObjectState)
+		return
+	}
+
 	etag := quoteETag(info.ETag)
 	lastModified := info.LastModified.UTC().Truncate(time.Second)
 	hdr := w.Header()
@@ -341,6 +376,10 @@ func (h *handler) serveObject(w http.ResponseWriter, r *http.Request, t target, 
 	hdr.Set("Last-Modified", lastModified.Format(http.TimeFormat))
 	h.setExpiration(w, r, t.bucket, info)
 	setObjectHeaders(hdr, r, info)
+	setOptionHeaders(hdr, info.ObjectOptions)
+	if info.WebsiteRedirect != "" {
+		hdr.Set("x-amz-website-redirect-location", info.WebsiteRedirect)
+	}
 	// The stored checksum covers the whole object, so a range gets none.
 	if status == http.StatusOK && strings.EqualFold(r.Header.Get("x-amz-checksum-mode"), "ENABLED") {
 		setChecksumHeaders(hdr, info)

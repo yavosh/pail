@@ -35,6 +35,8 @@ type step struct {
 	badChunkSig bool   // corrupt the first chunk signature
 	service     string // "" is S3; "sqs" or "sns" signs for and addresses that service
 	target      string // X-Amz-Target of an SQS step, such as "AmazonSQS.CreateQueue"
+	// compare names response headers to compare besides comparedHeaders.
+	compare []string
 }
 
 // scenario runs its steps in order against one fresh name. Scenarios never call
@@ -130,6 +132,7 @@ func scenarios() []scenario {
 		postScenario(),
 		sigV2Scenario(),
 		conditionalDeleteScenario(),
+		objectOptionsScenario(),
 		sqsAuthErrorsScenario(),
 		sqsQueueBasicsScenario(),
 		sqsMessageAttributesScenario(),

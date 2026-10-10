@@ -1,6 +1,7 @@
 package s3api
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
@@ -30,6 +31,9 @@ type checksumFields struct {
 	ChecksumCRC64NVME string `xml:"ChecksumCRC64NVME,omitempty"`
 	ChecksumSHA1      string `xml:"ChecksumSHA1,omitempty"`
 	ChecksumSHA256    string `xml:"ChecksumSHA256,omitempty"`
+	ChecksumSHA512    string `xml:"ChecksumSHA512,omitempty"`
+	ChecksumMD5       string `xml:"ChecksumMD5,omitempty"`
+	ChecksumXXHASH64  string `xml:"ChecksumXXHASH64,omitempty"`
 }
 
 // field returns the element for algorithm, or nil for an unknown one.
@@ -45,6 +49,12 @@ func (c *checksumFields) field(algorithm string) *string {
 		return &c.ChecksumSHA1
 	case checksum.SHA256:
 		return &c.ChecksumSHA256
+	case checksum.SHA512:
+		return &c.ChecksumSHA512
+	case checksum.MD5:
+		return &c.ChecksumMD5
+	case checksum.XXHASH64:
+		return &c.ChecksumXXHASH64
 	}
 	return nil
 }
@@ -120,10 +130,18 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 		writeError(w, r, apiErr)
 		return
 	}
-	up, err := h.opts.Store.CreateUpload(r.Context(), t.bucket, t.key, store.UploadOptions{ACL: &policy, Metadata: metadata, ChecksumAlgorithm: algorithm, ChecksumType: typ})
+	options, apiErr, valid := parseObjectOptions(r.Header)
+	if !valid {
+		writeError(w, r, apiErr)
+		return
+	}
+	up, err := h.opts.Store.CreateUpload(r.Context(), t.bucket, t.key, store.UploadOptions{ACL: &policy, Metadata: metadata, ObjectOptions: options, ChecksumAlgorithm: algorithm, ChecksumType: typ})
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
+	}
+	if options.ServerSideEncryption != "" {
+		w.Header().Set("x-amz-server-side-encryption", options.ServerSideEncryption)
 	}
 	if algorithm != "" {
 		w.Header().Set("x-amz-checksum-algorithm", algorithm)
@@ -174,8 +192,9 @@ func (h *handler) handleUploadPart(w http.ResponseWriter, r *http.Request, t tar
 	}
 	var inTrailer bool
 	// Only an aws-chunked body has trailers; fail before reading the body.
-	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
-		writeError(w, r, errInvalidChecksum)
+	var apiErr apiError
+	if opts.ChecksumAlgorithm, opts.Checksum, inTrailer, apiErr, ok = parseChecksum(r.Header); !ok || inTrailer && !streaming {
+		writeError(w, r, cmp.Or(apiErr, errInvalidChecksum))
 		return
 	}
 	var body io.Reader = r.Body
@@ -197,6 +216,7 @@ func (h *handler) handleUploadPart(w http.ResponseWriter, r *http.Request, t tar
 	if info.Checksum != "" {
 		w.Header().Set(checksum.Header(info.ChecksumAlgorithm), info.Checksum)
 	}
+	setOptionHeaders(w.Header(), info.ObjectOptions)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -242,9 +262,9 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 	opts.IfMatch = r.Header.Get("If-Match")
 	opts.ChecksumType = r.Header.Get("x-amz-checksum-type")
 	// Here the header names the whole object's checksum, which only a FULL_OBJECT upload has.
-	algorithm, want, inTrailer, ok := parseChecksum(r.Header)
+	algorithm, want, inTrailer, apiErr, ok := parseChecksum(r.Header)
 	if !ok || inTrailer {
-		writeError(w, r, errInvalidChecksum)
+		writeError(w, r, cmp.Or(apiErr, errInvalidChecksum))
 		return
 	}
 	opts.ChecksumAlgorithm, opts.FullObjectChecksum = algorithm, want
@@ -283,6 +303,7 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 		location.Scheme = "https"
 	}
 	h.setExpiration(w, r, t.bucket, info)
+	setEncryptionHeader(w.Header(), info.ServerSideEncryption)
 	writeXML(w, r, http.StatusOK, response{
 		Xmlns: s3Namespace, Location: location.String(), Bucket: t.bucket, Key: t.key, ETag: quoteETag(info.ETag),
 		checksumFields: newChecksumFields(info.ChecksumAlgorithm, info.Checksum), ChecksumType: info.ChecksumType,
@@ -377,7 +398,7 @@ func (h *handler) handleListParts(w http.ResponseWriter, r *http.Request, t targ
 	}
 	resp := response{
 		Xmlns: s3Namespace, Bucket: t.bucket, Key: t.key, UploadID: uploadID, PartNumberMarker: marker, MaxParts: requested,
-		Parts: []part{}, Initiator: h.bucketInitiator(), Owner: h.bucketOwner(), StorageClass: "STANDARD",
+		Parts: []part{}, Initiator: h.bucketInitiator(), Owner: h.bucketOwner(), StorageClass: storageClassName(up.ObjectOptions),
 		ChecksumAlgorithm: up.ChecksumAlgorithm, ChecksumType: up.ChecksumType,
 	}
 	for _, p := range parts {
@@ -503,7 +524,7 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 	}
 	for _, u := range page.uploads {
 		resp.Uploads = append(resp.Uploads, upload{
-			Key: u.Key, UploadID: u.ID, Initiator: starter, Owner: own, StorageClass: "STANDARD", Initiated: u.Initiated.UTC().Format(timeFormat),
+			Key: u.Key, UploadID: u.ID, Initiator: starter, Owner: own, StorageClass: storageClassName(u.ObjectOptions), Initiated: u.Initiated.UTC().Format(timeFormat),
 			ChecksumAlgorithm: u.ChecksumAlgorithm, ChecksumType: u.ChecksumType,
 		})
 	}

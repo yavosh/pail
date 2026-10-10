@@ -124,7 +124,7 @@ func (h *handler) contentsXML(l listing, p listParams, withOwner bool) []listCon
 	}
 	out := make([]listContent, 0, len(l.contents))
 	for _, o := range l.contents {
-		c := listContent{Key: p.encode(o.Key), LastModified: o.LastModified.UTC().Format(timeFormat), ETag: quoteETag(o.ETag), Size: o.Size, StorageClass: "STANDARD", Owner: own,
+		c := listContent{Key: p.encode(o.Key), LastModified: o.LastModified.UTC().Format(timeFormat), ETag: quoteETag(o.ETag), Size: o.Size, StorageClass: storageClassName(o.ObjectOptions), Owner: own,
 			ChecksumAlgorithm: o.ChecksumAlgorithm, ChecksumType: o.ChecksumType}
 		if withOwner && o.ACL != nil {
 			c.Owner = &owner{ID: o.ACL.Owner.ID}

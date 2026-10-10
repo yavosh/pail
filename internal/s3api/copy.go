@@ -53,7 +53,14 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, errUnknownDirective)
 		return
 	}
-	if src.bucket == t.bucket && src.key == t.key && !replace {
+	options, apiErr, ok := parseObjectOptions(r.Header)
+	if !ok {
+		writeError(w, r, apiErr)
+		return
+	}
+	// A copy onto itself must change the metadata, storage class, or encryption.
+	changes := replace || r.Header.Get("x-amz-storage-class") != "" || options.ServerSideEncryption != ""
+	if src.bucket == t.bucket && src.key == t.key && !changes {
 		writeError(w, r, errCopyToSelf)
 		return
 	}
@@ -62,7 +69,10 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, apiErr)
 		return
 	}
-	opts := store.PutOptions{ACL: &policy}
+	opts := store.PutOptions{ACL: &policy, ObjectOptions: options}
+	if !replace {
+		opts.WebsiteRedirect = "" // a COPY directive keeps no redirect, as on AWS
+	}
 	if replace {
 		if opts.Metadata, apiErr, ok = requestMetadata(r.Header, false); !ok {
 			writeError(w, r, apiErr)
@@ -82,6 +92,10 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		return
 	}
 	defer func() { _ = f.Close() }()
+	if isArchived(info.ObjectOptions) {
+		writeError(w, r, errInvalidObjectState)
+		return
+	}
 	cond := http.Header{}
 	for name, as := range copyConditions {
 		if v := r.Header.Get(name); v != "" {
@@ -117,6 +131,7 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		resp.Checksum = &checksumElement{XMLName: xml.Name{Local: "Checksum" + dst.ChecksumAlgorithm}, Value: dst.Checksum}
 	}
 	h.setExpiration(w, r, t.bucket, dst)
+	setEncryptionHeader(w.Header(), dst.ServerSideEncryption)
 	writeXML(w, r, http.StatusOK, resp)
 }
 
