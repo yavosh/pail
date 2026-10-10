@@ -147,6 +147,7 @@ func TestMultipartErrors(t *testing.T) {
 	}{
 		{"create in a missing bucket", http.MethodPost, "/nope/k?uploads", "", nil, 404, "NoSuchBucket"},
 		{"create in an invalid bucket", http.MethodPost, "/Bad_Name/k?uploads", "", nil, 400, "InvalidBucketName"},
+		{"create with xxhash3", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "XXHASH3"}, 501, "NotImplemented"},
 		{"create with an unknown algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "BOGUS"}, 400, "InvalidRequest"},
 		{"create with a type but no algorithm", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-type": "FULL_OBJECT"}, 400, "InvalidRequest"},
 		{"create CRC64NVME composite", http.MethodPost, "/bkt/k?uploads", "", map[string]string{"x-amz-checksum-algorithm": "CRC64NVME", "x-amz-checksum-type": "COMPOSITE"}, 400, "InvalidRequest"},

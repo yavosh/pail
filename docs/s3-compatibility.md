@@ -17,7 +17,7 @@ This page describes how pail implements the S3 operations it supports, and where
 These headers apply to `PutObject`, `CopyObject`, `CreateMultipartUpload`, and the matching browser form fields. pail stores and returns the values. It doesn't encrypt, archive, or lock anything.
 
 - Server-side encryption: `x-amz-server-side-encryption` accepts `AES256`, `aws:kms`, and `aws:kms:dsse`. Any other value returns `400 InvalidArgument`.
-  - `PutObject`, `GetObject`, `HeadObject`, `CopyObject`, `UploadPart`, and `CompleteMultipartUpload` return the stored value. If the request set none, they return `AES256`, as AWS does with default encryption. `CreateMultipartUpload` returns the header only when the request set it.
+  - `PutObject`, `GetObject`, `HeadObject`, `CopyObject`, `UploadPart`, and `CompleteMultipartUpload` return the stored value. If the request set none, they return `AES256`, as AWS does with default encryption.
   - pail returns no KMS key ID header and ignores the KMS key ID, context, and bucket key headers.
   - An SSE-KMS `ETag` on AWS isn't the MD5 digest of the body. pail returns the MD5 digest.
   - `CopyObject` takes the method from its own request, not from the source.
@@ -31,7 +31,7 @@ These headers apply to `PutObject`, `CopyObject`, `CreateMultipartUpload`, and t
   - `GetObject` of a `GLACIER` or `DEEP_ARCHIVE` object returns `403 InvalidObjectState`. `HeadObject` works. `CopyObject` from such an object returns the same error, which is unverified. pail has no transitions and no restore.
 - Website redirect: `x-amz-website-redirect-location` must start with `/`, `http://`, or `https://`. Otherwise the request returns `400 InvalidRedirectLocation`.
   - `HeadObject` and `GetObject` return the value (`GetObject` is unverified). `PutObject` doesn't echo it.
-  - `CopyObject` keeps a redirect only with `x-amz-metadata-directive: REPLACE` and a new header. The default `COPY` directive drops it.
+  - `CopyObject` never copies the source's redirect, whatever the metadata directive. It stores the redirect that the request sets.
   - pail doesn't serve website hosting, so it never follows the redirect.
 
 ## Buckets
@@ -120,7 +120,7 @@ Any other combination fails with `InvalidRequest`. For SHA-512, MD5, and XXHASH6
 - pail supports CRC32, CRC32C, CRC64NVME, SHA-1, SHA-256, SHA-512, MD5, and XXHASH64, sent as an `x-amz-checksum-*` header or an `aws-chunked` trailer.
   - `x-amz-checksum-md5` is a flexible checksum. It's separate from `Content-MD5`.
   - The `XXHASH64` value is the 8-byte big-endian digest of XXH64 with seed 0, in base64.
-- `x-amz-checksum-xxhash3` and `x-amz-checksum-xxhash128`, and `x-amz-sdk-checksum-algorithm` values that name them, return `501 NotImplemented`. AWS supports both algorithms.
+- `x-amz-checksum-xxhash3` and `x-amz-checksum-xxhash128`, and `x-amz-sdk-checksum-algorithm` and `x-amz-checksum-algorithm` values that name them, return `501 NotImplemented`. AWS supports both algorithms.
 - Any other `x-amz-checksum-<name>` header returns `400 InvalidRequest`. pail never ignores a checksum that it can't verify. The exceptions are the real headers `x-amz-checksum-type`, `x-amz-checksum-mode`, and `x-amz-checksum-algorithm`.
 - pail verifies and stores one checksum per object. Like AWS, it computes CRC64NVME when a client sends none.
 - Reads with `x-amz-checksum-mode: ENABLED` and listings return the checksum.

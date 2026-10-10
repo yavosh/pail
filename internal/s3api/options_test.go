@@ -66,16 +66,16 @@ func TestWriteOptionErrors(t *testing.T) {
 func TestCreateBucketObjectLock(t *testing.T) {
 	srv, _ := storeServer(t, "")
 	tests := []struct {
-		name, value string
-		wantStatus  int
-		wantCode    string
+		name, bucket, value string
+		wantStatus          int
+		wantCode            string
 	}{
-		{"enabled", "true", 501, "NotImplemented"},
-		{"enabled in upper case", "TRUE", 501, "NotImplemented"},
-		{"disabled", "false", 200, ""},
+		{"enabled", "lock-on", "true", 501, "NotImplemented"},
+		{"enabled in upper case", "lock-upper", "TRUE", 501, "NotImplemented"},
+		{"disabled", "lock-off", "false", 200, ""},
 	}
 	for _, tt := range tests {
-		r := call(t, srv, http.MethodPut, "/lock-"+tt.name[:3], "", map[string]string{"x-amz-bucket-object-lock-enabled": tt.value})
+		r := call(t, srv, http.MethodPut, "/"+tt.bucket, "", map[string]string{"x-amz-bucket-object-lock-enabled": tt.value})
 		if r.status != tt.wantStatus || r.code != tt.wantCode {
 			t.Errorf("CreateBucket with object lock %s = %d %q, want %d %q", tt.name, r.status, r.code, tt.wantStatus, tt.wantCode)
 		}
@@ -165,7 +165,7 @@ func TestCopyOptions(t *testing.T) {
 		{"keeps nothing by default", "d1", nil, 200, "AES256", "", ""},
 		{"takes the request options", "d2", map[string]string{"x-amz-storage-class": "ONEZONE_IA", "x-amz-server-side-encryption": "AES256"}, 200, "AES256", "ONEZONE_IA", ""},
 		{"replace takes the redirect", "d3", map[string]string{"x-amz-metadata-directive": "REPLACE", "x-amz-website-redirect-location": "/other"}, 200, "AES256", "", "/other"},
-		{"copy directive drops the redirect", "d4", map[string]string{"x-amz-website-redirect-location": "/other"}, 200, "AES256", "", ""},
+		{"copy directive keeps the request redirect", "d4", map[string]string{"x-amz-website-redirect-location": "/other"}, 200, "AES256", "", "/other"},
 		{"onto itself without changes", "src", nil, 400, "", "", ""},
 		{"onto itself with a new class", "src", map[string]string{"x-amz-storage-class": "STANDARD"}, 200, "AES256", "", ""},
 	}
@@ -211,8 +211,8 @@ func TestMultipartOptions(t *testing.T) {
 		"x-amz-storage-class": "STANDARD_IA", "x-amz-server-side-encryption": "aws:kms", "x-amz-website-redirect-location": "/target",
 	})
 	plain := startUpload(t, srv, "plain", nil)
-	if r := call(t, srv, http.MethodPost, "/bkt/plain2?uploads", "", nil); r.header.Get("x-amz-server-side-encryption") != "" {
-		t.Errorf("CreateMultipartUpload without encryption echoed %q, want none", r.header.Get("x-amz-server-side-encryption"))
+	if r := call(t, srv, http.MethodPost, "/bkt/plain2?uploads", "", nil); r.header.Get("x-amz-server-side-encryption") != "AES256" {
+		t.Errorf("CreateMultipartUpload without encryption returned %q, want AES256", r.header.Get("x-amz-server-side-encryption"))
 	}
 	if r := call(t, srv, http.MethodPost, "/bkt/k2?uploads", "", map[string]string{"x-amz-server-side-encryption": "AES256"}); r.header.Get("x-amz-server-side-encryption") != "AES256" {
 		t.Errorf("CreateMultipartUpload with encryption echoed %q, want AES256", r.header.Get("x-amz-server-side-encryption"))

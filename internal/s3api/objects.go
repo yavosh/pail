@@ -165,8 +165,8 @@ func requestMetadata(h http.Header, streaming bool) (map[string]string, apiError
 
 // parseChecksum reads the flexible checksum of a write: one x-amz-checksum-*
 // header or x-amz-trailer naming one (inTrailer), optionally named by
-// x-amz-sdk-checksum-algorithm. No checksum means the default algorithm. A
-// failure is errInvalidChecksum unless apiErr says otherwise.
+// x-amz-sdk-checksum-algorithm. A failure is errInvalidChecksum unless apiErr
+// says otherwise.
 func parseChecksum(h http.Header) (algorithm string, value []byte, inTrailer bool, apiErr apiError, ok bool) {
 	for name := range h {
 		suffix, isChecksum := strings.CutPrefix(strings.ToLower(name), "x-amz-checksum-")

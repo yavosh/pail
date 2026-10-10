@@ -120,6 +120,10 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 		writeError(w, r, apiErr)
 		return
 	}
+	if isUnsupportedChecksum(r.Header.Get("x-amz-checksum-algorithm")) {
+		writeError(w, r, errNotImplemented)
+		return
+	}
 	algorithm, typ, ok := uploadChecksum(r.Header)
 	if !ok {
 		writeError(w, r, errInvalidChecksum)
@@ -140,9 +144,7 @@ func (h *handler) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Req
 		writeError(w, r, toAPIError(err))
 		return
 	}
-	if options.ServerSideEncryption != "" {
-		w.Header().Set("x-amz-server-side-encryption", options.ServerSideEncryption)
-	}
+	setEncryptionHeader(w.Header(), options.ServerSideEncryption)
 	if algorithm != "" {
 		w.Header().Set("x-amz-checksum-algorithm", algorithm)
 		w.Header().Set("x-amz-checksum-type", typ)

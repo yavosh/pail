@@ -186,7 +186,7 @@ func TestWebsiteRedirect(t *testing.T) {
 			t.Errorf("GetObject redirect = %q, want https://example.com/new", aws.ToString(out.WebsiteRedirectLocation))
 		}
 
-		// A default copy drops the redirect; REPLACE takes the new one.
+		// A copy drops the source redirect and stores the one in the request.
 		if _, err := c.CopyObject(ctx, &s3.CopyObjectInput{Bucket: aws.String("redirects"), Key: aws.String("copy"), CopySource: aws.String("redirects/page")}); err != nil {
 			t.Fatal(err)
 		}

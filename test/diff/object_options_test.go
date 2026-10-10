@@ -37,7 +37,7 @@ func objectOptionsScenario() scenario {
 		maps.Copy(h, extra)
 		return step{name: name, method: http.MethodPut, key: key, header: h, compare: optionHeaders}
 	}
-	keys := []string{"sse", "plain", "upload", "ssec", "sha512", "md5sum", "ia", "glacier", "redirect", "copy-ia", "copy-redirect"}
+	keys := []string{"sse", "plain", "upload", "ssec", "sha512", "md5sum", "ia", "glacier", "redirect", "copy-ia", "copy-redirect", "copy-redirect-header"}
 	var batch strings.Builder
 	batch.WriteString("<Delete>")
 	for _, k := range keys {
@@ -94,6 +94,8 @@ func objectOptionsScenario() scenario {
 		read("head-copy-ia", http.MethodHead, "copy-ia"),
 		copyOf("copy-redirect", "copy-redirect", "redirect", nil),
 		read("head-copy-redirect", http.MethodHead, "copy-redirect"),
+		copyOf("copy-redirect-header", "copy-redirect-header", "ia", map[string]string{"x-amz-website-redirect-location": "/new"}),
+		read("head-copy-redirect-header", http.MethodHead, "copy-redirect-header"),
 		// Multipart initiation.
 		{name: "create-upload-ia", method: http.MethodPost, key: "upload", query: "uploads", compare: optionHeaders,
 			header: map[string]string{"x-amz-storage-class": "STANDARD_IA", "x-amz-server-side-encryption": "AES256"}},
@@ -102,7 +104,7 @@ func objectOptionsScenario() scenario {
 		{name: "complete-upload", method: http.MethodPost, key: "upload", query: upload, compare: optionHeaders,
 			body: "<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>" + etagOf(body) + "</ETag></Part></CompleteMultipartUpload>"},
 		read("head-upload", http.MethodHead, "upload"),
-		{name: "create-upload-aborted", method: http.MethodPost, key: "aborted", query: "uploads"},
+		{name: "create-upload-aborted", method: http.MethodPost, key: "aborted", query: "uploads", compare: optionHeaders},
 		{name: "abort-upload", method: http.MethodDelete, key: "aborted", query: upload},
 		{name: "delete-objects", method: http.MethodPost, query: "delete", body: batch.String(), header: map[string]string{"Content-MD5": md5Base64(batch.String())}},
 		deleteBucket(),

@@ -132,6 +132,7 @@ func TestCopyObject(t *testing.T) {
 		{"versionId null", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=null"}, 200, "", "text/plain", "blue", "attachment", "CRC32"},
 		{"other versionId", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src?versionId=v1"}, 501, "NotImplemented", "", "", "", ""},
 		{"checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "SHA256"}, 200, "", "text/plain", "blue", "attachment", "SHA256"},
+		{"xxhash128 checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "XXHASH128"}, 501, "NotImplemented", "", "", "", ""},
 		{"unknown checksum algorithm", "bkt/dst", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-checksum-algorithm": "BOGUS"}, 400, "InvalidRequest", "", "", "", ""},
 	}
 	for _, tt := range tests {

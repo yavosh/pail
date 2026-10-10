@@ -30,7 +30,7 @@ go test ./test/diff -record -run TestDiff -v
 - It never calls `ListBuckets`, so the golden files never contain your other buckets.
 - Review the golden file diff before you commit it.
 
-Record again after you add or change a scenario. Each golden step stores a fingerprint of its method, key, query, headers, body, and signing mode, so replay fails when a step changed since it was recorded.
+Record again after you add or change a scenario. Each golden step stores a fingerprint of its method, key, query, headers, body, and signing mode, so replay fails when a step changed since it was recorded. A step's `compare` headers join the fingerprint when set.
 
 Check these steps by hand in a new recording:
 
@@ -132,7 +132,7 @@ go test ./test/diff -record -run '^TestDiff/sns-(topic-attributes|sqs-delivery|p
 
 - The status code.
 - The S3 error `Code`. The error `Message` and diagnostic fields are not compared.
-- A fixed list of headers, in `normalize_test.go`. `Last-Modified`, `x-amz-request-id`, and `x-amz-id-2` are compared for presence only.
+- A fixed list of headers, in `normalize_test.go`, and the headers that a step names in `compare`. `Last-Modified`, `x-amz-request-id`, and `x-amz-id-2` are compared for presence only.
 - Request IDs on empty `400` responses for literal `..` path segments are ignored; AWS front ends vary in sending them.
 - `Content-Length` only for object data. XML formatting and error messages differ between servers.
 - The body. Successful object reads are compared byte for byte, including XML content. A body that is not valid UTF-8 is stored as base64. Protocol XML is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, continuation tokens, and the `Location` URL of a completed upload, are compared for presence only. Bucket names in protocol responses become `{bucket}`.

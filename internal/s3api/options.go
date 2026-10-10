@@ -10,18 +10,20 @@ import (
 )
 
 var (
-	errInvalidEncryption    = apiError{"InvalidArgument", http.StatusBadRequest, "The encryption method specified is not supported"}
-	errObjectLockMissing    = apiError{"InvalidRequest", http.StatusBadRequest, "Bucket is missing Object Lock Configuration"}
-	errInvalidStorageClass  = apiError{"InvalidStorageClass", http.StatusBadRequest, "The storage class you specified is not valid"}
-	errInvalidRedirect      = apiError{"InvalidRedirectLocation", http.StatusBadRequest, "The website redirect location must have a prefix of 'http://' or 'https://' or '/'."}
-	errInvalidObjectState   = apiError{"InvalidObjectState", http.StatusForbidden, "The operation is not valid for the object's storage class"}
-	errSSECUnsupported      = apiError{"AccessDenied", http.StatusForbidden, "Server Side Encryption with Customer provided key is incompatible with the encryption method specified"}
-	storageClasses          = []string{"STANDARD", "REDUCED_REDUNDANCY", "STANDARD_IA", "ONEZONE_IA", "INTELLIGENT_TIERING", "GLACIER", "DEEP_ARCHIVE", "GLACIER_IR"}
-	encryptionAlgorithms    = []string{"AES256", "aws:kms", "aws:kms:dsse"}
-	defaultEncryption       = "AES256" // AWS encrypts every new object, so a read always shows a method
-	archiveStorageClasses   = []string{"GLACIER", "DEEP_ARCHIVE"}
-	objectLockRequestHeader = []string{"x-amz-object-lock-mode", "x-amz-object-lock-retain-until-date", "x-amz-object-lock-legal-hold"}
+	errInvalidEncryption   = apiError{"InvalidArgument", http.StatusBadRequest, "The encryption method specified is not supported"}
+	errObjectLockMissing   = apiError{"InvalidRequest", http.StatusBadRequest, "Bucket is missing Object Lock Configuration"}
+	errInvalidStorageClass = apiError{"InvalidStorageClass", http.StatusBadRequest, "The storage class you specified is not valid"}
+	errInvalidRedirect     = apiError{"InvalidRedirectLocation", http.StatusBadRequest, "The website redirect location must have a prefix of 'http://' or 'https://' or '/'."}
+	errInvalidObjectState  = apiError{"InvalidObjectState", http.StatusForbidden, "The operation is not valid for the object's storage class"}
+	errSSECUnsupported     = apiError{"AccessDenied", http.StatusForbidden, "Server Side Encryption with Customer provided key is incompatible with the encryption method specified"}
+	storageClasses         = []string{"STANDARD", "REDUCED_REDUNDANCY", "STANDARD_IA", "ONEZONE_IA", "INTELLIGENT_TIERING", "GLACIER", "DEEP_ARCHIVE", "GLACIER_IR"}
+	encryptionAlgorithms   = []string{"AES256", "aws:kms", "aws:kms:dsse"}
+	archiveStorageClasses  = []string{"GLACIER", "DEEP_ARCHIVE"}
+	objectLockHeaders      = []string{"x-amz-object-lock-mode", "x-amz-object-lock-retain-until-date", "x-amz-object-lock-legal-hold"}
 )
+
+// defaultEncryption is what AWS reports for an object with no requested method.
+const defaultEncryption = "AES256"
 
 // parseObjectOptions reads the encryption, storage class, and website redirect
 // of a write request. SSE-C and Object Lock headers are rejected, as AWS does
@@ -34,7 +36,7 @@ func parseObjectOptions(h http.Header) (store.ObjectOptions, apiError, bool) {
 		if strings.HasPrefix(lower, "x-amz-server-side-encryption-customer-") || strings.HasPrefix(lower, "x-amz-copy-source-server-side-encryption-customer-") {
 			return opts, errSSECUnsupported, false
 		}
-		lock = lock || slices.Contains(objectLockRequestHeader, lower)
+		lock = lock || slices.Contains(objectLockHeaders, lower)
 	}
 	if lock {
 		return opts, errObjectLockMissing, false

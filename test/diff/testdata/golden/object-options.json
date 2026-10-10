@@ -83,7 +83,7 @@
       "status": 200,
       "headers": {
         "Content-Length": "0",
-        "Etag": "\"b179c4ca0d1dd4eebce020a5905c5dc1\"",
+        "Etag": "\"6ce3d5287ddf626d06aae75e90af1b06\"",
         "X-Amz-Checksum-Crc64nvme": "93WhyIA7ll4=",
         "X-Amz-Checksum-Type": "FULL_OBJECT",
         "X-Amz-Id-2": "<present>",
@@ -475,6 +475,36 @@
       }
     },
     {
+      "step": "copy-redirect-header",
+      "request": "PUT /copy-redirect-header",
+      "fingerprint": "ece542fbe4cdc1f0",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
+      },
+      "body": "CopyObjectResult\n  LastModified: <volatile>\n  ETag: \"52ba99a97e6bb6a01aa0a0358fc50923\"\n  ChecksumCRC64NVME: 93WhyIA7ll4=\n  ChecksumType: FULL_OBJECT\n"
+    },
+    {
+      "step": "head-copy-redirect-header",
+      "request": "HEAD /copy-redirect-header",
+      "fingerprint": "102bd3c8d974d2ab",
+      "status": 200,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "13",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"52ba99a97e6bb6a01aa0a0358fc50923\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256",
+        "X-Amz-Website-Redirect-Location": "/new"
+      }
+    },
+    {
       "step": "create-upload-ia",
       "request": "POST /upload?uploads",
       "fingerprint": "f64146e3d1fac4cc",
@@ -545,11 +575,12 @@
     {
       "step": "create-upload-aborted",
       "request": "POST /aborted?uploads",
-      "fingerprint": "a3239f7bcf57074e",
+      "fingerprint": "8e4dc32ecac93386",
       "status": 200,
       "headers": {
         "X-Amz-Id-2": "<present>",
-        "X-Amz-Request-Id": "<present>"
+        "X-Amz-Request-Id": "<present>",
+        "X-Amz-Server-Side-Encryption": "AES256"
       },
       "body": "InitiateMultipartUploadResult\n  Bucket: {bucket}\n  Key: aborted\n  UploadId: <volatile>\n"
     },
@@ -566,14 +597,14 @@
     {
       "step": "delete-objects",
       "request": "POST /?delete",
-      "fingerprint": "c288d264e76f8139",
+      "fingerprint": "6bbfd27f73113129",
       "status": 200,
       "headers": {
         "Content-Type": "application/xml",
         "X-Amz-Id-2": "<present>",
         "X-Amz-Request-Id": "<present>"
       },
-      "body": "DeleteResult\n  Deleted\n    Key: copy-ia\n  Deleted\n    Key: copy-redirect\n  Deleted\n    Key: glacier\n  Deleted\n    Key: ia\n  Deleted\n    Key: md5sum\n  Deleted\n    Key: plain\n  Deleted\n    Key: redirect\n  Deleted\n    Key: sha512\n  Deleted\n    Key: sse\n  Deleted\n    Key: ssec\n  Deleted\n    Key: upload\n"
+      "body": "DeleteResult\n  Deleted\n    Key: copy-ia\n  Deleted\n    Key: copy-redirect\n  Deleted\n    Key: copy-redirect-header\n  Deleted\n    Key: glacier\n  Deleted\n    Key: ia\n  Deleted\n    Key: md5sum\n  Deleted\n    Key: plain\n  Deleted\n    Key: redirect\n  Deleted\n    Key: sha512\n  Deleted\n    Key: sse\n  Deleted\n    Key: ssec\n  Deleted\n    Key: upload\n"
     },
     {
       "step": "delete-bucket",

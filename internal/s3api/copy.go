@@ -70,9 +70,6 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		return
 	}
 	opts := store.PutOptions{ACL: &policy, ObjectOptions: options}
-	if !replace {
-		opts.WebsiteRedirect = "" // a COPY directive keeps no redirect, as on AWS
-	}
 	if replace {
 		if opts.Metadata, apiErr, ok = requestMetadata(r.Header, false); !ok {
 			writeError(w, r, apiErr)
@@ -80,6 +77,10 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		}
 	}
 	if values, ok := r.Header["X-Amz-Checksum-Algorithm"]; ok {
+		if isUnsupportedChecksum(values[0]) {
+			writeError(w, r, errNotImplemented)
+			return
+		}
 		if opts.ChecksumAlgorithm = checksum.Canonical(values[0]); opts.ChecksumAlgorithm == "" || len(values) > 1 {
 			writeError(w, r, errInvalidChecksum)
 			return
