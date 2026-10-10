@@ -227,6 +227,6 @@ func TestRedriveAllowPolicyEnforced(t *testing.T) {
 	e.ok("CreateQueue", `{"QueueName":"dlq","Attributes":{"RedriveAllowPolicy":"{\"redrivePermission\":\"denyAll\"}"}}`, nil)
 	const redrive = `{"QueueName":"src","Attributes":{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:000000000000:dlq\",\"maxReceiveCount\":1}"}}`
 	e.fail("CreateQueue", redrive, 400, invalidParam, "InvalidParameterValue")
-	e.ok("SetQueueAttributes", `{"QueueUrl":"http://pail.test:9000/000000000000/dlq","Attributes":{"RedriveAllowPolicy":"{\"redrivePermission\":\"allowAll\"}"}}`, nil)
+	e.ok("SetQueueAttributes", `{"QueueUrl":"http://`+testHost+`/000000000000/dlq","Attributes":{"RedriveAllowPolicy":"{\"redrivePermission\":\"allowAll\"}"}}`, nil)
 	e.ok("CreateQueue", redrive, nil)
 }

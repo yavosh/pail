@@ -94,9 +94,9 @@ The recording masks `SenderId`, because it is the recording identity's IAM uniqu
 
 The FIFO and dead-letter scenarios are:
 
-- `sqs-fifo`: FIFO queue creation, `GetQueueAttributes`, send rules (missing group, missing deduplication ID, per-message delay), deduplication, group locking, and content-based deduplication.
-- `sqs-dead-letter`: `RedrivePolicy` validation, the move to the dead-letter queue, `DeadLetterQueueSourceArn`, and `ListDeadLetterSourceQueues`.
-- `sqs-fair-queue`: `MessageGroupId` on a standard queue, and what a receive returns for it.
+- `sqs-fifo`: FIFO queue creation and its errors (`FifoQueue` changes, `FifoQueue` on a standard name), high-throughput attributes, send rules (missing group, missing deduplication ID, per-message delay), deduplication, group locking, and content-based deduplication with its `MessageDeduplicationId`.
+- `sqs-dead-letter`: `RedrivePolicy` validation, a FIFO target for a standard source, `RedriveAllowPolicy` `denyAll` and `allowAll`, the move to the dead-letter queue, `DeadLetterQueueSourceArn`, and `ListDeadLetterSourceQueues`.
+- `sqs-fair-queue`: FIFO attributes and `MessageDeduplicationId` on a standard queue, `MessageGroupId` on a standard queue, and what a receive returns for it.
 
 Record them with:
 

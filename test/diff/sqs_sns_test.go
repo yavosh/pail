@@ -167,7 +167,7 @@ func sqsFifoScenario() scenario {
 		sqsStep("send-cbd-1", "SendMessage", send(`"same","MessageGroupId":"g"`)),
 		sqsStep("send-cbd-2", "SendMessage", send(`"same","MessageGroupId":"g"`)),
 		// The second receive runs while the first message is in flight, so it is empty either way.
-		sqsStep("receive-cbd", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":10,"WaitTimeSeconds":5}`),
+		sqsStep("receive-cbd", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":10,"WaitTimeSeconds":5,"MessageSystemAttributeNames":["MessageDeduplicationId"]}`),
 		sqsStep("receive-cbd-again", "ReceiveMessage", `{`+url+`,"MaxNumberOfMessages":10,"WaitTimeSeconds":0}`),
 		sqsStep("delete-cbd-queue", "DeleteQueue", `{`+url+`}`),
 		sqsStep("get-high-throughput-url", "GetQueueUrl", `{"QueueName":"{name}-ht.fifo"}`),
