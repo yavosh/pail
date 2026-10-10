@@ -168,6 +168,7 @@ func TestCopyOptions(t *testing.T) {
 		{"copy directive keeps the request redirect", "d4", map[string]string{"x-amz-website-redirect-location": "/other"}, 200, "AES256", "", "/other"},
 		{"onto itself without changes", "src", nil, 400, "", "", ""},
 		{"onto itself with a new class", "src", map[string]string{"x-amz-storage-class": "STANDARD"}, 200, "AES256", "", ""},
+		{"onto itself with a new redirect", "src", map[string]string{"x-amz-website-redirect-location": "/again"}, 200, "AES256", "", "/again"},
 	}
 	for _, tt := range tests {
 		header := map[string]string{"x-amz-copy-source": "bkt/src"}

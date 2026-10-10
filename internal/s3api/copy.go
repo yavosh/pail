@@ -58,8 +58,8 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, apiErr)
 		return
 	}
-	// A copy onto itself must change the metadata, storage class, or encryption.
-	changes := replace || r.Header.Get("x-amz-storage-class") != "" || options.ServerSideEncryption != ""
+	// A copy onto itself must change the metadata, storage class, website redirect, or encryption.
+	changes := replace || r.Header.Get("x-amz-storage-class") != "" || options.ServerSideEncryption != "" || options.WebsiteRedirect != ""
 	if src.bucket == t.bucket && src.key == t.key && !changes {
 		writeError(w, r, errCopyToSelf)
 		return

@@ -17,7 +17,7 @@ This page describes how pail implements the S3 operations it supports, and where
 These headers apply to `PutObject`, `CopyObject`, `CreateMultipartUpload`, and the matching browser form fields. pail stores and returns the values. It doesn't encrypt, archive, or lock anything.
 
 - Server-side encryption: `x-amz-server-side-encryption` accepts `AES256`, `aws:kms`, and `aws:kms:dsse`. Any other value returns `400 InvalidArgument`.
-  - `PutObject`, `GetObject`, `HeadObject`, `CopyObject`, `UploadPart`, and `CompleteMultipartUpload` return the stored value. If the request set none, they return `AES256`, as AWS does with default encryption.
+  - `PutObject`, `GetObject`, `HeadObject`, `CopyObject`, `CreateMultipartUpload`, `UploadPart`, and `CompleteMultipartUpload` return the stored value. If the request set none, they return `AES256`, as AWS does with default encryption.
   - pail returns no KMS key ID header and ignores the KMS key ID, context, and bucket key headers.
   - An SSE-KMS `ETag` on AWS isn't the MD5 digest of the body. pail returns the MD5 digest.
   - `CopyObject` takes the method from its own request, not from the source.
@@ -27,7 +27,7 @@ These headers apply to `PutObject`, `CopyObject`, `CreateMultipartUpload`, and t
   - `PutObject`, `HeadObject`, `GetObject`, and `UploadPart` return `x-amz-storage-class` for a class other than `STANDARD`. `GetObject` is unverified.
   - `ListObjectsV2`, `ListObjects`, `ListMultipartUploads`, and `ListParts` show the class. `ListParts` is unverified.
   - A completed multipart upload keeps the class of the upload.
-  - `CopyObject` sets the class from its request. Without the header, the copy is `STANDARD`. A copy onto the same key is valid when the request changes the metadata, storage class, or encryption.
+  - `CopyObject` sets the class from its request. Without the header, the copy is `STANDARD`. A copy onto the same key is valid when the request changes the metadata, storage class, website redirect, or encryption. The website redirect case is unverified.
   - `GetObject` of a `GLACIER` or `DEEP_ARCHIVE` object returns `403 InvalidObjectState`. `HeadObject` works. `CopyObject` from such an object returns the same error, which is unverified. pail has no transitions and no restore.
 - Website redirect: `x-amz-website-redirect-location` must start with `/`, `http://`, or `https://`. Otherwise the request returns `400 InvalidRedirectLocation`.
   - `HeadObject` and `GetObject` return the value (`GetObject` is unverified). `PutObject` doesn't echo it.
