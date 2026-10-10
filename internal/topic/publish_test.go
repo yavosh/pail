@@ -71,7 +71,7 @@ func TestPublishValidation(t *testing.T) {
 		{"string array", func(in *PublishInput) { in.Attributes = attr("String.Array", `["a",1,true]`) }, nil},
 		{"string array not an array", func(in *PublishInput) { in.Attributes = attr("String.Array", `"a"`) }, ErrInvalidParameter},
 		{"empty string value", func(in *PublishInput) { in.Attributes = attr("String", "") }, ErrInvalidParameter},
-		{"unknown data type", func(in *PublishInput) { in.Attributes = attr("Blob", "x") }, ErrInvalidParameter},
+		{"unknown data type", func(in *PublishInput) { in.Attributes = attr("Blob", "x") }, ErrParameterValueInvalid},
 		{"empty custom label", func(in *PublishInput) { in.Attributes = attr("String.", "x") }, ErrInvalidParameter},
 		{"binary attribute", func(in *PublishInput) {
 			in.Attributes = map[string]MessageAttribute{"a": {DataType: "Binary", BinaryValue: []byte{1}}}

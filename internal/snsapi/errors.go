@@ -15,11 +15,8 @@ type apiError struct {
 	code   string
 }
 
-// The auth entries, NotFound, InvalidParameter, InvalidAction, ValidationError,
-// TooManyEntriesInBatchRequest, BatchEntryIdsNotDistinct, and InvalidBatchEntryId
-// match the AWS recordings in test/diff. The others come from the service
-// model and are unverified: ResourceNotFound, TagLimitExceeded, BatchRequestTooLong,
-// InternalError, and AuthorizationError.
+// Every entry except InternalError and AuthorizationError matches an AWS
+// recording in test/diff. Those two come from the service model and are unverified.
 var (
 	errInvalidAction       = apiError{http.StatusBadRequest, "Sender", "InvalidAction"}
 	errMissingAuth         = apiError{http.StatusForbidden, "Sender", "MissingAuthenticationToken"}
@@ -28,17 +25,18 @@ var (
 	errIncompleteSignature = apiError{http.StatusBadRequest, "Sender", "IncompleteSignature"}
 	errTooLarge            = apiError{http.StatusRequestEntityTooLarge, "Sender", "RequestEntityTooLarge"}
 
-	errNotFound            = apiError{http.StatusNotFound, "Sender", "NotFound"}
-	errInvalidParameter    = apiError{http.StatusBadRequest, "Sender", "InvalidParameter"}
-	errResourceNotFound    = apiError{http.StatusNotFound, "Sender", "ResourceNotFound"}
-	errTagLimitExceeded    = apiError{http.StatusBadRequest, "Sender", "TagLimitExceeded"}
-	errValidationError     = apiError{http.StatusBadRequest, "Sender", "ValidationError"}
-	errTooManyEntries      = apiError{http.StatusBadRequest, "Sender", "TooManyEntriesInBatchRequest"}
-	errEntryIDsNotDistinct = apiError{http.StatusBadRequest, "Sender", "BatchEntryIdsNotDistinct"}
-	errInvalidBatchEntryID = apiError{http.StatusBadRequest, "Sender", "InvalidBatchEntryId"}
-	errBatchRequestTooLong = apiError{http.StatusBadRequest, "Sender", "BatchRequestTooLong"}
-	errInternalError       = apiError{http.StatusInternalServerError, "Receiver", "InternalError"}
-	errAuthorization       = apiError{http.StatusForbidden, "Sender", "AuthorizationError"}
+	errNotFound              = apiError{http.StatusNotFound, "Sender", "NotFound"}
+	errInvalidParameter      = apiError{http.StatusBadRequest, "Sender", "InvalidParameter"}
+	errParameterValueInvalid = apiError{http.StatusBadRequest, "Sender", "ParameterValueInvalid"}
+	errResourceNotFound      = apiError{http.StatusNotFound, "Sender", "ResourceNotFound"}
+	errTagLimitExceeded      = apiError{http.StatusBadRequest, "Sender", "TagLimitExceeded"}
+	errValidationError       = apiError{http.StatusBadRequest, "Sender", "ValidationError"}
+	errTooManyEntries        = apiError{http.StatusBadRequest, "Sender", "TooManyEntriesInBatchRequest"}
+	errEntryIDsNotDistinct   = apiError{http.StatusBadRequest, "Sender", "BatchEntryIdsNotDistinct"}
+	errInvalidBatchEntryID   = apiError{http.StatusBadRequest, "Sender", "InvalidBatchEntryId"}
+	errBatchRequestTooLong   = apiError{http.StatusBadRequest, "Sender", "BatchRequestTooLong"}
+	errInternalError         = apiError{http.StatusInternalServerError, "Receiver", "InternalError"}
+	errAuthorization         = apiError{http.StatusForbidden, "Sender", "AuthorizationError"}
 )
 
 // mapping ties an error to its SNS error.
@@ -48,6 +46,7 @@ var mappings = []struct {
 }{
 	{topic.ErrNotFound, errNotFound},
 	{topic.ErrInvalidParameter, errInvalidParameter},
+	{topic.ErrParameterValueInvalid, errParameterValueInvalid},
 	{topic.ErrResourceNotFound, errResourceNotFound},
 	{topic.ErrTagLimitExceeded, errTagLimitExceeded},
 	{topic.ErrAuthorization, errAuthorization},

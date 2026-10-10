@@ -58,6 +58,24 @@ func parseRedriveAllowPolicy(v string) (redriveAllowPolicy, bool) {
 	return redriveAllowPolicy{}, false
 }
 
+// allowPolicyARNMismatch reports a policy whose permission and sourceQueueArns
+// disagree: byQueue without ARNs, or allowAll or denyAll with ARNs. AWS answers
+// InvalidParameterValue for them (sqs-edge-cases).
+func allowPolicyARNMismatch(v string) bool {
+	var p redriveAllowPolicy
+	if !isJSONObject(v) || json.Unmarshal([]byte(v), &p) != nil {
+		return false
+	}
+	hasARNs := len(p.SourceQueueARNs) > 0
+	switch p.Permission {
+	case "byQueue":
+		return !hasARNs
+	case "allowAll", "denyAll":
+		return hasARNs
+	}
+	return false
+}
+
 func validRedriveAllowPolicy(v string) bool {
 	_, ok := parseRedriveAllowPolicy(v)
 	return ok

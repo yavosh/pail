@@ -21,8 +21,7 @@ func defaultPolicy(arn string) string {
 	return `{"Version":"2008-10-17","Id":"__default_policy_ID","Statement":[{"Sid":"__default_statement_ID","Effect":"Allow","Principal":{"AWS":"*"},"Action":["SNS:GetTopicAttributes","SNS:SetTopicAttributes","SNS:AddPermission","SNS:RemovePermission","SNS:DeleteTopic","SNS:Subscribe","SNS:ListSubscriptionsByTopic","SNS:Publish"],"Resource":"` + arn + `","Condition":{"StringEquals":{"AWS:SourceOwner":"` + queue.Account + `"}}}]}`
 }
 
-// topicAttrNames are the attributes a client can set. The same order lists the
-// optional ones in TopicAttributes (positions unverified).
+// topicAttrNames are the attributes a client can set.
 var topicAttrNames = []string{"DisplayName", "Policy", "DeliveryPolicy", "KmsMasterKeyId", "SignatureVersion", "TracingConfig"}
 
 // noopAttr reports whether an attribute turns off a FIFO feature that pail never
@@ -96,25 +95,27 @@ func (e *Engine) TopicAttributes(ctx context.Context, arn string) ([]Attribute, 
 		}
 	}
 	// AWS updates the subscription counts with a delay (unverified).
-	out := []Attribute{
-		{"Policy", topicAttrValue(t, arn, "Policy")},
-		{"Owner", queue.Account},
-		{"SubscriptionsPending", fmt.Sprint(pending)},
-		{"TopicArn", arn},
-		{"EffectiveDeliveryPolicy", effectiveTopicPolicy(t)},
-		{"SubscriptionsConfirmed", fmt.Sprint(confirmed)},
-		{"DisplayName", t.Attributes["DisplayName"]},
-	}
-	// DeliveryPolicy sits between DisplayName and SubscriptionsDeleted (recorded in sns-delivery-policy).
-	if v, ok := t.Attributes[attrDelivery]; ok {
-		out = append(out, Attribute{attrDelivery, v})
-	}
-	out = append(out, Attribute{"SubscriptionsDeleted", "0"})
-	for _, k := range topicAttrNames[3:] {
+	// The order is recorded in sns-edge-cases and sns-delivery-policy. The
+	// settable attributes appear only when set.
+	var out []Attribute
+	add := func(k, v string) { out = append(out, Attribute{k, v}) }
+	addIfSet := func(k string) {
 		if v, ok := t.Attributes[k]; ok {
-			out = append(out, Attribute{k, v})
+			add(k, v)
 		}
 	}
+	add("Policy", topicAttrValue(t, arn, "Policy"))
+	addIfSet("SignatureVersion")
+	add("Owner", queue.Account)
+	add("SubscriptionsPending", fmt.Sprint(pending))
+	addIfSet("KmsMasterKeyId")
+	add("TopicArn", arn)
+	addIfSet("TracingConfig")
+	add("EffectiveDeliveryPolicy", effectiveTopicPolicy(t))
+	add("SubscriptionsConfirmed", fmt.Sprint(confirmed))
+	add("DisplayName", t.Attributes["DisplayName"])
+	addIfSet(attrDelivery)
+	add("SubscriptionsDeleted", "0")
 	return out, nil
 }
 

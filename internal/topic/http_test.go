@@ -225,7 +225,7 @@ func TestHTTPUnsignedUnsubscribe(t *testing.T) {
 	}{
 		{"sqs", sqs, ErrAuthorization},
 		{"confirmed authenticated", auth, ErrAuthorization},
-		{"missing", arn + ":x", ErrNotFound},
+		{"missing", arn + ":x", nil},
 		{"pending", pending, ErrInvalidParameter},
 		{"confirmed unauthenticated", unauth, nil},
 	}

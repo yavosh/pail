@@ -289,7 +289,7 @@ func TestQueueURL(t *testing.T) {
 		{"no name", "http://" + testHost + "/000000000000/", false, missing, "AWS.SimpleQueueService.NonExistentQueue"},
 		{"not a URL", "%zz", false, missing, "AWS.SimpleQueueService.NonExistentQueue"},
 		{"unknown queue", "http://" + testHost + "/000000000000/nope", false, missing, "AWS.SimpleQueueService.NonExistentQueue"},
-		{"empty", "", false, "com.amazon.coral.service#MissingRequiredParameterException", "MissingParameter"},
+		{"empty", "", false, missing, "AWS.SimpleQueueService.NonExistentQueue"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -360,7 +360,8 @@ func TestSendReceiveDelete(t *testing.T) {
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"\u0000"}`, u), 400, "com.amazonaws.sqs#InvalidMessageContents", "InvalidMessageContents")
 	e.ok("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageGroupId":"g"}`, u), nil) // fair queues accept it
 	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageDeduplicationId":"d"}`, u), 400, invalid, "InvalidParameterValue")
-	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageAttributes":{"a":{"DataType":"String","StringListValues":["b"]}}}`, u), 400, invalid, "InvalidParameterValue")
+	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageAttributes":{"a":{"DataType":"String","StringListValues":["b"]}}}`, u), 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation")
+	e.fail("SendMessage", fmt.Sprintf(`{"QueueUrl":%q,"MessageBody":"x","MessageAttributes":{"a":{"DataType":"Binary","BinaryListValues":["AQID"]}}}`, u), 400, "com.amazonaws.sqs#UnsupportedOperation", "AWS.SimpleQueueService.UnsupportedOperation")
 	e.fail("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"MaxNumberOfMessages":11}`, u), 400, invalid, "InvalidParameterValue")
 	e.fail("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"WaitTimeSeconds":21}`, u), 400, invalid, "InvalidParameterValue")
 }
@@ -559,8 +560,8 @@ func TestBatchPartialFailure(t *testing.T) {
 	// Entries that cannot convert fail alone and the others are sent.
 	var mixed batchBody
 	e.ok("SendMessageBatch", fmt.Sprintf(`{"QueueUrl":%q,"Entries":[{"Id":"ok","MessageBody":"fine"},{"Id":"fifo","MessageBody":"fine","MessageGroupId":"g"},{"Id":"list","MessageBody":"fine","MessageAttributes":{"a":{"DataType":"String","StringListValues":["x"]}}}]}`, u), &mixed)
-	if len(mixed.Successful) != 2 || len(mixed.Failed) != 1 || mixed.Failed[0].ID != "list" || mixed.Failed[0].Code != "InvalidParameterValue" {
-		t.Errorf("mixed SendMessageBatch = %+v, %+v; want ok and fifo sent, list failed with InvalidParameterValue", mixed.Successful, mixed.Failed)
+	if len(mixed.Successful) != 2 || len(mixed.Failed) != 1 || mixed.Failed[0].ID != "list" || mixed.Failed[0].Code != "UnsupportedOperation" {
+		t.Errorf("mixed SendMessageBatch = %+v, %+v; want ok and fifo sent, list failed with UnsupportedOperation", mixed.Successful, mixed.Failed)
 	}
 
 	var got receivedBody

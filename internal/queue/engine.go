@@ -166,8 +166,7 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 		return err
 	}
 	fifo := isFIFOName(name)
-	attrs, err := checkFifoAttribute(name, attrs)
-	if err != nil {
+	if err := checkFifoAttribute(name, attrs); err != nil {
 		return err
 	}
 	if err := validateAttrs(attrs, fifo); err != nil {
@@ -208,23 +207,19 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 }
 
 // checkFifoAttribute applies the FifoQueue rules of CreateQueue: a ".fifo"
-// name needs FifoQueue "true", and FifoQueue "true" needs a ".fifo" name. It
-// returns attrs without a FifoQueue "false", which a standard queue does not store.
-func checkFifoAttribute(name string, attrs map[string]string) (map[string]string, error) {
+// name needs FifoQueue "true", and FifoQueue "true" needs a ".fifo" name. Any
+// FifoQueue on a standard queue, even "false", fails later as InvalidAttributeName.
+func checkFifoAttribute(name string, attrs map[string]string) error {
 	v, ok := attrs["FifoQueue"]
 	switch {
 	case ok && !isBool(v):
-		return nil, fmt.Errorf("attribute FifoQueue value %q: %w", v, ErrInvalidAttributeValue)
+		return fmt.Errorf("attribute FifoQueue value %q: %w", v, ErrInvalidAttributeValue)
 	case isFIFOName(name) && v != "true":
-		return nil, fmt.Errorf("queue %q ends in .fifo, so FifoQueue must be true: %w", name, ErrInvalidParameterValue)
+		return fmt.Errorf("queue %q ends in .fifo, so FifoQueue must be true: %w", name, ErrInvalidParameterValue)
 	case !isFIFOName(name) && v == "true":
-		return nil, fmt.Errorf("FifoQueue true needs a queue name that ends in .fifo: %w", ErrInvalidParameterValue)
+		return fmt.Errorf("FifoQueue true needs a queue name that ends in .fifo: %w", ErrInvalidParameterValue)
 	}
-	if v == "false" {
-		attrs = maps.Clone(attrs)
-		delete(attrs, "FifoQueue")
-	}
-	return attrs, nil
+	return nil
 }
 
 // checkRedrive checks the RedrivePolicy in attrs against the other queues: the
@@ -244,8 +239,6 @@ func (e *Engine) checkRedrive(name string, attrs map[string]string) error {
 		return fmt.Errorf("maxReceiveCount %d is not between 1 and 1000: %w", p.MaxReceiveCount, ErrInvalidParameterValue)
 	case !ok || tq == nil:
 		return fmt.Errorf("dead letter target %q does not exist: %w", p.TargetARN, ErrInvalidParameterValue)
-	case target == name:
-		return fmt.Errorf("a queue cannot be its own dead letter target: %w", ErrInvalidParameterValue)
 	case tq.fifo() != isFIFOName(name):
 		return fmt.Errorf("dead letter target %q is not the same queue type: %w", target, ErrInvalidParameterValue)
 	}
@@ -405,7 +398,8 @@ func (e *Engine) SetAttributes(ctx context.Context, name string, attrs map[strin
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if _, ok := attrs["FifoQueue"]; ok {
+	// On a standard queue, validateAttrs answers InvalidAttributeName.
+	if _, ok := attrs["FifoQueue"]; ok && isFIFOName(name) {
 		return fmt.Errorf("attribute FifoQueue cannot be changed: %w", ErrInvalidAttributeValue)
 	}
 	if err := validateAttrs(attrs, isFIFOName(name)); err != nil {

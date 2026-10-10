@@ -63,8 +63,9 @@ func TestRedrivePolicyValidation(t *testing.T) {
 	if err := e.SetAttributes(t.Context(), "late", redrive("deny", "1")); !errors.Is(err, ErrInvalidParameterValue) {
 		t.Errorf("SetAttributes(redrive to deny) error = %v, want ErrInvalidParameterValue", err)
 	}
-	if err := e.SetAttributes(t.Context(), "late", redrive("late", "1")); !errors.Is(err, ErrInvalidParameterValue) {
-		t.Errorf("SetAttributes(redrive to itself) error = %v, want ErrInvalidParameterValue", err)
+	// AWS accepts a queue as its own dead-letter target (sqs-edge-cases).
+	if err := e.SetAttributes(t.Context(), "late", redrive("late", "1")); err != nil {
+		t.Errorf("SetAttributes(redrive to itself) error = %v, want nil", err)
 	}
 }
 
@@ -100,10 +101,7 @@ func TestRedriveAllowPolicyValidation(t *testing.T) {
 		{"allowAll", `{"redrivePermission":"allowAll"}`, `{"redrivePermission":"allowAll"}`, true},
 		{"denyAll", ` {"redrivePermission":"denyAll"}`, `{"redrivePermission":"denyAll"}`, true},
 		{"byQueue", `{"redrivePermission":"byQueue","sourceQueueArns":[` + arn + `]}`, `{"redrivePermission":"byQueue","sourceQueueArns":[` + arn + `]}`, true},
-		{"byQueue without ARNs", `{"redrivePermission":"byQueue"}`, "", false},
-		{"byQueue with an empty list", `{"redrivePermission":"byQueue","sourceQueueArns":[]}`, "", false},
 		{"byQueue with 11 ARNs", `{"redrivePermission":"byQueue","sourceQueueArns":[` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `]}`, "", false},
-		{"allowAll with ARNs", `{"redrivePermission":"allowAll","sourceQueueArns":[` + arn + `]}`, "", false},
 		{"unknown permission", `{"redrivePermission":"some"}`, "", false},
 		{"missing permission", `{}`, "", false},
 		{"not JSON", `nope`, "", false},
@@ -120,6 +118,29 @@ func TestRedriveAllowPolicyValidation(t *testing.T) {
 				if got := attr(t, e, name, "RedriveAllowPolicy"); got != tt.want {
 					t.Errorf("RedriveAllowPolicy = %q, want %q", got, tt.want)
 				}
+			}
+		})
+	}
+}
+
+func TestRedriveAllowPolicyARNMismatch(t *testing.T) {
+	e := newEngine(t)
+	const arn = `"arn:aws:sqs:us-east-1:000000000000:a"`
+	tests := []struct {
+		name, value string
+		want        error
+	}{
+		{"byQueue without ARNs", `{"redrivePermission":"byQueue"}`, ErrInvalidParameterValue},
+		{"byQueue with an empty list", `{"redrivePermission":"byQueue","sourceQueueArns":[]}`, ErrInvalidParameterValue},
+		{"allowAll with ARNs", `{"redrivePermission":"allowAll","sourceQueueArns":[` + arn + `]}`, ErrInvalidParameterValue},
+		{"unknown permission", `{"redrivePermission":"some"}`, ErrInvalidAttributeValue},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := "m" + string(rune('a'+i))
+			err := e.CreateQueue(t.Context(), name, map[string]string{"RedriveAllowPolicy": tt.value}, nil)
+			if !errors.Is(err, tt.want) {
+				t.Errorf("CreateQueue(RedriveAllowPolicy=%s) error = %v, want %v", tt.value, err, tt.want)
 			}
 		})
 	}

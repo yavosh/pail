@@ -149,6 +149,8 @@ func scenarios() []scenario {
 		snsFilterEdgeCasesScenario(),
 		snsHTTPSubscriptionsScenario(),
 		snsDeliveryPolicyScenario(),
+		sqsEdgeCasesScenario(),
+		snsEdgeCasesScenario(),
 		{name: "auth-errors", steps: []step{
 			createBucket(),
 			{name: "no-credentials", method: http.MethodGet, query: "list-type=2", auth: authNone},

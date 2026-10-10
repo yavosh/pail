@@ -187,7 +187,7 @@ func TestListDeadLetterSourceQueues(t *testing.T) {
 	e.fail("ListDeadLetterSourceQueues", fmt.Sprintf(`{"QueueUrl":%q,"MaxResults":0}`, dlq), 400, invalidParam, "InvalidParameterValue")
 	e.fail("ListDeadLetterSourceQueues", fmt.Sprintf(`{"QueueUrl":%q,"NextToken":"!"}`, dlq), 400, invalidParam, "InvalidParameterValue")
 	e.fail("ListDeadLetterSourceQueues", `{"QueueUrl":"http://x/000000000000/gone"}`, 400, "com.amazonaws.sqs#QueueDoesNotExist", "AWS.SimpleQueueService.NonExistentQueue")
-	e.fail("ListDeadLetterSourceQueues", `{}`, 400, missingParam, "MissingParameter")
+	e.fail("ListDeadLetterSourceQueues", `{}`, 400, "com.amazonaws.sqs#QueueDoesNotExist", "AWS.SimpleQueueService.NonExistentQueue")
 }
 
 func TestStandardQueueReturnsGroupID(t *testing.T) {

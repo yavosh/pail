@@ -285,7 +285,8 @@ func validateAttribute(name string, a MessageAttribute) error {
 			return bad("a binary attribute needs a binary value and no string value")
 		}
 	default:
-		return bad("data type must be String, String.Array, Number, or Binary")
+		// AWS answers ParameterValueInvalid here (sns-edge-cases), not InvalidParameter.
+		return fmt.Errorf("message attribute %q: data type must be String, String.Array, Number, or Binary: %w", name, ErrParameterValueInvalid)
 	}
 	return nil
 }

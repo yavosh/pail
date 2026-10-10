@@ -239,14 +239,17 @@ func unsetValue(k, v string) bool {
 	return v == "" || k == attrFilter && json.Unmarshal([]byte(v), &m) == nil && m != nil && len(m) == 0
 }
 
-// Unsubscribe removes a subscription. A missing one is ErrNotFound and an
-// unsigned call on an authenticated one is ErrAuthorization (both unverified).
+// Unsubscribe removes a subscription. A missing one succeeds (sns-edge-cases), and
+// an unsigned call on an authenticated one is ErrAuthorization (unverified).
 // An unsigned removal of an HTTP subscription posts an UnsubscribeConfirmation.
 func (e *Engine) Unsubscribe(ctx context.Context, arn string, signed bool, baseURL string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	removed, version, err := e.removeSub(arn, signed)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}

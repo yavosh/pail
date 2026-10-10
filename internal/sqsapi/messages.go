@@ -20,7 +20,7 @@ type messageAttribute struct {
 	BinaryListValues [][]byte `json:",omitempty"`
 }
 
-// toEngine converts attrs. List values are not implemented.
+// toEngine converts attrs. AWS does not support list values.
 func toEngine(attrs map[string]messageAttribute) (map[string]queue.MessageAttribute, error) {
 	if attrs == nil {
 		return nil, nil
@@ -28,7 +28,7 @@ func toEngine(attrs map[string]messageAttribute) (map[string]queue.MessageAttrib
 	out := make(map[string]queue.MessageAttribute, len(attrs))
 	for name, a := range attrs {
 		if len(a.StringListValues) > 0 || len(a.BinaryListValues) > 0 {
-			return nil, fmt.Errorf("message attribute %q: list values are not implemented: %w", name, queue.ErrInvalidParameterValue)
+			return nil, fmt.Errorf("message attribute %q: list values are not supported: %w", name, queue.ErrUnsupportedOperation)
 		}
 		out[name] = queue.MessageAttribute{DataType: a.DataType, StringValue: a.StringValue, BinaryValue: a.BinaryValue}
 	}

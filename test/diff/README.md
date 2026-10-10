@@ -98,6 +98,7 @@ The FIFO and dead-letter scenarios are:
 
 - `sqs-fifo`: FIFO queue creation and its errors (`FifoQueue` changes, `FifoQueue` on a standard name), high-throughput attributes, send rules (missing group, missing deduplication ID, per-message delay), deduplication, group locking, and content-based deduplication with its `MessageDeduplicationId`.
 - `sqs-dead-letter`: `RedrivePolicy` validation, a FIFO target for a standard source, `RedriveAllowPolicy` `denyAll` and `allowAll`, the move to the dead-letter queue, `DeadLetterQueueSourceArn`, and `ListDeadLetterSourceQueues`.
+- `sqs-edge-cases`: a missing `QueueUrl`, `ReceiptHandle`, and `VisibilityTimeout`, list attribute values, non-object JSON bodies, `FifoQueue` `false` on a standard queue, a queue as its own dead-letter target, `RedriveAllowPolicy` shape errors, a malformed `Authorization` header, and a message over 1 MiB.
 - `sqs-fair-queue`: FIFO attributes and `MessageDeduplicationId` on a standard queue, `MessageGroupId` on a standard queue, and what a receive returns for it.
 
 Record them with:
@@ -118,6 +119,7 @@ The SNS scenarios are:
 - `sns-errors`: `Publish` and `Subscribe` validation errors, a missing subscription, an unknown action, and a deleted topic.
 - `sns-filter-policies`: filter policies in attribute and body scope, their validation errors and limits, `{}`, and the attribute order.
 - `sns-filter-edge-cases`: `anything-but` on an absent attribute and on another type, `exists` `false` on a missing body path, body policies with `MessageStructure` `json`, and the key count of nested policies.
+- `sns-edge-cases`: the attribute order of `GetTopicAttributes`, tag limits and tag errors for a missing topic, `MessageDeduplicationId` on a standard topic, a bad message attribute type, `PublishBatch` limits, `Unsubscribe` of a missing subscription, a FIFO queue endpoint, and `MessageGroupId` forwarded to SQS.
 - `sns-delivery-policy`: topic and subscription `DeliveryPolicy` normalization, the effective policy of an HTTP subscription, and the validation errors.
 - `sns-http-subscriptions`: HTTP endpoint errors, pending subscriptions, `ConfirmSubscription` errors, unsigned links, and `Unsubscribe` of pending and SQS subscriptions.
 

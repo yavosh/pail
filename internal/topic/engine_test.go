@@ -281,7 +281,7 @@ func TestTopicAttributes(t *testing.T) {
 	}
 	got, _ = e.TopicAttributes(t.Context(), arn)
 	const storedDelivery = `{"http":{"disableSubscriptionOverrides":false}}` // normalized
-	wantKeys := []string{"Policy", "Owner", "SubscriptionsPending", "TopicArn", "EffectiveDeliveryPolicy", "SubscriptionsConfirmed", "DisplayName", "DeliveryPolicy", "SubscriptionsDeleted", "KmsMasterKeyId", "SignatureVersion", "TracingConfig"}
+	wantKeys := []string{"Policy", "SignatureVersion", "Owner", "SubscriptionsPending", "KmsMasterKeyId", "TopicArn", "TracingConfig", "EffectiveDeliveryPolicy", "SubscriptionsConfirmed", "DisplayName", "DeliveryPolicy", "SubscriptionsDeleted"}
 	var keys []string
 	for _, a := range got {
 		keys = append(keys, a.Key)
@@ -289,15 +289,16 @@ func TestTopicAttributes(t *testing.T) {
 	if !reflect.DeepEqual(keys, wantKeys) {
 		t.Errorf("TopicAttributes keys after set = %v, want %v", keys, wantKeys)
 	}
-	if got[0].Value != `{"Version":"1"}` || got[6].Value != "renamed" || got[4].Value != goldenDelivery || got[7].Value != storedDelivery {
-		t.Errorf("TopicAttributes after set: Policy %q, DisplayName %q, EffectiveDeliveryPolicy %q, DeliveryPolicy %q; want the default and %q", got[0].Value, got[6].Value, got[4].Value, got[7].Value, storedDelivery)
+	// Indexes follow wantKeys: Policy 0, EffectiveDeliveryPolicy 7, DisplayName 9, DeliveryPolicy 10.
+	if got[0].Value != `{"Version":"1"}` || got[9].Value != "renamed" || got[7].Value != goldenDelivery || got[10].Value != storedDelivery {
+		t.Errorf("TopicAttributes after set: Policy %q, DisplayName %q, EffectiveDeliveryPolicy %q, DeliveryPolicy %q; want the default and %q", got[0].Value, got[9].Value, got[7].Value, got[10].Value, storedDelivery)
 	}
 
 	if err := e.SetTopicAttribute(t.Context(), arn, "DisplayName", ""); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = e.TopicAttributes(t.Context(), arn); got[6].Value != "" {
-		t.Errorf("DisplayName after unset = %q, want empty", got[6].Value)
+	if got, _ = e.TopicAttributes(t.Context(), arn); got[9].Value != "" {
+		t.Errorf("DisplayName after unset = %q, want empty", got[9].Value)
 	}
 
 	tests := []struct {
@@ -442,8 +443,8 @@ func TestSubscribe(t *testing.T) {
 	if err := e.Unsubscribe(t.Context(), first, true, testBase); err != nil {
 		t.Fatalf("Unsubscribe error = %v", err)
 	}
-	if err := e.Unsubscribe(t.Context(), first, true, testBase); !errors.Is(err, ErrNotFound) {
-		t.Errorf("Unsubscribe again error = %v, want %v", err, ErrNotFound)
+	if err := e.Unsubscribe(t.Context(), first, true, testBase); err != nil {
+		t.Errorf("Unsubscribe again error = %v, want nil: AWS accepts a missing subscription", err)
 	}
 	if err := e.Unsubscribe(t.Context(), "x", true, testBase); !errors.Is(err, ErrInvalidParameter) {
 		t.Errorf("Unsubscribe(x) error = %v, want %v", err, ErrInvalidParameter)

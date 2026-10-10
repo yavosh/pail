@@ -27,7 +27,7 @@ Every other operation returns `UnsupportedOperation`. That includes `AddPermissi
 
 - A queue URL is `<scheme>://<host>/000000000000/<name>`. The scheme and host come from the request that returned the URL.
 - pail ignores the host when it reads a queue URL. A URL from `localhost` works through `127.0.0.1` or a container host name.
-- A queue URL with another account or a malformed path returns `QueueDoesNotExist`. An empty `QueueUrl` returns `MissingParameter`.
+- A queue URL with another account or a malformed path returns `QueueDoesNotExist`. A missing or empty `QueueUrl` returns `QueueDoesNotExist` (verified for `SendMessage`).
 - A queue ARN is `arn:aws:sqs:<region>:000000000000:<name>`. The region is the `--region` setting.
 - A queue name is 1 to 80 letters, digits, hyphens, or underscores. A FIFO queue name also ends in `.fifo`, and the whole name, including the suffix, is at most 80 characters.
 
@@ -75,7 +75,7 @@ Queue definitions, which are attributes and tags, persist in the data directory.
 ### Message attributes and checksums
 
 - Attribute types are `String`, `Number`, and `Binary`, with an optional custom label such as `String.json`. A `Number` is a decimal number.
-- `StringListValues` and `BinaryListValues` return `InvalidParameterValue`.
+- `StringListValues` and `BinaryListValues` return `UnsupportedOperation`, as AWS does. A message body or batch over 1,048,576 bytes returns `InvalidParameterValue`.
 - `MD5OfMessageBody` is the MD5 of the body. `MD5OfMessageAttributes` is the SQS attribute checksum.
 - `ReceiveMessage` returns the attributes that `MessageAttributeNames` selects. The names are `All` or `.*` for every attribute, an exact name, or `prefix.*` for names that start with `prefix`. The match uses the text before `.*` without the dot, so `col.*` also matches `color`.
 - The attribute checksum on a received message covers only the returned attributes. A receive that returns no attributes omits it.
@@ -87,15 +87,15 @@ Queue definitions, which are attributes and tags, persist in the data directory.
 - A batch has 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique in the batch.
 - A batch body, with its message attributes, is at most 1,048,576 bytes.
 - A request that breaks these rules fails as a whole with `EmptyBatchRequest`, `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong`.
-- An invalid entry fails alone. The response lists it in `Failed` with `SenderFault`, a `Code`, and a `Message`. The other entries still run. An entry fails alone for an invalid message, list attribute values, or a missing `VisibilityTimeout`; the last two use `InvalidParameterValue` (unverified).
-- `SendMessage` and `SendMessageBatch` accept `MessageGroupId` on a standard queue. See [Fair queues](#fair-queues). `MessageDeduplicationId` on a standard queue returns `InvalidParameterValue`.
+- An invalid entry fails alone. The response lists it in `Failed` with `SenderFault`, a `Code`, and a `Message`. The other entries still run. An entry fails alone for an invalid message, list attribute values (`UnsupportedOperation`, unverified for an entry), or a missing `VisibilityTimeout` (`InvalidParameterValue`, unverified).
+- `SendMessage` and `SendMessageBatch` accept `MessageGroupId` on a standard queue. See [Fair queues](#fair-queues). `MessageDeduplicationId` on a standard queue returns `InvalidParameterValue` (verified).
 
 ### FIFO queues
 
 AWS recordings in `sqs-fifo` verify these rules, except those marked unverified.
 
-- A name that ends in `.fifo` is a FIFO queue. `CreateQueue` for such a name needs the `FifoQueue` attribute set to `true`, and `FifoQueue` `true` needs a `.fifo` name. Otherwise it returns `InvalidParameterValue`. `FifoQueue` `false` on a standard queue is accepted and not stored (unverified).
-- `FifoQueue` can't change after creation. `SetQueueAttributes` returns `InvalidAttributeValue`.
+- A name that ends in `.fifo` is a FIFO queue. `CreateQueue` for such a name needs the `FifoQueue` attribute set to `true`, and `FifoQueue` `true` needs a `.fifo` name. Otherwise it returns `InvalidParameterValue`. `FifoQueue` on a standard queue, even `false`, returns `InvalidAttributeName`, in `CreateQueue` and in `SetQueueAttributes`.
+- `FifoQueue` can't change after creation. `SetQueueAttributes` on a FIFO queue returns `InvalidAttributeValue` (unverified).
 - A FIFO queue has these attributes. They are not valid on a standard queue, which returns `InvalidAttributeName`.
 
   | Attribute | Default | Values |
@@ -119,13 +119,13 @@ AWS recordings in `sqs-fifo` verify these rules, except those marked unverified.
 AWS recordings in `sqs-dead-letter` verify these rules, except those marked unverified.
 
 - `RedrivePolicy` is a JSON object with `deadLetterTargetArn` and `maxReceiveCount`. `maxReceiveCount` is 1 to 1,000, as a JSON number or a decimal string. pail stores the canonical form `{"deadLetterTargetArn":"<arn>","maxReceiveCount":<n>}`, and returns it from `GetQueueAttributes`. Other fields are dropped.
-- `CreateQueue` and `SetQueueAttributes` check the policy. A bad shape returns `InvalidAttributeValue` (unverified). These cases return `InvalidParameterValue`: a `maxReceiveCount` outside 1 to 1000, a target that is not an existing queue of this account and region, a queue that targets itself (unverified), a target of the other type (FIFO or standard), and a target whose `RedriveAllowPolicy` does not permit the source. An empty value removes the policy.
-- `RedriveAllowPolicy` is a JSON object with `redrivePermission`: `allowAll`, `denyAll`, or `byQueue`. `byQueue` needs `sourceQueueArns` with 1 to 10 ARNs. The other values must not have it. pail enforces the policy only when a source sets its `RedrivePolicy`. A later change does not affect existing sources. `denyAll` and `allowAll` are verified. `byQueue` is unverified.
+- `CreateQueue` and `SetQueueAttributes` check the policy. A bad shape returns `InvalidAttributeValue` (unverified). These cases return `InvalidParameterValue`: a `maxReceiveCount` outside 1 to 1000, a target that is not an existing queue of this account and region, a target of the other type (FIFO or standard), and a target whose `RedriveAllowPolicy` does not permit the source. An empty value removes the policy. A queue can name itself as its dead-letter target: AWS accepts it, and so does pail.
+- `RedriveAllowPolicy` is a JSON object with `redrivePermission`: `allowAll`, `denyAll`, or `byQueue`. `byQueue` needs `sourceQueueArns` with 1 to 10 ARNs. The other values must not have it. `byQueue` without ARNs and `allowAll` with ARNs return `InvalidParameterValue`, not `InvalidAttributeValue` (verified; `denyAll` with ARNs and a `byQueue` list of 11 or more ARNs are unverified). pail enforces the policy only when a source sets its `RedrivePolicy`. A later change does not affect existing sources. `allowAll`, `denyAll`, and `byQueue` are verified.
 - When a receive finds a visible message whose receive count is at least `maxReceiveCount`, it moves the message to the dead-letter queue instead of returning it. The move happens on that receive, not in the background. The message keeps its `MessageId`, body, attributes, send time, and receive count. A FIFO target gives it a new sequence number.
 - The moved message is visible at once in the target. A long poll on the target wakes. `ReceiveMessage` on the target returns `DeadLetterQueueSourceArn` as a system attribute. Its `ApproximateReceiveCount` continues from the source count.
 - If the target queue is deleted, the message is delivered from the source as usual (unverified).
 - `ListDeadLetterSourceQueues` returns the URLs of the queues whose `RedrivePolicy` targets the queue, as `queueUrls` (the non-empty shape is unverified, because AWS listed none in the recording). `MaxResults` and `NextToken` work as in `ListQueues` (unverified). An unknown queue returns `QueueDoesNotExist`. With no sources, the response is an empty object. AWS lists sources with eventual consistency, so a source created seconds earlier can be missing; pail lists it at once, and `test/diff` lists this as a known difference.
-- A cycle of redrive policies (a to b to a) moves a message back and forth, so neither queue delivers it, as on AWS. Only a queue that targets itself is rejected (unverified).
+- A cycle of redrive policies (a to b to a) moves a message back and forth, so neither queue delivers it, as on AWS. pail does not guard against a queue that targets itself; a message there moves back to the same queue on each receive (unverified on AWS).
 - Message move tasks (`StartMessageMoveTask` and related operations) are not supported.
 
 ### Fair queues
@@ -138,20 +138,21 @@ AWS recordings in `test/diff` verify every row except those marked unverified. A
 
 | Condition | Status | `__type` | Query code |
 | --- | --- | --- | --- |
-| Missing queue | 400 | `com.amazonaws.sqs#QueueDoesNotExist` | `AWS.SimpleQueueService.NonExistentQueue` |
+| Missing queue, or a missing `QueueUrl` (verified for `SendMessage`; unverified for the other operations) | 400 | `com.amazonaws.sqs#QueueDoesNotExist` | `AWS.SimpleQueueService.NonExistentQueue` |
 | Missing signature, unknown key, or bad signature | 403 | `com.amazon.coral.service#...` | `AccessDenied`, `InvalidClientTokenId`, or `SignatureDoesNotMatch` |
+| Malformed `Authorization` header | 400 | `com.amazon.coral.service#IncompleteSignatureException` | `IncompleteSignature` |
 | Operation that is not an SQS operation, or no `X-Amz-Target` | 400 | `com.amazon.coral.service#UnknownOperationException` | `InvalidAction` |
-| SQS operation that pail doesn't implement (unverified) | 400 | `com.amazonaws.sqs#UnsupportedOperation` | `AWS.SimpleQueueService.UnsupportedOperation` |
+| `StringListValues` or `BinaryListValues`; an SQS operation that pail doesn't implement (unverified) | 400 | `com.amazonaws.sqs#UnsupportedOperation` | `AWS.SimpleQueueService.UnsupportedOperation` |
 | Queue exists with other attributes | 400 | `com.amazonaws.sqs#QueueNameExists` | `QueueAlreadyExists` |
-| Bad attribute name or value | 400 | `com.amazonaws.sqs#InvalidAttributeName` or `#InvalidAttributeValue` | same name |
+| Bad attribute name or value, including `FifoQueue` on a standard queue | 400 | `com.amazonaws.sqs#InvalidAttributeName` or `#InvalidAttributeValue` | same name |
 | Bad parameter, queue name, missing `QueueName` (verified for `GetQueueUrl`; unverified for `CreateQueue`), or oversized message | 400 | `com.amazon.coral.service#InvalidParameterValueException` | `InvalidParameterValue` |
 | Empty `MessageBody`, or a missing `MessageGroupId` on a FIFO queue | 400 | `com.amazon.coral.service#MissingRequiredParameterException` | `MissingParameter` |
-| Missing `QueueUrl` or `ReceiptHandle` (unverified) | 400 | `com.amazon.coral.service#MissingRequiredParameterException` | `MissingParameter` |
+| Missing `ReceiptHandle`, or missing `VisibilityTimeout` in `ChangeMessageVisibility` | 400 | `com.amazon.coral.service#MissingRequiredParameterException` | `MissingParameter` |
 | Invalid message characters | 400 | `com.amazonaws.sqs#InvalidMessageContents` | `InvalidMessageContents` |
 | Bad receipt handle | 404 | `com.amazonaws.sqs#ReceiptHandleIsInvalid` | `ReceiptHandleIsInvalid` |
 | Purge too soon | 403 | `com.amazonaws.sqs#PurgeQueueInProgress` | `AWS.SimpleQueueService.PurgeQueueInProgress` |
 | Batch rule broken | 400 | `com.amazonaws.sqs#<Batch error name>` | `AWS.SimpleQueueService.<Batch error name>` |
-| Malformed request body | 400 | `com.amazon.coral.service#SerializationException` | `MalformedInput` |
+| Malformed request body, including JSON that is not an object | 400 | `com.amazon.coral.service#SerializationException` | `MalformedInput` |
 
 A failed batch entry uses the code `InvalidParameterValue`, `MissingParameter`, `InvalidMessageContents`, `ReceiptHandleIsInvalid`, or `InternalError`. `InvalidMessageContents` and `ReceiptHandleIsInvalid` are verified. The others are unverified.
 
@@ -195,27 +196,28 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 - A topic name is 1 to 256 letters, digits, hyphens, or underscores. A name that ends in `.fifo` returns `InvalidParameter`, because pail has no FIFO topics.
 - `CreateTopic` is idempotent. For a topic that exists, it returns the ARN. If a given attribute differs from the stored value, it returns `InvalidParameter`.
 - `DeleteTopic` removes the topic and its subscriptions. For a topic that does not exist, it succeeds.
-- A topic has at most 50 tags. More return `TagLimitExceeded` (unverified). The tag operations answer `ResourceNotFound` for an unknown topic (unverified). `ListTagsForResource` writes `Value` before `Key` in each member.
+- A topic has at most 50 tags. More return `TagLimitExceeded`. The tag operations answer `ResourceNotFound` for an unknown topic. `ListTagsForResource` writes `Value` before `Key` in each member.
 - `ListTopics` and the subscription lists return 100 entries a page. `NextToken` is an opaque value from the previous page.
 - `CreateTopic` with `DataProtectionPolicy` returns `InvalidParameter`.
 
 ### Topic attributes
 
-`GetTopicAttributes` returns these entries in this order. The recordings `sns-topic-basics` and `sns-topic-attributes` verify the order and the default values. `DisplayName` set at creation and by `SetTopicAttributes` shows in the next read.
+`GetTopicAttributes` returns these entries in this order. The recordings `sns-topic-basics`, `sns-topic-attributes`, `sns-delivery-policy`, and `sns-edge-cases` verify the order and the default values. `DisplayName` set at creation and by `SetTopicAttributes` shows in the next read.
 
 | Attribute | Value |
 | --- | --- |
 | `Policy` | AWS's default policy for the topic, or the policy that a client set. |
+| `SignatureVersion` | Only when a client set it. |
 | `Owner` | `000000000000`. |
 | `SubscriptionsPending` | The number of pending subscriptions. (unverified: AWS updates the counts with a delay). |
+| `KmsMasterKeyId` | Only when a client set it. |
 | `TopicArn` | The topic ARN. |
+| `TracingConfig` | Only when a client set it. |
 | `EffectiveDeliveryPolicy` | AWS's default delivery policy, or the stored `DeliveryPolicy` when one is set (recorded in `sns-delivery-policy` for a full policy). A partial policy overlays the defaults, so `{}` reads as the default policy (unverified). |
 | `SubscriptionsConfirmed` | The number of confirmed subscriptions (unverified: AWS updates the counts with a delay). |
 | `DisplayName` | Empty by default. |
 | `DeliveryPolicy` | Only when a client set it. See [Delivery policies](#delivery-policies). |
 | `SubscriptionsDeleted` | `0`. |
-
-After these entries, pail lists the other attributes that a client set, in this order (the position is unverified): `KmsMasterKeyId`, `SignatureVersion`, `TracingConfig`.
 
 `CreateTopic` accepts `FifoTopic` and `ContentBasedDeduplication` with the value `false` and ignores them. The value `true` returns `InvalidParameter`. `DisplayName` has at most 100 characters and no control characters (unverified). A tag key has 1 to 128 characters and a tag value has 0 to 256 characters (unverified).
 
@@ -225,7 +227,7 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 
 - pail supports the protocols `sqs`, `http`, and `https`. Any other protocol returns `InvalidParameter` with the message `protocol is not supported`.
 - An `sqs` endpoint must be the ARN of an SQS queue in the same region and account, `arn:aws:sqs:<region>:000000000000:<name>`. The queue need not exist when you subscribe. A delivery to a queue that does not exist is logged and dropped.
-- An endpoint that names a FIFO queue returns `InvalidParameter`, because pail has no FIFO topics (unverified).
+- An endpoint that names a FIFO queue returns `InvalidParameter`, because pail has no FIFO topics (verified for a FIFO queue endpoint on a standard topic).
 - An `http` or `https` endpoint must be a URL whose scheme equals the protocol, with a host and no user info. A scheme that differs from the protocol and an endpoint that is not a URL return `InvalidParameter`. AWS also refuses an endpoint on an internal address, such as `127.0.0.1`, with `AuthorizationError`. pail accepts it, because local testing needs it.
 - pail confirms an SQS subscription at once. A subscription ARN is the topic ARN, a colon, and a lowercase UUID.
 - An HTTP or HTTPS subscription is pending until its endpoint confirms it. See [Delivery to HTTP and HTTPS](#delivery-to-http-and-https). While it is pending, `Subscribe` returns the `SubscriptionArn` `pending confirmation`, unless `ReturnSubscriptionArn` is `true`. Then it returns the real ARN.
@@ -237,7 +239,7 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 - A confirmation token and its pending subscription expire 3 days after the subscription was created (the AWS documentation; unverified). An expired token returns `InvalidParameter`. An expired subscription disappears from listings, attributes (`NotFound`), and counts. pail removes it, and its file, when `Subscribe`, `ConfirmSubscription`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`, or `GetTopicAttributes` runs. A confirmed subscription never expires.
 - `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`), `FilterPolicy`, `FilterPolicyScope`, and, for HTTP and HTTPS subscriptions, `DeliveryPolicy`. `RedrivePolicy` and `SubscriptionRoleArn` return `InvalidParameter`, and so does `DeliveryPolicy` on an SQS subscription (recorded for `SetSubscriptionAttributes`; unverified for `Subscribe`). An empty value for `FilterPolicy` or `FilterPolicyScope` unsets it. An empty policy object, `{}`, removes the policy too. pail checks a policy against its scope whenever either one changes, so a call that leaves them inconsistent returns `InvalidParameter`. See [Filter policies](#filter-policies).
 - `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `FilterPolicy`, `TopicArn`, `Endpoint`, `FilterPolicyScope`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. `PendingConfirmation` and `ConfirmationWasAuthenticated` follow the confirmation state. An HTTP or HTTPS subscription adds `EffectiveDeliveryPolicy` after `Endpoint`, and `DeliveryPolicy` right after it when one is set (recorded in `sns-delivery-policy`). Their position relative to `FilterPolicyScope` is unverified. See [Delivery policies](#delivery-policies). `FilterPolicy` (the text you set) and `FilterPolicyScope` (`MessageAttributes` by default) appear only when a policy is set, even when you set the scope. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
-- `Unsubscribe` of a subscription that does not exist returns `NotFound` (unverified).
+- `Unsubscribe` of a well-formed ARN of a subscription that does not exist succeeds with an empty result. A value that is not an ARN returns `InvalidParameter` (unverified).
 - pail does not check the queue policy. AWS delivers only when the policy allows the topic.
 
 ### Delivery policies
@@ -302,10 +304,10 @@ The `sns-filter-policies` and `sns-filter-edge-cases` recordings verify the rule
 - `Subject` is at most 100 printable ASCII characters, with no line breaks.
 - `MessageStructure` is empty or `json`. With `json`, the message is a JSON object of string values with a `default` key. pail delivers the value under the protocol name of the subscription (`sqs`, `http`, or `https`) when it exists, and `default` otherwise. The `sqs` key is verified. The `http` and `https` keys are unverified.
 - A message has at most 10 attributes. Names follow the SQS rules. The types are `String`, `String.Array` (the value is a JSON array), `Number`, and `Binary`, with an optional custom label such as `String.json`.
-- A standard topic accepts `MessageGroupId`. pail forwards it as the `MessageGroupId` of the SQS message (unverified). `MessageDeduplicationId` returns `InvalidParameter` (unverified).
-- A missing `Message` parameter returns `ValidationError`. A long `Subject` and a bad `MessageStructure` return `InvalidParameter`. An empty `Message` returns `InvalidParameter` too: verified for a `PublishBatch` entry, unverified for `Publish`. A `MessageGroupId` must be 1 to 128 printable ASCII characters (unverified). The other rules above return `InvalidParameter` too (unverified for attribute errors; AWS may use `ParameterValueInvalid`).
+- A standard topic accepts `MessageGroupId`. pail forwards it as the `MessageGroupId` of the SQS message. `MessageDeduplicationId` returns `InvalidParameter`. Both are verified.
+- A missing `Message` parameter returns `ValidationError`. A long `Subject` and a bad `MessageStructure` return `InvalidParameter`. An empty `Message` returns `InvalidParameter` too: verified for a `PublishBatch` entry, unverified for `Publish`. A `MessageGroupId` must be 1 to 128 printable ASCII characters (unverified). The other rules above return `InvalidParameter` too. A message attribute with a data type other than `String`, `String.Array`, `Number`, or `Binary` returns `ParameterValueInvalid` (verified). The other attribute errors (name, value, and count) return `InvalidParameter`; AWS may use `ParameterValueInvalid` for some of them (unverified).
 - `Publish` returns after pail sends to every subscribed queue, so a receive right after it sees the message. A missing queue or a failed send is logged and does not fail the publish.
-- `PublishBatch` takes 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique. The entries total at most 262,144 bytes. A request that breaks these rules fails as a whole with `ValidationError` (no entries), `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong` (unverified). An invalid entry fails alone and appears in `Failed` with `Code`, `Message`, `SenderFault`, and `Id`, in this order (the `Message` position is unverified). The result always has `Failed` first, empty when nothing failed, then `Successful`. A `Successful` member is `MessageId` then `Id`. pail writes an empty `Successful` when every entry failed (unverified). A failed entry's `Message` text is not compared with AWS.
+- `PublishBatch` takes 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique. The entries total at most 262,144 bytes. A request that breaks these rules fails as a whole with `ValidationError` (no entries), `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong`. An invalid entry fails alone and appears in `Failed` with `Code`, `Message`, `SenderFault`, and `Id`, in this order (the `Message` position is unverified). The result always has `Failed` first, empty when nothing failed, then `Successful`. A `Successful` member is `MessageId` then `Id`. pail writes an empty `Successful` when every entry failed. A failed entry's `Message` text is not compared with AWS.
 
 ### Delivery to SQS
 
@@ -370,7 +372,7 @@ pail ignores the host when it routes, so an unsigned `GET` of a virtual-hosted b
 
 ### Errors
 
-The recordings verify the auth rows, `NotFound`, `InvalidParameter`, `InvalidAction`, `ValidationError`, `TooManyEntriesInBatchRequest`, `BatchEntryIdsNotDistinct`, and `InvalidBatchEntryId`. The other rows come from the service model and are unverified. Every error is an `ErrorResponse` with `Type`, `Code`, and `Message`.
+The recordings verify every row except `AuthorizationError` and `InternalError`, which come from the service model and are unverified. Every error is an `ErrorResponse` with `Type`, `Code`, and `Message`.
 
 | Condition | Status | `Type` | `Code` |
 | --- | --- | --- | --- |
@@ -379,10 +381,11 @@ The recordings verify the auth rows, `NotFound`, `InvalidParameter`, `InvalidAct
 | Unsigned `Unsubscribe` of an authenticated subscription | 403 | `Sender` | `AuthorizationError` |
 | Tag operation on a missing topic | 404 | `Sender` | `ResourceNotFound` |
 | Bad parameter, name, attribute, protocol, or endpoint | 400 | `Sender` | `InvalidParameter` |
+| Message attribute with an unknown data type | 400 | `Sender` | `ParameterValueInvalid` |
 | More than 50 tags | 400 | `Sender` | `TagLimitExceeded` |
 | Action that pail does not implement, or no `Action` | 400 | `Sender` | `InvalidAction` |
 | Missing `Message`, or an empty batch | 400 | `Sender` | `ValidationError` |
-| Batch rule broken | 400 | `Sender` | `TooManyEntriesInBatchRequest`, `BatchEntryIdsNotDistinct`, `InvalidBatchEntryId`, or `BatchRequestTooLong` (unverified) |
+| Batch rule broken | 400 | `Sender` | `TooManyEntriesInBatchRequest`, `BatchEntryIdsNotDistinct`, `InvalidBatchEntryId`, or `BatchRequestTooLong` |
 | Server fault | 500 | `Receiver` | `InternalError` |
 
 ### Differences from AWS

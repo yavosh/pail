@@ -23,11 +23,9 @@ func queueURL(r *http.Request, name string) string {
 }
 
 // queueName returns the queue name in a queue URL. The host is ignored. A URL
-// that does not name a queue of pail's account means the queue does not exist.
+// that does not name a queue of pail's account, including an empty one, means
+// the queue does not exist.
 func queueName(rawURL string) (string, error) {
-	if rawURL == "" {
-		return "", fmt.Errorf("QueueUrl is required: %w", errMissingParam)
-	}
 	notFound := fmt.Errorf("queue URL %q: %w", rawURL, queue.ErrQueueDoesNotExist)
 	u, err := url.Parse(rawURL)
 	if err != nil {
