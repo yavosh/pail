@@ -1,6 +1,6 @@
 # pail
 
-pail is a small S3-compatible server written in pure Go. It stores objects on local disk. Use it for local testing and personal projects. pail aims for S3 API compatibility, not scale. It is a work in progress.
+pail is a small S3-compatible and SQS-compatible server written in pure Go. It stores objects on local disk and serves Amazon SQS queues from the same port. Use it for local testing and personal projects. pail aims for API compatibility, not scale. It is a work in progress.
 
 ## Limitations
 
@@ -9,7 +9,10 @@ pail isn't a production object store:
 - It has no clustering, replication, or multi-tenant support.
 - It serves one access key pair and one region.
 - It has no versioning, bucket policies, or storage tiers.
-- Unsupported operations fail with `501 NotImplemented`. So do requests with `x-amz-tagging` or `x-amz-tagging-directive`.
+- Unsupported S3 operations fail with `501 NotImplemented`. So do requests with `x-amz-tagging` or `x-amz-tagging-directive`.
+- SQS messages live in memory and are lost when pail restarts. Queue definitions persist.
+- SQS FIFO queues and dead-letter queues aren't supported yet.
+- SQS uses the AWS JSON protocol only, which current SDKs and the AWS CLI send. It doesn't support the legacy query protocol.
 
 ## Install
 
@@ -135,6 +138,32 @@ Presigned URLs from the default client work with pail:
 url = s3.generate_presigned_url("get_object", Params={"Bucket": "demo", "Key": "example.txt"})
 ```
 
+### SQS
+
+Point the client at the same endpoint as S3. SQS requests use the signing scope `sqs`, and pail routes them by that scope.
+
+- **AWS CLI.** Pass `--endpoint-url`, or set `AWS_ENDPOINT_URL_SQS`:
+
+  ```bash
+  aws --endpoint-url http://127.0.0.1:9000 sqs create-queue --queue-name demo
+  ```
+
+- **aws-sdk-go-v2.** Set `BaseEndpoint` in the SQS client options:
+
+  ```go
+  client := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
+  	o.BaseEndpoint = aws.String("http://127.0.0.1:9000")
+  })
+  ```
+
+- **boto3.** Set `endpoint_url`:
+
+  ```python
+  sqs = boto3.client("sqs", endpoint_url="http://127.0.0.1:9000", region_name="us-east-1")
+  ```
+
+Queue URLs use account `000000000000` and the host of the request that returned them, for example `http://127.0.0.1:9000/000000000000/demo`. A queue URL works with any host name that reaches pail.
+
 ### Browser form uploads
 
 To let a browser upload directly to pail, follow these steps:
@@ -185,12 +214,13 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | Lifecycle | `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, `DeleteBucketLifecycle` |
 | ACLs | `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, `PutObjectAcl` |
 | Browser forms | `POST Object` |
+| SQS | `CreateQueue`, `GetQueueUrl`, `DeleteQueue`, `PurgeQueue`, `ListQueues`, `GetQueueAttributes`, `SetQueueAttributes`, `TagQueue`, `UntagQueue`, `ListQueueTags`, `SendMessage`, `SendMessageBatch`, `ReceiveMessage`, `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
 
-pail also verifies checksums, honors conditional headers, and accepts `aws-chunked` streaming uploads. For limits and exact behavior, see [S3 compatibility](docs/s3-compatibility.md).
+pail also verifies checksums, honors conditional headers, and accepts `aws-chunked` streaming uploads. For limits and exact behavior, see [S3 compatibility](docs/s3-compatibility.md) and [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
 ## Authentication
 
-- S3 requests use AWS Signature Version 4 (SigV4) with the configured access key pair.
+- S3 and SQS requests use AWS Signature Version 4 (SigV4) with the configured access key pair.
 - Presigned URLs accept SigV4 and Signature Version 2 (SigV2). Form policies require SigV4. SigV2 `Authorization` headers aren't supported.
 - CORS preflight requests, and operations that a public ACL grant allows, need no signature.
 

@@ -293,6 +293,8 @@ func TestCanonicalJSON(t *testing.T) {
 		{"nested success", `{"Messages":[{"Body":"hello","ReceiptHandle":"abc","Attributes":{"SentTimestamp":"1","Z":2}}],"Attributes":{"CreatedTimestamp":"9","QueueArn":"arn","Ok":true,"None":null}}`,
 			"Attributes.CreatedTimestamp: <volatile>\nAttributes.None: null\nAttributes.Ok: true\nAttributes.QueueArn: arn\n" +
 				"Messages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.Z: 2\nMessages[0].Body: hello\nMessages[0].ReceiptHandle: <volatile>\n", false},
+		{"batch failure drops its message and masks the sender", `{"Failed":[{"Id":"bad","SenderFault":true,"Code":"InvalidMessageContents","Message":"text"}],"Messages":[{"Attributes":{"SenderId":"AIDAEXAMPLE"}}]}`,
+			"Failed[0].Code: InvalidMessageContents\nFailed[0].Id: bad\nFailed[0].SenderFault: true\nMessages[0].Attributes.SenderId: <volatile>\n", false},
 		{"error keeps the type only", `{"__type":"com.amazonaws.sqs#QueueDoesNotExist","message":"nope"}`, "__type: com.amazonaws.sqs#QueueDoesNotExist\n", true},
 		{"empty body", "", "", false},
 		{"empty object", "{}", "{}\n", false},

@@ -5,15 +5,6 @@
 # Differences in any other step still fail. Once a pending step has no
 # unlisted difference, the test fails until you remove its line.
 
-sqs-queue-basics/create-queue SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/get-queue-url SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/get-queue-attributes SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/send-message SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/receive-message SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/delete-message SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/get-missing-queue-url SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/list-queues SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sqs-queue-basics/delete-queue SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
 sns-topic-basics/create-topic SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
 sns-topic-basics/get-topic-attributes SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
 sns-topic-basics/publish SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md

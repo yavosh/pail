@@ -9,7 +9,6 @@ import (
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/aws/smithy-go"
 )
 
@@ -40,17 +39,12 @@ func apiFailureMessage(t *testing.T, err error) (int, string, string) {
 	return respErr.HTTPStatusCode(), apiErr.ErrorCode(), apiErr.ErrorMessage()
 }
 
-func TestSQSStub(t *testing.T) {
+func TestSQSRouting(t *testing.T) {
 	servers := map[string]func(*testing.T) *pail{"plain": startPail, "tls": startPailTLS}
 	for name, start := range servers {
-		t.Run(name+" list queues is unsupported", func(t *testing.T) {
-			_, err := start(t).sqsClient().ListQueues(context.Background(), &sqs.ListQueuesInput{})
-			unsupported, ok := errors.AsType[*types.UnsupportedOperation](err)
-			if !ok {
-				t.Fatalf("ListQueues error = %v, want *types.UnsupportedOperation", err)
-			}
-			if got, want := unsupported.ErrorMessage(), "ListQueues is not supported"; got != want {
-				t.Errorf("ListQueues message = %q, want %q", got, want)
+		t.Run(name+" list queues", func(t *testing.T) {
+			if _, err := start(t).sqsClient().ListQueues(context.Background(), &sqs.ListQueuesInput{}); err != nil {
+				t.Errorf("ListQueues error = %v, want success", err)
 			}
 		})
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
 	"github.com/yavosh/pail/internal/config"
+	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/server"
 	"github.com/yavosh/pail/internal/store"
 	"github.com/yavosh/pail/internal/vfs/localdisk"
@@ -101,12 +102,16 @@ func startPailTLS(t *testing.T) *pail {
 	if err != nil {
 		t.Fatal(err)
 	}
+	queues, err := queue.Open(context.Background(), fsys, testRegion)
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewUnstartedServer(server.NewHandler(config.Config{
 		Domain:          "example.com",
 		AccessKeyID:     testKey,
 		SecretAccessKey: testSecret,
 		Region:          testRegion,
-	}, st))
+	}, st, queues))
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 

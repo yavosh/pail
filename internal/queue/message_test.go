@@ -501,9 +501,13 @@ func TestChangeVisibility(t *testing.T) {
 					t.Errorf("timeout %d error = %v, want ErrInvalidParameterValue", bad, err)
 				}
 			}
-			time.Sleep(11*time.Hour + 59*time.Minute)
-			if err := change(t, e, h, 43200); !errors.Is(err, ErrMessageNotInflight) {
-				t.Errorf("visible message error = %v, want ErrMessageNotInflight", err)
+			// A visible message accepts a change with its latest handle and is hidden again.
+			time.Sleep(time.Minute)
+			if err := change(t, e, h, 10); err != nil {
+				t.Errorf("visible message error = %v, want nil", err)
+			}
+			if got := receive(t, e, "q", ReceiveInput{}); len(got) != 0 {
+				t.Errorf("Receive after hiding a visible message = %d messages, want 0", len(got))
 			}
 		})
 	})

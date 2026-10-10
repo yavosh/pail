@@ -1,0 +1,155 @@
+{
+  "scenario": "sqs-visibility",
+  "exchanges": [
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "send-message",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "ab8e91cb6b128dd0",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "MD5OfMessageBody: 5d41402abc4b2a76b9719d911017c592\nMessageId: {uuid}\n"
+    },
+    {
+      "step": "receive-first",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "5673e8241887e680",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Body: hello\nMessages[0].MD5OfBody: 5d41402abc4b2a76b9719d911017c592\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-while-invisible",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "26ad1c5d5d371dfb",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "change-visibility-zero",
+      "request": "POST sqs AmazonSQS.ChangeMessageVisibility",
+      "fingerprint": "07189f8813c7f567",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "change-visibility-not-inflight",
+      "request": "POST sqs AmazonSQS.ChangeMessageVisibility",
+      "fingerprint": "b27cdaa658e7af1f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "receive-second",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "3f3feda7be0669a2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "get-attributes",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "9e31f4fb9eb7d5b0",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.ApproximateNumberOfMessages: 0\nAttributes.ApproximateNumberOfMessagesNotVisible: 1\n"
+    },
+    {
+      "step": "delete-message",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "delete-message-again",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "delete-garbage-handle",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "c5fa824bcf50ee98",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "ReceiptHandleIsInvalid;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#ReceiptHandleIsInvalid\n"
+    },
+    {
+      "step": "purge-queue",
+      "request": "POST sqs AmazonSQS.PurgeQueue",
+      "fingerprint": "721ecc0ffecdf95a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "purge-again",
+      "request": "POST sqs AmazonSQS.PurgeQueue",
+      "fingerprint": "721ecc0ffecdf95a",
+      "status": 403,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "AWS.SimpleQueueService.PurgeQueueInProgress;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#PurgeQueueInProgress\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

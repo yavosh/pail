@@ -13,7 +13,6 @@ var (
 	ErrMessageTooLong         = errors.New("message is too long")
 	ErrInvalidMessageContents = errors.New("invalid message contents")
 	ErrReceiptHandleInvalid   = errors.New("receipt handle is invalid")
-	ErrMessageNotInflight     = errors.New("message is not in flight")
 	ErrMessageNotAvailable    = errors.New("message is not available")
 	ErrPurgeInProgress        = errors.New("purge queue in progress")
 	ErrTooManyTags            = errors.New("too many tags")

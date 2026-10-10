@@ -1,0 +1,256 @@
+{
+  "scenario": "sqs-errors",
+  "exchanges": [
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "856ecb5634f03df1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "create-queue-same",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "856ecb5634f03df1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "create-queue-conflict",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "f7530e5b33cb260d",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "QueueAlreadyExists;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#QueueNameExists\n"
+    },
+    {
+      "step": "create-invalid-name",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "c021cfc6862b2520",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "get-attributes-invalid-name",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "ae052d2eea7fea08",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidAttributeName;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#InvalidAttributeName\n"
+    },
+    {
+      "step": "set-attributes-invalid-value",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "66977cb3a6a5f337",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidAttributeValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#InvalidAttributeValue\n"
+    },
+    {
+      "step": "set-attributes-unknown",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "11e42a66cc59c2f8",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidAttributeName;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#InvalidAttributeName\n"
+    },
+    {
+      "step": "set-max-size",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "dd3e9e1a4d625c08",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "send-too-long",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "2a0ffe5810357a6a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "send-invalid-chars",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "25f89b92de7cb9ff",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidMessageContents;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#InvalidMessageContents\n"
+    },
+    {
+      "step": "send-empty-body",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "f8f03b6367b06f0c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "MissingParameter;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#MissingRequiredParameterException\n"
+    },
+    {
+      "step": "send-fifo-field-standard-queue",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "2eae789b393e92d0",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "MD5OfMessageBody: 9dd4e461268c8034f5c8564e155c67a6\nMessageId: {uuid}\n"
+    },
+    {
+      "step": "receive-max-11",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "b8aaf4c7491d95e5",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "receive-wait-21",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "16cca7cd1251953c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "get-queue-url-missing-name",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "edd22746d97e3a57",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "unknown-operation",
+      "request": "POST sqs AmazonSQS.Bogus",
+      "fingerprint": "47dd82077849e526",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidAction;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#UnknownOperationException\n"
+    },
+    {
+      "step": "malformed-json",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "7e0ce99227d2ea74",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "MalformedInput;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#SerializationException\n"
+    },
+    {
+      "step": "tag-queue",
+      "request": "POST sqs AmazonSQS.TagQueue",
+      "fingerprint": "270cda92d218cd1f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "list-queue-tags",
+      "request": "POST sqs AmazonSQS.ListQueueTags",
+      "fingerprint": "a247209f54818408",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Tags.env: test\n"
+    },
+    {
+      "step": "untag-queue",
+      "request": "POST sqs AmazonSQS.UntagQueue",
+      "fingerprint": "3e28abd2ffa2ddb4",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "list-queue-tags-empty",
+      "request": "POST sqs AmazonSQS.ListQueueTags",
+      "fingerprint": "a247209f54818408",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

@@ -16,6 +16,7 @@ import urllib.request
 for name in (
     "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_SESSION_TOKEN",
     "AWS_SECURITY_TOKEN", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3",
+    "AWS_ENDPOINT_URL_SQS", "AWS_ENDPOINT_URL_SNS",
     "AWS_CA_BUNDLE", "AWS_REGION", "AWS_REQUEST_CHECKSUM_CALCULATION",
     "AWS_RESPONSE_CHECKSUM_VALIDATION", "HTTP_PROXY", "HTTPS_PROXY",
     "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy",
@@ -45,6 +46,7 @@ from botocore.exceptions import ClientError  # noqa: E402
 print(f"boto3 {boto3.__version__}, botocore {botocore.__version__}")
 
 s3 = boto3.client("s3", endpoint_url=endpoint, region_name="us-east-1")
+sqs = boto3.client("sqs", endpoint_url=endpoint, region_name="us-east-1")
 bucket = "smoke-py-" + os.urandom(4).hex()
 print(f"bucket: {bucket}")
 
@@ -282,5 +284,36 @@ with Step("delete_objects"):
 
 with Step("delete_bucket"):
     s3.delete_bucket(Bucket=bucket)
+
+queue_name = "smoke-py-" + os.urandom(4).hex()
+queue_url = None
+
+with Step("sqs create_queue, send_message, and receive_message"):
+    queue_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+    sqs.send_message(
+        QueueUrl=queue_url, MessageBody="hello from the smoke test",
+        MessageAttributes={"color": {"DataType": "String", "StringValue": "blue"}},
+    )
+    messages = sqs.receive_message(
+        QueueUrl=queue_url, MessageAttributeNames=["All"], WaitTimeSeconds=1,
+    ).get("Messages", [])
+    check(len(messages) == 1, f"received {len(messages)} messages, want 1")
+    message = messages[0]
+    check(message["Body"] == "hello from the smoke test", f"unexpected body: {message['Body']}")
+    check(message["MessageAttributes"]["color"]["StringValue"] == "blue",
+          f"unexpected attributes: {message['MessageAttributes']}")
+
+with Step("sqs delete_message"):
+    sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
+
+with Step("sqs send_message_batch"):
+    out = sqs.send_message_batch(QueueUrl=queue_url, Entries=[
+        {"Id": "a", "MessageBody": "one"},
+        {"Id": "b", "MessageBody": "two"},
+    ])
+    check(len(out.get("Successful", [])) == 2 and not out.get("Failed"), f"batch result: {out}")
+
+with Step("sqs delete_queue"):
+    sqs.delete_queue(QueueUrl=queue_url)
 
 tmp.cleanup()

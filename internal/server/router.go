@@ -15,7 +15,7 @@ import (
 type router struct{ s3, sqs, sns http.Handler }
 
 // NewHandler returns the handler for one listener that serves S3, SQS, and SNS.
-func NewHandler(cfg config.Config, st s3api.Store) http.Handler {
+func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues) http.Handler {
 	return &router{
 		s3: s3api.New(s3api.Options{
 			Domain:          cfg.Domain,
@@ -24,7 +24,7 @@ func NewHandler(cfg config.Config, st s3api.Store) http.Handler {
 			Region:          cfg.Region,
 			Store:           st,
 		}),
-		sqs: sqsapi.New(sqsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey}),
+		sqs: sqsapi.New(sqsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Queues: queues}),
 		sns: snsapi.New(snsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey}),
 	}
 }
