@@ -41,6 +41,8 @@ func partReadsScenario() scenario {
 		{name: "head-multi-part1", method: http.MethodHead, key: "multi", query: "partNumber=1", compare: parts},
 		{name: "get-multi-part2", method: http.MethodGet, key: "multi", query: "partNumber=2", compare: parts},
 		{name: "head-multi-part3", method: http.MethodHead, key: "multi", query: "partNumber=3", compare: parts},
+		{name: "head-multi-part2-checksum", method: http.MethodHead, key: "multi", query: "partNumber=2", header: map[string]string{"x-amz-checksum-mode": "ENABLED"}, compare: parts},
+		{name: "get-multi-part-10001", method: http.MethodGet, key: "multi", query: "partNumber=10001", compare: parts},
 		{name: "get-multi-part-zero", method: http.MethodGet, key: "multi", query: "partNumber=0", compare: parts},
 		{name: "get-part-with-range", method: http.MethodGet, key: "multi", query: "partNumber=2", header: map[string]string{"Range": "bytes=0-1"}, compare: parts},
 		{name: "head-multi", method: http.MethodHead, key: "multi", compare: parts},

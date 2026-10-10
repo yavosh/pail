@@ -58,6 +58,7 @@ func TestPartReads(t *testing.T) {
 		{name: "part 0", method: http.MethodGet, key: "multi", query: "partNumber=0", wantStatus: 400, wantCode: "InvalidArgument"},
 		{name: "part abc", method: http.MethodGet, key: "multi", query: "partNumber=abc", wantStatus: 400, wantCode: "InvalidArgument"},
 		{name: "part -1", method: http.MethodGet, key: "multi", query: "partNumber=-1", wantStatus: 400, wantCode: "InvalidArgument"},
+		{name: "part 10001", method: http.MethodGet, key: "multi", query: "partNumber=10001", wantStatus: 400, wantCode: "InvalidArgument"},
 		{name: "part with range", method: http.MethodGet, key: "multi", query: "partNumber=2", header: map[string]string{"Range": "bytes=0-1"}, wantStatus: 400, wantCode: "InvalidRequest"},
 		{name: "part missing key", method: http.MethodGet, key: "none", query: "partNumber=1", wantStatus: 404, wantCode: "NoSuchKey"},
 		{name: "if-match miss", method: http.MethodGet, key: "multi", query: "partNumber=2", header: map[string]string{"If-Match": `"nope"`}, wantStatus: 412, wantCode: "PreconditionFailed"},
@@ -178,5 +179,28 @@ func TestGetObjectAttributes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPartReadChecksum(t *testing.T) {
+	srv, crc1, crc2 := partsServer(t)
+	mode := map[string]string{"x-amz-checksum-mode": "ENABLED"}
+	tests := []struct {
+		query, header, want string
+		mode                bool
+	}{
+		{"partNumber=1", "x-amz-checksum-crc32", crc1, true},
+		{"partNumber=2", "x-amz-checksum-crc32", crc2, true},
+		{"partNumber=2", "x-amz-checksum-type", "COMPOSITE", true},
+		{"partNumber=2", "x-amz-checksum-crc32", "", false},
+	}
+	for _, tt := range tests {
+		var h map[string]string
+		if tt.mode {
+			h = mode
+		}
+		if got := call(t, srv, http.MethodHead, "/bkt/multi?"+tt.query, "", h).header.Get(tt.header); got != tt.want {
+			t.Errorf("HEAD multi?%s with checksum mode %v: %s = %q, want %q", tt.query, tt.mode, tt.header, got, tt.want)
+		}
 	}
 }

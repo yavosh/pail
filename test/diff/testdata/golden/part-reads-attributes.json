@@ -169,6 +169,37 @@
       }
     },
     {
+      "step": "head-multi-part2-checksum",
+      "request": "HEAD /multi?partNumber=2",
+      "fingerprint": "ef0a62fe40d329d5",
+      "status": 206,
+      "headers": {
+        "Accept-Ranges": "bytes",
+        "Content-Length": "4",
+        "Content-Range": "bytes 5242880-5242883/5242884",
+        "Content-Type": "binary/octet-stream",
+        "Etag": "\"30dcfd3901d1c613b7fb532281748544-2\"",
+        "Last-Modified": "<present>",
+        "X-Amz-Checksum-Crc32": "fDe0XQ==",
+        "X-Amz-Checksum-Type": "COMPOSITE",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Mp-Parts-Count": "2",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-multi-part-10001",
+      "request": "GET /multi?partNumber=10001",
+      "fingerprint": "6c8ff271519efb12",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidArgument\n"
+    },
+    {
       "step": "get-multi-part-zero",
       "request": "GET /multi?partNumber=0",
       "fingerprint": "73d4b3181ba0de1e",

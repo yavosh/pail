@@ -97,8 +97,8 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 - A part read returns `206 Partial Content` with the part's bytes, `Content-Range`, and a `Content-Length` of the part size. The ETag is the whole object's ETag.
 - A multipart object also returns `x-amz-mp-parts-count`. A simple object has one part, so `partNumber=1` returns the whole object without that header.
 - A part number past the last part returns `416 InvalidPartNumber`. `HeadObject` returns the status only.
-- `partNumber=0`, or a value that isn't a positive decimal integer, returns `400 InvalidArgument`. `partNumber` with a `Range` header returns `400 InvalidRequest`.
-- Conditional headers, `response-*` overrides, and the archived-class check work as for a read without `partNumber`. A part read returns no checksum headers.
+- `partNumber=0`, a value above 10,000, or a value that isn't a positive decimal integer, returns `400 InvalidArgument`. `partNumber` with a `Range` header returns `400 InvalidRequest`.
+- Conditional headers, `response-*` overrides, and the archived-class check work as for a read without `partNumber`. With `x-amz-checksum-mode: ENABLED`, a part read of a multipart object returns that part's checksum and the object's `x-amz-checksum-type`.
 - pail stores the part numbers and sizes of a completed multipart object. A multipart object that was completed before pail kept them is one part. This is pail's choice, not AWS behavior.
 - An empty object returns `206` for `partNumber=1` without `Content-Range`. This is unverified.
 
