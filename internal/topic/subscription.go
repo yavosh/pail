@@ -30,18 +30,23 @@ func (e *Engine) checkEndpoint(protocol, endpoint string) (string, error) {
 	return name, nil
 }
 
-// checkSubAttrs validates subscription attributes. RawMessageDelivery is the
-// only one that pail supports; filter policies come later.
+// checkSubAttrs validates subscription attributes. pail supports
+// RawMessageDelivery, FilterPolicy, and FilterPolicyScope; the policy is
+// checked against its scope.
 func checkSubAttrs(attrs map[string]string) error {
 	for k, v := range attrs {
-		if k != attrRaw {
+		switch k {
+		case attrFilter, attrScope:
+		case attrRaw:
+			if v != "true" && v != "false" {
+				return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
+			}
+		default:
 			return fmt.Errorf("subscription attribute %q is not supported: %w", k, ErrInvalidParameter)
 		}
-		if v != "true" && v != "false" {
-			return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
-		}
 	}
-	return nil
+	_, err := compileFilter(attrs)
+	return err
 }
 
 // rawDelivery reports whether s delivers the message without the envelope.
@@ -77,7 +82,9 @@ func (e *Engine) Subscribe(ctx context.Context, topicARN, protocol, endpoint str
 		}
 		return s.ARN, nil
 	}
-	def := &subDef{ARN: topicARN + ":" + newUUID(), TopicARN: topicARN, Protocol: protocol, Endpoint: endpoint, Attributes: maps.Clone(attrs), Created: time.Now().Unix()}
+	stored := maps.Clone(attrs)
+	maps.DeleteFunc(stored, func(_, v string) bool { return v == "" }) // "" means unset
+	def := &subDef{ARN: topicARN + ":" + newUUID(), TopicARN: topicARN, Protocol: protocol, Endpoint: endpoint, Attributes: stored, Created: time.Now().Unix()}
 	if err := e.persistSub(def); err != nil {
 		return "", err
 	}
@@ -90,7 +97,13 @@ func subAttrValue(s *subDef, k string) string {
 	if v, ok := s.Attributes[k]; ok {
 		return v
 	}
-	return "false"
+	switch k {
+	case attrRaw:
+		return "false"
+	case attrScope:
+		return scopeAttributes
+	}
+	return ""
 }
 
 // Unsubscribe removes a subscription. A missing one is ErrNotFound (unverified).
@@ -155,7 +168,8 @@ func (e *Engine) ListSubscriptionsByTopic(ctx context.Context, topicARN, next st
 }
 
 // SubscriptionAttributes returns the attributes of a subscription in the order
-// AWS lists them (recorded in sns-sqs-delivery).
+// AWS lists them (recorded in sns-sqs-delivery). The positions of FilterPolicy
+// and FilterPolicyScope are unverified.
 func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attribute, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -167,7 +181,7 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		return nil, err
 	}
 	// AWS returns the caller's ARN as SubscriptionPrincipal; the value's shape is unverified.
-	return []Attribute{
+	out := []Attribute{
 		{"SubscriptionPrincipal", "arn:aws:iam::" + queue.Account + ":root"},
 		{"Owner", queue.Account},
 		{attrRaw, subAttrValue(s, attrRaw)},
@@ -177,15 +191,19 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		{"PendingConfirmation", "false"},
 		{"ConfirmationWasAuthenticated", "true"},
 		{"SubscriptionArn", s.ARN},
-	}, nil
+	}
+	if v := s.Attributes[attrFilter]; v != "" {
+		out = append(out, Attribute{attrFilter, v})
+	}
+	if s.Attributes[attrFilter] != "" || s.Attributes[attrScope] != "" {
+		out = append(out, Attribute{attrScope, subAttrValue(s, attrScope)})
+	}
+	return out, nil
 }
 
 // SetSubscriptionAttribute sets one attribute of a subscription.
 func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value string) error {
 	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := checkSubAttrs(map[string]string{name: value}); err != nil {
 		return err
 	}
 	e.mu.Lock()
@@ -199,7 +217,14 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 	if updated.Attributes == nil {
 		updated.Attributes = map[string]string{}
 	}
-	updated.Attributes[name] = value
+	if value == "" && (name == attrFilter || name == attrScope) {
+		delete(updated.Attributes, name)
+	} else {
+		updated.Attributes[name] = value
+	}
+	if err := checkSubAttrs(updated.Attributes); err != nil {
+		return err
+	}
 	if err := e.persistSub(&updated); err != nil {
 		return err
 	}

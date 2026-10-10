@@ -308,3 +308,62 @@ func TestSNSErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestSNSFilterPolicy(t *testing.T) {
+	p := startPail(t)
+	sc, qc := p.snsClient(), p.sqsClient()
+	ctx := t.Context()
+	queueURL, topicARN, subARN := mustSubscribeQueue(t, sc, qc, "filter", map[string]string{
+		"RawMessageDelivery": "true", "FilterPolicy": `{"color":["blue"]}`,
+	})
+	publish := func(message string, color string) {
+		t.Helper()
+		in := &sns.PublishInput{TopicArn: &topicARN, Message: aws.String(message)}
+		if color != "" {
+			in.MessageAttributes = map[string]types.MessageAttributeValue{
+				"color": {DataType: aws.String("String"), StringValue: aws.String(color)},
+			}
+		}
+		if _, err := sc.Publish(ctx, in); err != nil {
+			t.Fatalf("Publish(%q) error = %v", message, err)
+		}
+	}
+	bodies := func() []string {
+		t.Helper()
+		got, err := qc.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: &queueURL, MaxNumberOfMessages: 10})
+		if err != nil {
+			t.Fatalf("ReceiveMessage error = %v", err)
+		}
+		var out []string
+		for _, m := range got.Messages {
+			out = append(out, aws.ToString(m.Body))
+		}
+		return out
+	}
+
+	publish("miss", "red")
+	publish("hit", "blue")
+	if got := bodies(); !slices.Equal(got, []string{"hit"}) {
+		t.Errorf("attribute scope: queue bodies = %v, want [hit]", got)
+	}
+
+	for name, value := range map[string]string{"FilterPolicyScope": "MessageBody", "FilterPolicy": `{"order":{"kind":["book"]}}`} {
+		if _, err := sc.SetSubscriptionAttributes(ctx, &sns.SetSubscriptionAttributesInput{
+			SubscriptionArn: &subARN, AttributeName: aws.String(name), AttributeValue: aws.String(value),
+		}); err != nil {
+			t.Fatalf("SetSubscriptionAttributes(%s) error = %v", name, err)
+		}
+	}
+	publish(`{"order":{"kind":"pen"}}`, "blue")
+	publish(`{"order":{"kind":"book"}}`, "")
+	if got := bodies(); !slices.Equal(got, []string{`{"order":{"kind":"book"}}`}) {
+		t.Errorf("body scope: queue bodies = %v, want the book order", got)
+	}
+
+	_, err := sc.SetSubscriptionAttributes(ctx, &sns.SetSubscriptionAttributesInput{
+		SubscriptionArn: &subARN, AttributeName: aws.String("FilterPolicy"), AttributeValue: aws.String(`{"a":[{"bogus":"x"}]}`),
+	})
+	if _, ok := errors.AsType[*types.InvalidParameterException](err); !ok {
+		t.Errorf("SetSubscriptionAttributes with a bad policy error = %v, want *types.InvalidParameterException", err)
+	}
+}

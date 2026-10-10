@@ -75,6 +75,7 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 	if err := validatePublish(in); err != nil {
 		return "", err
 	}
+	message := selectMessage(in.MessageStructure, in.Message)
 	e.mu.Lock()
 	t, err := e.findTopic(in.TopicARN)
 	if err != nil {
@@ -84,6 +85,11 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 	version := topicAttrValue(t, in.TopicARN, "SignatureVersion")
 	var targets []delivery
 	for _, s := range e.topicSubs(in.TopicARN) {
+		// With MessageStructure json, a body policy sees the SQS message (unverified).
+		f, _ := compileFilter(s.Attributes) // checked when stored
+		if !f.match(in.Attributes, message) {
+			continue
+		}
 		name, _ := e.checkEndpoint(s.Protocol, s.Endpoint) // checked when stored
 		targets = append(targets, delivery{s.ARN, name, s.rawDelivery()})
 	}
@@ -91,7 +97,7 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 
 	n := notification{
 		messageID: newUUID(), topicARN: in.TopicARN, subject: in.Subject,
-		message: selectMessage(in.MessageStructure, in.Message), timestamp: time.Now().UTC().Format(timestampFormat),
+		message: message, timestamp: time.Now().UTC().Format(timestampFormat),
 		signatureVersion: version, baseURL: in.BaseURL, attrs: in.Attributes,
 	}
 	if slices.ContainsFunc(targets, func(d delivery) bool { return !d.raw }) {

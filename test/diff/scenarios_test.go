@@ -145,6 +145,7 @@ func scenarios() []scenario {
 		snsSQSDeliveryScenario(),
 		snsPublishBatchScenario(),
 		snsErrorsScenario(),
+		snsFilterPoliciesScenario(),
 		{name: "auth-errors", steps: []step{
 			createBucket(),
 			{name: "no-credentials", method: http.MethodGet, query: "list-type=2", auth: authNone},
