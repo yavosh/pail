@@ -14,7 +14,7 @@ Close the PR 8 leftovers and the SNS and SQS behavior that pail still implements
 
 ## PR 2: record the unverified SQS and SNS error cases
 
-Status: done in this branch. The `sqs-edge-cases` and `sns-edge-cases` recordings pass with no known differences. `ConfirmSubscription` on a confirmed subscription and `Subscribe` with a `DeliveryPolicy` on an SQS endpoint stay unverified; no scenario records them.
+Status: done in #69, merged on 2026-10-10. The `sqs-edge-cases` and `sns-edge-cases` recordings pass with no known differences. `ConfirmSubscription` on a confirmed subscription and `Subscribe` with a `DeliveryPolicy` on an SQS endpoint stay unverified; no scenario records them.
 
 - Record the cases that the compatibility page marks as unverified: error codes and messages, `Subscribe` with a `DeliveryPolicy`, `ConfirmSubscription` on a confirmed subscription, and attribute positions.
 - Fix pail where a recording differs, or list the difference in `known-diffs.txt`.
