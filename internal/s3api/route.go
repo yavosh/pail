@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -60,6 +61,22 @@ var subresources = map[string]bool{
 	"versionId": true, "versioning": true, "versions": true, "website": true,
 }
 
+// versioned lists the operations that accept a versionId. pail has no
+// versioning, so only "null" is valid and it names the current object.
+var versioned = map[operation]bool{
+	opGetObject: true, opHeadObject: true, opDeleteObject: true,
+	opGetObjectACL: true, opPutObjectACL: true,
+}
+
+// checkVersionID rejects a versionId other than "null" on a versioned
+// operation. A versioning PR changes only this function and resolve.
+func checkVersionID(op operation, q url.Values) (apiError, bool) {
+	if !versioned[op] || !slices.ContainsFunc(q["versionId"], func(v string) bool { return v != "null" }) {
+		return apiError{}, true
+	}
+	return errInvalidArgument, false
+}
+
 // target is the bucket and key a request addresses.
 type target struct {
 	bucket      string
@@ -93,15 +110,26 @@ func normalizeDomain(domain string) string {
 	return strings.Trim(hostOnly(strings.ToLower(domain)), ".")
 }
 
-// resolve is pail's whole S3 operation table. It returns "" for anything
-// unsupported, so the caller answers NotImplemented.
+// resolve returns the operation for a request, or "" when it is unsupported.
+// A versionId is valid only on the operations in versioned.
 func resolve(method string, t target, q url.Values, h http.Header) operation {
+	op := resolveOperation(method, t, q, h)
+	if q.Has("versionId") && !versioned[op] {
+		return ""
+	}
+	return op
+}
+
+// resolveOperation is pail's whole S3 operation table. It returns "" for
+// anything unsupported, so the caller answers NotImplemented.
+func resolveOperation(method string, t target, q url.Values, h http.Header) operation {
 	if len(h.Values("x-amz-tagging")) > 0 || len(h.Values("x-amz-tagging-directive")) > 0 {
 		return ""
 	}
 	var sub []string
 	for k := range q {
-		if subresources[k] {
+		// versionId selects no operation, it narrows one. Operations that ignore it are filtered below.
+		if subresources[k] && k != "versionId" {
 			sub = append(sub, k)
 		}
 	}

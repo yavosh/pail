@@ -89,15 +89,25 @@ Like AWS, pail limits a `PutObject` body to 5 GiB, a key to 1,024 bytes, and use
 - aws-sdk-go-v2 leaves `encoding-type=url` keys encoded. To decode them, use `url.QueryUnescape`.
 - XML can't carry control characters, so a plain listing replaces them with U+FFFD. For keys with control characters, use `encoding-type=url`.
 
+## Version IDs
+
+pail has no versioning, so the only valid `versionId` is `null`. It names the current object, as on an unversioned AWS bucket.
+
+- `GetObject`, `HeadObject`, `DeleteObject`, and `GetObjectAcl` accept `versionId=null` and act as they do without it. `PutObjectAcl` accepts it too, but that is unverified against AWS.
+- Any other `versionId` on these operations fails with `400 InvalidArgument`, even when the key doesn't exist.
+- A `versionId` on any other operation fails with `501 NotImplemented`. `CopyObject` takes `versionId=null` in `x-amz-copy-source`.
+
 ## Multipart uploads
 
 pail supports `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`, `AbortMultipartUpload`, `ListParts`, and `ListMultipartUploads`.
 
 - Part numbers run from 1 to 10,000. A repeated part number replaces the part.
-- Every part except the last must be at least 5 MiB. An object is at most 5 TiB.
+- Every part except the last must be at least 5 MiB. An object is at most 53,687,091,200,000 bytes (48.8 TiB), which is 10,000 parts of 5 GiB, as on AWS.
 - `CompleteMultipartUpload` needs the parts in ascending order with their ETags. It supports `If-None-Match: *` and `If-Match`.
+- `CompleteMultipartUpload` checks `x-amz-mp-object-size`. The value must be a non-negative decimal integer that equals the size of the completed object. Otherwise the request fails with `400 InvalidRequest`, commits nothing, and leaves the upload open for a retry.
 - An upload stays until it's completed, aborted, or removed by a lifecycle rule. Like AWS, aborting an upload that already ended succeeds.
-- `ListParts` and `ListMultipartUploads` return at most 1,000 entries per page. `ListMultipartUploads` doesn't support `encoding-type`.
+- `ListParts` and `ListMultipartUploads` return at most 1,000 entries per page.
+- `ListMultipartUploads` supports `encoding-type=url`. It encodes `Key`, `KeyMarker`, `NextKeyMarker`, `Prefix`, `Delimiter`, and `CommonPrefixes` as `ListObjects` does, and returns `EncodingType`. Any other value fails with `400 InvalidArgument`.
 - The object ETag is the MD5 of the part MD5s, followed by `-<parts>`.
 
 ### Multipart checksums

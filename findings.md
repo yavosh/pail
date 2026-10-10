@@ -116,7 +116,7 @@ AWS reference: [CreateBucket](https://docs.aws.amazon.com/AmazonS3/latest/API/AP
 | Website redirect metadata | PUT accepted WebsiteRedirectLocation; HEAD did not return it (fixed on branch feat/s3-object-options) | Metadata is silently lost independently of website hosting support. |
 | Maximum multipart object size | Hard-coded to 5 TiB | Current AWS documentation specifies 48.8 TiB; README's “as on AWS” claim is outdated. |
 
-Status: the storage-class and website-redirect gaps are fixed on branch feat/s3-object-options. The other seven are open. `resolve` in `internal/s3api/route.go` has no route for `UploadPartCopy`, `GetObjectAttributes`, `partNumber` reads, or `versionId`. No code reads `x-amz-mp-object-size`. `docs/s3-compatibility.md` says `ListMultipartUploads` does not support `encoding-type`, and `maxMultipartSize` in `internal/store/uploads.go` is still 5 TiB.
+Status: the storage-class and website-redirect gaps are fixed on branch feat/s3-object-options. The explicit `versionId=null`, multipart expected size, multipart listing URL encoding, and maximum multipart object size gaps are fixed on branch feat/s3-multipart-extras. The other three are open. `resolve` in `internal/s3api/route.go` has no route for `UploadPartCopy`, `GetObjectAttributes`, or `partNumber` reads.
 
 Relevant code: `internal/s3api/route.go`, `internal/s3api/multipart.go`, `internal/s3api/objects.go`, `internal/store/uploads.go:38`.
 

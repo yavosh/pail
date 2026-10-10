@@ -528,3 +528,74 @@ func TestDeleteBucketDiscardsUploads(t *testing.T) {
 		t.Errorf("ListParts after DeleteBucket = %d %q, want 404 NoSuchBucket", status, code)
 	}
 }
+
+func TestCompleteObjectSize(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	id := startUpload(t, srv, "k", nil)
+	etag := putPart(t, srv, "k", id, 1, "abc", nil).header.Get("ETag")
+	body := "<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>" + etag + "</ETag></Part></CompleteMultipartUpload>"
+	tests := []struct {
+		name, size string
+		wantStatus int
+		wantCode   string
+	}{
+		{"wrong size", "999", 400, "InvalidRequest"},
+		{"zero", "0", 400, "InvalidRequest"},
+		{"not a number", "abc", 400, "InvalidRequest"},
+		{"negative", "-3", 400, "InvalidRequest"},
+		{"signed", "+3", 400, "InvalidRequest"},
+		{"too large for int64", "99999999999999999999", 400, "InvalidRequest"},
+		{"right size", "3", 200, ""},
+	}
+	for _, tt := range tests {
+		r := call(t, srv, http.MethodPost, "/bkt/k?uploadId="+id, body, map[string]string{"x-amz-mp-object-size": tt.size})
+		if r.status != tt.wantStatus || r.code != tt.wantCode {
+			t.Errorf("%s: complete with x-amz-mp-object-size %q = %d %s, want %d %s", tt.name, tt.size, r.status, r.code, tt.wantStatus, tt.wantCode)
+		}
+	}
+	// The upload above ended, so a new one covers the request without the header.
+	id = startUpload(t, srv, "k2", nil)
+	putPart(t, srv, "k2", id, 1, "abc", nil) // the same bytes give the same ETag
+	if r := call(t, srv, http.MethodPost, "/bkt/k2?uploadId="+id, body, nil); r.status != 200 {
+		t.Errorf("complete without x-amz-mp-object-size = %d %s, want 200", r.status, r.body)
+	}
+}
+
+func TestListMultipartUploadsEncoding(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	startUpload(t, srv, "dir/x", nil)
+	if r := call(t, srv, http.MethodPost, "/bkt/odd%20key%2B%26%3D%25?uploads", "", nil); r.status != 200 {
+		t.Fatalf("create upload for an odd key = %d %s, want 200", r.status, r.body)
+	}
+	tests := []struct {
+		name, query string
+		wantStatus  int
+		want        []string // substrings of the body
+		notWant     []string
+	}{
+		{"url", "&encoding-type=url&prefix=odd", 200,
+			[]string{"<EncodingType>url</EncodingType>", "<Key>odd+key%2B%26%3D%25</Key>", "<NextKeyMarker>odd+key%2B%26%3D%25</NextKeyMarker>", "<Prefix>odd</Prefix>"}, nil},
+		{"url with a delimiter", "&encoding-type=url&delimiter=%2F", 200,
+			[]string{"<Delimiter>/</Delimiter>", "<CommonPrefixes><Prefix>dir/</Prefix>"}, nil},
+		{"url key marker", "&encoding-type=url&key-marker=odd+key%2B%26%3D%25", 200, []string{"<KeyMarker>odd+key%2B%26%3D%25</KeyMarker>"}, nil},
+		{"none", "&prefix=odd", 200, []string{"<Key>odd key+&amp;=%</Key>"}, []string{"EncodingType"}},
+		{"bogus", "&encoding-type=bogus", 400, nil, nil},
+		{"empty", "&encoding-type=", 200, nil, []string{"EncodingType"}},
+	}
+	for _, tt := range tests {
+		r := call(t, srv, http.MethodGet, "/bkt?uploads"+tt.query, "", nil)
+		if r.status != tt.wantStatus {
+			t.Errorf("%s: GET ?uploads%s = %d %s, want %d", tt.name, tt.query, r.status, r.body, tt.wantStatus)
+		}
+		for _, s := range tt.want {
+			if !strings.Contains(r.body, s) {
+				t.Errorf("%s: GET ?uploads%s body = %s, want it to contain %s", tt.name, tt.query, r.body, s)
+			}
+		}
+		for _, s := range tt.notWant {
+			if strings.Contains(r.body, s) {
+				t.Errorf("%s: GET ?uploads%s body = %s, want it not to contain %s", tt.name, tt.query, r.body, s)
+			}
+		}
+	}
+}

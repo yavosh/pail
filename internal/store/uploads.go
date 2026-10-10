@@ -30,6 +30,7 @@ var (
 	ErrInvalidPartOrder          = errors.New("parts not in ascending order")
 	ErrEntityTooSmall            = errors.New("part smaller than the minimum size")
 	ErrEntityTooLarge            = errors.New("object larger than the maximum size")
+	ErrSizeMismatch              = errors.New("object size does not match the expected size")
 	ErrChecksumAlgorithmMismatch = errors.New("checksum algorithm does not match the upload")
 	ErrChecksumTypeMismatch      = errors.New("checksum type does not match the upload")
 	ErrMissingPartChecksum       = errors.New("missing part checksum")
@@ -38,8 +39,8 @@ var (
 // Multipart limits, as on AWS.
 const (
 	MaxParts         = 10000
-	MinPartSize      = 5 << 20 // every part but the last
-	maxMultipartSize = 5 << 40
+	MinPartSize      = 5 << 20              // every part but the last
+	maxMultipartSize = MaxParts * (5 << 30) // 10,000 parts of 5 GiB
 	uploadFileName   = "upload.json"
 )
 
@@ -115,6 +116,8 @@ type CompleteOptions struct {
 	ChecksumAlgorithm  string
 	FullObjectChecksum []byte
 	ChecksumType       string
+	// ExpectedSize is the x-amz-mp-object-size value. Nil means the client sent none.
+	ExpectedSize *int64
 }
 
 func uploadsDir(bucket string) string { return path.Join("buckets", bucket, "uploads") }
@@ -459,6 +462,15 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 	records, err := s.checkParts(bucket, up, parts)
 	if err != nil {
 		return ObjectInfo{}, err
+	}
+	if opts.ExpectedSize != nil {
+		var size int64
+		for _, r := range records {
+			size += r.Size
+		}
+		if size != *opts.ExpectedSize {
+			return ObjectInfo{}, ErrSizeMismatch
+		}
 	}
 
 	// A composite upload has no whole-object hash; an upload with no

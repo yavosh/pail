@@ -460,3 +460,56 @@ func TestMultipartCompletionChecksumValidation(t *testing.T) {
 		}
 	})
 }
+
+func TestMultipartObjectSize(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "mpu")
+		bucket, key := aws.String("mpu"), aws.String("sized")
+		up := createUpload(t, c, &s3.CreateMultipartUploadInput{Bucket: bucket, Key: key})
+		parts := uploadParts(t, c, "mpu", "sized", aws.ToString(up.UploadId), []byte("abc"))
+		complete := func(size int64) error {
+			_, err := c.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
+				Bucket: bucket, Key: key, UploadId: up.UploadId, MpuObjectSize: aws.Int64(size),
+				MultipartUpload: &types.CompletedMultipartUpload{Parts: parts},
+			})
+			return err
+		}
+		if err := complete(999); errorCode(err) != "InvalidRequest" {
+			t.Errorf("CompleteMultipartUpload with MpuObjectSize 999 error = %v, want InvalidRequest", err)
+		}
+		if err := complete(3); err != nil {
+			t.Errorf("CompleteMultipartUpload with MpuObjectSize 3 after a failure error = %v, want nil", err)
+		}
+		head, err := c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: bucket, Key: key})
+		if err != nil || aws.ToInt64(head.ContentLength) != 3 {
+			t.Errorf("HeadObject after complete = %d, %v, want 3 bytes", aws.ToInt64(head.ContentLength), err)
+		}
+	})
+}
+
+func TestMultipartListUploadsEncoding(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "mpu")
+		bucket := aws.String("mpu")
+		createUpload(t, c, &s3.CreateMultipartUploadInput{Bucket: bucket, Key: aws.String("odd key+&=%")})
+		out, err := c.ListMultipartUploads(ctx, &s3.ListMultipartUploadsInput{Bucket: bucket, EncodingType: types.EncodingTypeUrl})
+		if err != nil || len(out.Uploads) != 1 {
+			t.Fatalf("ListMultipartUploads with EncodingType url = %d uploads, %v, want 1", len(out.Uploads), err)
+		}
+		// aws-sdk-go-v2 leaves url-encoded keys as they arrive.
+		want := "odd+key%2B%26%3D%25"
+		if got := aws.ToString(out.Uploads[0].Key); got != want || out.EncodingType != types.EncodingTypeUrl || aws.ToString(out.NextKeyMarker) != want {
+			t.Errorf("ListMultipartUploads key = %q, next marker = %q, encoding = %q, want %q, %q, url", got, aws.ToString(out.NextKeyMarker), out.EncodingType, want, want)
+		}
+		out, err = c.ListMultipartUploads(ctx, &s3.ListMultipartUploadsInput{Bucket: bucket})
+		if err != nil || aws.ToString(out.Uploads[0].Key) != "odd key+&=%" || out.EncodingType != "" {
+			t.Errorf("ListMultipartUploads without encoding = %q, %q, %v, want the plain key and no encoding", aws.ToString(out.Uploads[0].Key), out.EncodingType, err)
+		}
+		_, err = c.ListMultipartUploads(ctx, &s3.ListMultipartUploadsInput{Bucket: bucket, EncodingType: "bogus"})
+		if errorCode(err) != "InvalidArgument" {
+			t.Errorf("ListMultipartUploads with EncodingType bogus error = %v, want InvalidArgument", err)
+		}
+	})
+}

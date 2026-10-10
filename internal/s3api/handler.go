@@ -131,6 +131,8 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(rec, r, toAPIError(err))
 		} else if apiErr, ok := expectedOwner(r, t, op); !ok {
 			writeError(rec, r, apiErr)
+		} else if apiErr, ok := checkVersionID(op, r.URL.Query()); !ok {
+			writeError(rec, r, apiErr)
 		} else if fn, ok := h.ops[op]; ok {
 			fn(rec, r, t)
 		} else {

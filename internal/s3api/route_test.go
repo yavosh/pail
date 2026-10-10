@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -102,7 +103,15 @@ func TestResolve(t *testing.T) {
 		{http.MethodGet, object, "partNumber=1", nil, ""},
 		{http.MethodGet, object, "uploadId=u", nil, opListParts},
 		{http.MethodGet, object, "acl", nil, opGetObjectACL},
-		{http.MethodGet, object, "versionId=v", nil, ""},
+		{http.MethodGet, object, "versionId=v", nil, opGetObject},
+		{http.MethodGet, object, "versionId=null", nil, opGetObject},
+		{http.MethodGet, object, "acl&versionId=null", nil, opGetObjectACL},
+		{http.MethodHead, object, "versionId=null", nil, opHeadObject},
+		{http.MethodDelete, object, "versionId=null", nil, opDeleteObject},
+		{http.MethodGet, object, "uploadId=u&versionId=null", nil, ""},
+		{http.MethodPut, object, "versionId=null", nil, ""},
+		{http.MethodGet, object, "tagging&versionId=null", nil, ""},
+		{http.MethodGet, bucket, "versionId=null", nil, ""},
 		{http.MethodHead, object, "", nil, opHeadObject},
 		{http.MethodHead, object, "partNumber=1", nil, ""},
 		{http.MethodDelete, object, "", nil, opDeleteObject},
@@ -116,6 +125,34 @@ func TestResolve(t *testing.T) {
 		r := httptest.NewRequestWithContext(context.Background(), tt.method, "http://h/?"+tt.query, nil)
 		if got := resolve(tt.method, tt.t, r.URL.Query(), tt.header); got != tt.want {
 			t.Errorf("resolve(%s, %+v, %q, %v) = %q, want %q", tt.method, tt.t, tt.query, tt.header, got, tt.want)
+		}
+	}
+}
+
+func TestCheckVersionID(t *testing.T) {
+	tests := []struct {
+		name  string
+		op    operation
+		query string
+		want  bool
+	}{
+		{"no versionId", opGetObject, "", true},
+		{"null", opGetObject, "versionId=null", true},
+		{"null twice", opDeleteObject, "versionId=null&versionId=null", true},
+		{"bogus on get", opGetObject, "versionId=bogus", false},
+		{"bogus on head", opHeadObject, "versionId=bogus", false},
+		{"bogus on delete", opDeleteObject, "versionId=bogus", false},
+		{"bogus on acl", opGetObjectACL, "versionId=bogus", false},
+		{"null then bogus", opGetObject, "versionId=null&versionId=bogus", false},
+		{"empty", opGetObject, "versionId=", false},
+		{"case differs", opGetObject, "versionId=NULL", false},
+		{"unversioned operation", opListObjects, "versionId=bogus", true},
+	}
+	for _, tt := range tests {
+		q, _ := url.ParseQuery(tt.query)
+		apiErr, got := checkVersionID(tt.op, q)
+		if got != tt.want || !got && apiErr.Code != "InvalidArgument" {
+			t.Errorf("%s: checkVersionID(%s, %q) = %q, %v, want ok=%v with InvalidArgument", tt.name, tt.op, tt.query, apiErr.Code, got, tt.want)
 		}
 	}
 }

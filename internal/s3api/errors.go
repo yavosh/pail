@@ -69,6 +69,7 @@ var (
 	errEntityTooSmall            = apiError{"EntityTooSmall", http.StatusBadRequest, "Your proposed upload is smaller than the minimum allowed object size."}
 	errInvalidPartNumber         = apiError{"InvalidArgument", http.StatusBadRequest, "Part number must be an integer between 1 and 10000, inclusive"}
 	errChecksumAlgorithmMismatch = apiError{"InvalidRequest", http.StatusBadRequest, "The checksum algorithm you specified does not match the one the multipart upload was created with."}
+	errInvalidObjectSize         = apiError{"InvalidRequest", http.StatusBadRequest, "The provided 'x-amz-mp-object-size' header value does not match what was computed."}
 	errNoSuchVersion             = apiError{"NoSuchVersion", http.StatusNotFound, "The specified version does not exist."}
 )
 
@@ -109,6 +110,7 @@ var apiErrors = []struct {
 	{store.ErrInvalidPartOrder, errInvalidPartOrder},
 	{store.ErrEntityTooSmall, errEntityTooSmall},
 	{store.ErrEntityTooLarge, errEntityTooLarge},
+	{store.ErrSizeMismatch, errInvalidObjectSize},
 	{store.ErrChecksumAlgorithmMismatch, errChecksumAlgorithmMismatch},
 	{store.ErrChecksumTypeMismatch, errInvalidChecksum},
 	{store.ErrMissingPartChecksum, errInvalidChecksum},

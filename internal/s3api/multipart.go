@@ -262,6 +262,14 @@ func (h *handler) handleCompleteMultipartUpload(w http.ResponseWriter, r *http.R
 		return
 	}
 	opts.IfMatch = r.Header.Get("If-Match")
+	if s := r.Header.Get("x-amz-mp-object-size"); s != "" {
+		size, ok := parseDigits(s)
+		if !ok {
+			writeError(w, r, errInvalidObjectSize)
+			return
+		}
+		opts.ExpectedSize = &size
+	}
 	opts.ChecksumType = r.Header.Get("x-amz-checksum-type")
 	// Here the header names the whole object's checksum, which only a FULL_OBJECT upload has.
 	algorithm, want, inTrailer, apiErr, ok := parseChecksum(r.Header)
@@ -495,6 +503,7 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 		Prefix             string         `xml:"Prefix,omitempty"`
 		Delimiter          string         `xml:"Delimiter,omitempty"` // with CommonPrefixes, unverified: the recording has neither
 		MaxUploads         int            `xml:"MaxUploads"`
+		EncodingType       string         `xml:"EncodingType,omitempty"`
 		IsTruncated        bool           `xml:"IsTruncated"`
 		Uploads            []upload       `xml:"Upload"`
 		CommonPrefixes     []commonPrefix `xml:"CommonPrefixes"`
@@ -506,6 +515,15 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 	q := r.URL.Query()
 	requested, limit, ok := pageSize(q.Get("max-uploads"))
 	if !ok {
+		writeError(w, r, errInvalidArgument)
+		return
+	}
+	encode := func(s string) string { return s }
+	switch q.Get("encoding-type") {
+	case "":
+	case "url":
+		encode = urlEncode
+	default:
 		writeError(w, r, errInvalidArgument)
 		return
 	}
@@ -521,19 +539,19 @@ func (h *handler) handleListMultipartUploads(w http.ResponseWriter, r *http.Requ
 	own := h.bucketOwner()
 	starter := h.bucketInitiator()
 	resp := response{
-		Xmlns: s3Namespace, Bucket: t.bucket, KeyMarker: keyMarker, UploadIDMarker: idMarker, Prefix: prefix, Delimiter: delimiter,
-		MaxUploads: requested, IsTruncated: page.truncated, Uploads: []upload{}, CommonPrefixes: []commonPrefix{},
+		Xmlns: s3Namespace, Bucket: t.bucket, KeyMarker: encode(keyMarker), UploadIDMarker: idMarker, Prefix: encode(prefix), Delimiter: encode(delimiter),
+		MaxUploads: requested, EncodingType: q.Get("encoding-type"), IsTruncated: page.truncated, Uploads: []upload{}, CommonPrefixes: []commonPrefix{},
 	}
 	for _, u := range page.uploads {
 		resp.Uploads = append(resp.Uploads, upload{
-			Key: u.Key, UploadID: u.ID, Initiator: starter, Owner: own, StorageClass: storageClassName(u.ObjectOptions), Initiated: u.Initiated.UTC().Format(timeFormat),
+			Key: encode(u.Key), UploadID: u.ID, Initiator: starter, Owner: own, StorageClass: storageClassName(u.ObjectOptions), Initiated: u.Initiated.UTC().Format(timeFormat),
 			ChecksumAlgorithm: u.ChecksumAlgorithm, ChecksumType: u.ChecksumType,
 		})
 	}
 	for _, p := range page.prefixes {
-		resp.CommonPrefixes = append(resp.CommonPrefixes, commonPrefix{Prefix: p})
+		resp.CommonPrefixes = append(resp.CommonPrefixes, commonPrefix{Prefix: encode(p)})
 	}
 	// AWS always sends the last entry's markers, even on a page that is not truncated.
-	resp.NextKeyMarker, resp.NextUploadIDMarker = page.lastKey, page.lastID
+	resp.NextKeyMarker, resp.NextUploadIDMarker = encode(page.lastKey), page.lastID
 	writeXML(w, r, http.StatusOK, resp)
 }

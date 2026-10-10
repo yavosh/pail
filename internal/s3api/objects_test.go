@@ -460,3 +460,31 @@ func TestPlainPutKeepsContentEncoding(t *testing.T) {
 		t.Errorf("stored Content-Encoding = %q, %v, want %q", got, err, "gzip, aws-chunked")
 	}
 }
+
+func TestNullVersionID(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	_ = call(t, srv, http.MethodPut, "/bkt", "", nil)
+	_ = call(t, srv, http.MethodPut, "/bkt/k", "data", nil)
+	tests := []struct {
+		name, method, target string
+		wantStatus           int
+		wantCode             string
+	}{
+		{"get null", http.MethodGet, "/bkt/k?versionId=null", 200, ""},
+		{"head null", http.MethodHead, "/bkt/k?versionId=null", 200, ""},
+		{"acl null", http.MethodGet, "/bkt/k?acl&versionId=null", 200, ""},
+		{"get bogus", http.MethodGet, "/bkt/k?versionId=bogus", 400, "InvalidArgument"},
+		{"acl bogus", http.MethodGet, "/bkt/k?acl&versionId=bogus", 400, "InvalidArgument"},
+		{"delete bogus", http.MethodDelete, "/bkt/k?versionId=bogus", 400, "InvalidArgument"},
+		{"get bogus on a missing key", http.MethodGet, "/bkt/missing?versionId=bogus", 400, "InvalidArgument"},
+		{"put with a version", http.MethodPut, "/bkt/k?versionId=null", 501, "NotImplemented"},
+		{"delete null", http.MethodDelete, "/bkt/k?versionId=null", 204, ""},
+		{"get after delete", http.MethodGet, "/bkt/k", 404, "NoSuchKey"},
+	}
+	for _, tt := range tests {
+		r := call(t, srv, tt.method, tt.target, "", nil)
+		if r.status != tt.wantStatus || r.code != tt.wantCode {
+			t.Errorf("%s: %s %s = %d %s, want %d %s", tt.name, tt.method, tt.target, r.status, r.code, tt.wantStatus, tt.wantCode)
+		}
+	}
+}

@@ -673,3 +673,43 @@ func TestCreateUploadInMissingBucketAddsNoLock(t *testing.T) {
 		t.Errorf("s.buckets has an entry for the missing bucket, want none")
 	}
 }
+
+func TestCompleteExpectedSize(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newStore(t)
+	mustCreate(t, s, "b")
+	up := mustUpload(t, s, "b", "k", UploadOptions{})
+	parts := listed(mustPart(t, s, "b", "k", up.ID, 1, []byte("abc"), PartOptions{}))
+	tests := []struct {
+		name string
+		size int64
+		want error
+	}{
+		{"too large", 4, ErrSizeMismatch},
+		{"too small", 2, ErrSizeMismatch},
+		{"zero", 0, ErrSizeMismatch},
+		{"exact", 3, nil},
+	}
+	for _, tt := range tests {
+		_, err := s.CompleteUpload(ctx, "b", "k", up.ID, parts, CompleteOptions{ExpectedSize: &tt.size})
+		if !errors.Is(err, tt.want) {
+			t.Errorf("%s: CompleteUpload with ExpectedSize %d error = %v, want %v", tt.name, tt.size, err, tt.want)
+		}
+		if tt.want != nil {
+			// A failed completion commits nothing and keeps the upload open.
+			if _, err := s.HeadObject(ctx, "b", "k"); !errors.Is(err, ErrNoSuchKey) {
+				t.Errorf("%s: HeadObject after a failed complete error = %v, want ErrNoSuchKey", tt.name, err)
+			}
+			if _, _, err := s.ListParts(ctx, "b", "k", up.ID); err != nil {
+				t.Errorf("%s: ListParts after a failed complete error = %v, want nil", tt.name, err)
+			}
+		}
+	}
+}
+
+func TestMultipartLimits(t *testing.T) {
+	// AWS allows 10,000 parts of 5 GiB, which is 53,687,091,200,000 bytes.
+	if got, want := int64(maxMultipartSize), int64(53_687_091_200_000); got != want {
+		t.Errorf("maxMultipartSize = %d, want %d", got, want)
+	}
+}

@@ -345,3 +345,38 @@ func TestRejectObjectTagging(t *testing.T) {
 		}
 	})
 }
+
+func TestNullVersionID(t *testing.T) {
+	forEachStyle(t, func(t *testing.T, _ *pail, _ style, c *s3.Client) {
+		ctx := context.Background()
+		mustBucket(t, c, "ver")
+		bucket, key := aws.String("ver"), aws.String("plain")
+		if _, err := c.PutObject(ctx, &s3.PutObjectInput{Bucket: bucket, Key: key, Body: strings.NewReader("plain")}); err != nil {
+			t.Fatal(err)
+		}
+		get, err := c.GetObject(ctx, &s3.GetObjectInput{Bucket: bucket, Key: key, VersionId: aws.String("null")})
+		if err != nil {
+			t.Fatalf("GetObject with VersionId null error = %v, want nil", err)
+		}
+		_ = get.Body.Close()
+		if _, err := c.HeadObject(ctx, &s3.HeadObjectInput{Bucket: bucket, Key: key, VersionId: aws.String("null")}); err != nil {
+			t.Errorf("HeadObject with VersionId null error = %v, want nil", err)
+		}
+		// A HEAD error has no body, so the SDK reports only the status.
+		_, err = c.GetObject(ctx, &s3.GetObjectInput{Bucket: bucket, Key: key, VersionId: aws.String("bogus")})
+		if errorCode(err) != "InvalidArgument" {
+			t.Errorf("GetObject with VersionId bogus error = %v, want InvalidArgument", err)
+		}
+		_, err = c.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: bucket, Key: key, VersionId: aws.String("bogus")})
+		if errorCode(err) != "InvalidArgument" {
+			t.Errorf("DeleteObject with VersionId bogus error = %v, want InvalidArgument", err)
+		}
+		if _, err := c.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: bucket, Key: key, VersionId: aws.String("null")}); err != nil {
+			t.Errorf("DeleteObject with VersionId null error = %v, want nil", err)
+		}
+		_, err = c.GetObject(ctx, &s3.GetObjectInput{Bucket: bucket, Key: key})
+		if errorCode(err) != "NoSuchKey" {
+			t.Errorf("GetObject after the delete error = %v, want NoSuchKey", err)
+		}
+	})
+}
