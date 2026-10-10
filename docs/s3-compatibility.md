@@ -222,10 +222,9 @@ pail supports `PutBucketNotificationConfiguration` and `GetBucketNotificationCon
 - pail raises these events: `s3:ObjectCreated:*`, `Put`, `Post`, `Copy`, `CompleteMultipartUpload`, and `s3:ObjectRemoved:*`, `Delete`, `DeleteMarkerCreated`. `PutObject`, `POST Object`, `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, and each key that `DeleteObjects` removes raise an event after the write commits. `DeleteMarkerCreated` is configurable but pail raises it only when versioning exists.
 - Validation errors:
   - An unknown event, a bad filter rule name, a repeated filter rule, or a repeated `Id` returns `400 InvalidArgument`.
-  - A destination that doesn't exist in this pail, or that has the wrong service, returns `400 InvalidArgument`. The ARN's region and account must be pail's.
+  - A destination that doesn't exist in this pail, a FIFO queue, or a destination with the wrong service returns `400 InvalidArgument`. The ARN's region and account must be pail's.
   - Two configurations that share an event type and have overlapping prefixes and suffixes return `400 InvalidArgument`.
   - Malformed XML, or a queue configuration with a `Topic` element, returns `400 MalformedXML`.
-- A FIFO queue isn't a valid destination.
 - `CloudFunctionConfiguration`, `LambdaFunctionConfiguration`, and `EventBridgeConfiguration` return `501 NotImplemented`. So do the AWS event types pail never raises: object restore, replication, lifecycle, intelligent tiering, tagging, and ACL events.
 - A `PutBucketNotificationConfiguration` that adds a destination sends it a test event: `{"Service":"Amazon S3","Event":"s3:TestEvent","Time":...,"Bucket":...,"RequestId":...,"HostId":...}`. pail sends it only to a destination that the old configuration lacked. Whether AWS also sends one for a changed filter or event list is unverified.
 - An event is a `Records` array with one record. It carries the AWS fields `eventVersion` `2.6`, `eventSource`, `awsRegion`, `eventTime`, `eventName`, `userIdentity`, `requestParameters.sourceIPAddress`, `responseElements`, and `s3` with `configurationId`, `bucket`, and `object`. The object key is URL-encoded, with `/` kept. A removal has no `size` or `eTag`. A copy adds `hasObjectAnnotation: false`. The AWS recording verifies this shape.
