@@ -289,8 +289,8 @@ func TestTopicAttributes(t *testing.T) {
 	if !reflect.DeepEqual(keys, wantKeys) {
 		t.Errorf("TopicAttributes keys after set = %v, want %v", keys, wantKeys)
 	}
-	if got[0].Value != `{"Version":"1"}` || got[6].Value != "renamed" || got[4].Value != storedDelivery || got[7].Value != storedDelivery {
-		t.Errorf("TopicAttributes after set: Policy %q, DisplayName %q, EffectiveDeliveryPolicy %q, DeliveryPolicy %q; want the last two %q", got[0].Value, got[6].Value, got[4].Value, got[7].Value, storedDelivery)
+	if got[0].Value != `{"Version":"1"}` || got[6].Value != "renamed" || got[4].Value != goldenDelivery || got[7].Value != storedDelivery {
+		t.Errorf("TopicAttributes after set: Policy %q, DisplayName %q, EffectiveDeliveryPolicy %q, DeliveryPolicy %q; want the default and %q", got[0].Value, got[6].Value, got[4].Value, got[7].Value, storedDelivery)
 	}
 
 	if err := e.SetTopicAttribute(t.Context(), arn, "DisplayName", ""); err != nil {

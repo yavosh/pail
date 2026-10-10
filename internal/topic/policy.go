@@ -2,10 +2,12 @@ package topic
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
 	"math"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -68,13 +70,9 @@ func (p retryPolicy) check() error {
 	return nil
 }
 
-// delays returns the wait before each retry. The AWS docs describe the phases:
-// immediate retries, retries at the minimum, a backoff phase, then retries at
-// the maximum. The backoff shapes are pail's choice (unverified): with n
-// retries in the phase, retry i of n sits at a fraction of the way from min to
-// max, f(i) = i/(n+1) for linear, T(i)/T(n+1) for arithmetic (T is the
-// triangular number), (2^i-1)/(2^(n+1)-1) for exponential, and min*(max/min)^f
-// for geometric. Delays round to whole seconds.
+// delays returns the wait before each retry: the no-delay, min-delay, backoff,
+// and max-delay phases. The backoff formulas are pail's choice (unverified);
+// docs/sqs-sns-compatibility.md lists them.
 func (p retryPolicy) delays() []time.Duration {
 	out := make([]time.Duration, 0, p.NumRetries)
 	repeat := func(n, seconds int) {
@@ -169,12 +167,31 @@ func decodePolicy(v string, dst any) error {
 	dec := json.NewDecoder(strings.NewReader(v))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		return invalid("DeliveryPolicy: %v", err)
+		return policyError(err)
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return invalid("DeliveryPolicy has data after the JSON object")
 	}
 	return nil
+}
+
+// policyError turns a decoding error into a message without Go type names.
+func policyError(err error) error {
+	if te, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
+		field := te.Field
+		if i := strings.LastIndex(field, "."); i >= 0 {
+			field = field[i+1:]
+		}
+		want := map[reflect.Kind]string{reflect.Bool: "true or false", reflect.String: "a string", reflect.Struct: "an object", reflect.Pointer: "an object"}[te.Type.Kind()]
+		if want == "" {
+			want = "an integer"
+		}
+		return invalid("DeliveryPolicy: %s must be %s", cmp.Or(field, "a value"), want)
+	}
+	if key, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+		return invalid("DeliveryPolicy has an unknown key %s", key)
+	}
+	return invalid("DeliveryPolicy is not valid JSON or has a value of the wrong type")
 }
 
 // checks runs check on each non-nil policy.
@@ -239,6 +256,28 @@ func normalizeSubPolicy(v string) (string, error) {
 func marshalPolicy(doc any) string {
 	b, _ := json.Marshal(doc) // plain structs always marshal
 	return string(b)
+}
+
+// effectiveTopicPolicy overlays the stored topic policy on the defaults, as
+// effectivePolicy does for subscriptions (unverified for a partial policy).
+func effectiveTopicPolicy(t *topicDef) string {
+	v := t.Attributes[attrDelivery]
+	if v == "" {
+		return defaultDeliveryPolicy
+	}
+	h := httpDoc{DefaultHealthyRetryPolicy: new(defaultRetry), DefaultRequestPolicy: &requestPolicy{defaultContentType}}
+	var td topicDoc
+	_ = json.Unmarshal([]byte(v), &td) // checked when stored
+	if s := td.HTTP; s != nil {
+		h.DisableSubscriptionOverrides, h.DefaultThrottlePolicy = s.DisableSubscriptionOverrides, s.DefaultThrottlePolicy
+		if s.DefaultHealthyRetryPolicy != nil {
+			h.DefaultHealthyRetryPolicy = s.DefaultHealthyRetryPolicy
+		}
+		if s.DefaultRequestPolicy != nil {
+			h.DefaultRequestPolicy = s.DefaultRequestPolicy
+		}
+	}
+	return marshalPolicy(topicDoc{HTTP: &h})
 }
 
 // canonTopicAttr returns the stored form of a checked topic attribute value.

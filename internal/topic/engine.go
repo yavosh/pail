@@ -150,6 +150,23 @@ func Open(ctx context.Context, fsys vfs.FS, region string, queues Queues, opts .
 	return e, nil
 }
 
+// dropBadPolicy keeps a stored DeliveryPolicy valid. A file from before
+// pail validated it can hold one that is not: normalize a valid one, and drop
+// an invalid one with a warning, so pail still starts.
+func dropBadPolicy(attrs map[string]string, normalize func(string) (string, error), owner string) {
+	v := attrs[attrDelivery]
+	if v == "" {
+		return
+	}
+	out, err := normalize(v)
+	if err != nil {
+		clogTopic().Warn("dropping an invalid DeliveryPolicy", "owner", owner, "error", err)
+		delete(attrs, attrDelivery)
+		return
+	}
+	attrs[attrDelivery] = out
+}
+
 func (e *Engine) loadTopics() error {
 	entries, err := e.fs.ReadDir(topicsDir)
 	if err != nil {
@@ -164,6 +181,7 @@ func (e *Engine) loadTopics() error {
 		if err := vfs.ReadJSON(e.fs, file, &def); err != nil {
 			return fmt.Errorf("read topic %s: %w", ent.Name(), err)
 		}
+		dropBadPolicy(def.Attributes, normalizeTopicPolicy, "topic "+def.Name)
 		if err := checkTopic(def); err != nil {
 			return fmt.Errorf("topic file %s: %w", ent.Name(), err)
 		}
@@ -202,6 +220,10 @@ func (e *Engine) loadSubs() error {
 		if err := vfs.ReadJSON(e.fs, file, &def); err != nil {
 			return fmt.Errorf("read subscription %s: %w", ent.Name(), err)
 		}
+		if def.Protocol == protocolSQS {
+			delete(def.Attributes, attrDelivery)
+		}
+		dropBadPolicy(def.Attributes, normalizeSubPolicy, "subscription "+def.ARN)
 		if err := e.checkSub(def); err != nil {
 			return fmt.Errorf("subscription file %s: %w", ent.Name(), err)
 		}
@@ -387,6 +409,7 @@ func (e *Engine) DeleteTopic(ctx context.Context, arn string) error {
 		return fmt.Errorf("delete topic %s: %w", t.Name, err)
 	}
 	delete(e.topics, t.Name)
+	maps.DeleteFunc(e.restores, func(_ string, r restore) bool { return r.sub.TopicARN == arn })
 	return nil
 }
 

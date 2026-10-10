@@ -1,7 +1,6 @@
 package topic
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -102,7 +101,7 @@ func (e *Engine) TopicAttributes(ctx context.Context, arn string) ([]Attribute, 
 		{"Owner", queue.Account},
 		{"SubscriptionsPending", fmt.Sprint(pending)},
 		{"TopicArn", arn},
-		{"EffectiveDeliveryPolicy", cmp.Or(t.Attributes[attrDelivery], defaultDeliveryPolicy)},
+		{"EffectiveDeliveryPolicy", effectiveTopicPolicy(t)},
 		{"SubscriptionsConfirmed", fmt.Sprint(confirmed)},
 		{"DisplayName", t.Attributes["DisplayName"]},
 	}

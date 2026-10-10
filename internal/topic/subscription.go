@@ -174,11 +174,8 @@ func newToken() string {
 }
 
 // ConfirmSubscription confirms the pending subscription of a topic that holds
-// token and returns its ARN. authenticated records whether the caller signed
-// the request and asked to authenticate Unsubscribe. Confirming a confirmed
-// subscription again changes nothing (unverified). A token expires tokenTTL
-// after the subscription was created. The token of an UnsubscribeConfirmation
-// restores the removed subscription.
+// token and returns its ARN. A confirmed one stays as it is (unverified). The
+// token of an UnsubscribeConfirmation restores the removed subscription.
 func (e *Engine) ConfirmSubscription(ctx context.Context, topicARN, token string, authenticated bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -190,11 +187,17 @@ func (e *Engine) ConfirmSubscription(ctx context.Context, topicARN, token string
 	}
 	if r, ok := e.restores[token]; ok && r.sub.TopicARN == topicARN {
 		sub := r.sub
+		delete(e.restores, token)
+		// If the endpoint subscribed again, restore nothing (unverified).
+		for _, s := range e.topicSubs(topicARN) {
+			if s.Protocol == sub.Protocol && s.Endpoint == sub.Endpoint {
+				return s.ARN, nil
+			}
+		}
 		if err := e.persistSub(&sub); err != nil {
 			return "", err
 		}
 		e.subs[sub.ARN] = &sub
-		delete(e.restores, token)
 		return sub.ARN, nil
 	}
 	for _, s := range e.topicSubs(topicARN) {
@@ -236,11 +239,9 @@ func unsetValue(k, v string) bool {
 	return v == "" || k == attrFilter && json.Unmarshal([]byte(v), &m) == nil && m != nil && len(m) == 0
 }
 
-// Unsubscribe removes a subscription. A missing one is ErrNotFound (unverified).
-// An unsigned call may remove only a subscription whose confirmation was not
-// authenticated; otherwise it is ErrAuthorization (unverified). When an unsigned
-// call removes an HTTP or HTTPS subscription, pail posts an
-// UnsubscribeConfirmation to its endpoint. baseURL forms the SubscribeURL.
+// Unsubscribe removes a subscription. A missing one is ErrNotFound and an
+// unsigned call on an authenticated one is ErrAuthorization (both unverified).
+// An unsigned removal of an HTTP subscription posts an UnsubscribeConfirmation.
 func (e *Engine) Unsubscribe(ctx context.Context, arn string, signed bool, baseURL string) error {
 	if err := ctx.Err(); err != nil {
 		return err

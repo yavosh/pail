@@ -504,6 +504,8 @@ func TestSNSDeliveryPolicy(t *testing.T) {
 	topicARN := aws.ToString(topic.TopicArn)
 	const in = `{"http":{"defaultHealthyRetryPolicy":{"minDelayTarget":5,"maxDelayTarget":30,"numRetries":10,"numNoDelayRetries":1,"numMinDelayRetries":2,"numMaxDelayRetries":3,"backoffFunction":"exponential"},"defaultThrottlePolicy":{"maxReceivesPerSecond":5}}}`
 	const stored = `{"http":{"defaultHealthyRetryPolicy":{"minDelayTarget":5,"maxDelayTarget":30,"numRetries":10,"numMaxDelayRetries":3,"numNoDelayRetries":1,"numMinDelayRetries":2,"backoffFunction":"exponential"},"disableSubscriptionOverrides":false,"defaultThrottlePolicy":{"maxReceivesPerSecond":5}}}`
+	// The effective policy adds the default request policy that the input leaves out.
+	effective := strings.Replace(stored, `}}}`, `},"defaultRequestPolicy":{"headerContentType":"text/plain; charset=UTF-8"}}}`, 1)
 	set := func(value string) error {
 		_, err := sc.SetTopicAttributes(ctx, &sns.SetTopicAttributesInput{TopicArn: &topicARN, AttributeName: aws.String("DeliveryPolicy"), AttributeValue: aws.String(value)})
 		return err
@@ -512,8 +514,9 @@ func TestSNSDeliveryPolicy(t *testing.T) {
 		t.Fatalf("SetTopicAttributes(DeliveryPolicy) error = %v", err)
 	}
 	attrs, err := sc.GetTopicAttributes(ctx, &sns.GetTopicAttributesInput{TopicArn: &topicARN})
-	if err != nil || attrs.Attributes["DeliveryPolicy"] != stored || attrs.Attributes["EffectiveDeliveryPolicy"] != stored {
-		t.Errorf("GetTopicAttributes = %v, %v; want DeliveryPolicy and EffectiveDeliveryPolicy %s", attrs, err, stored)
+	if err != nil || attrs.Attributes["DeliveryPolicy"] != stored || attrs.Attributes["EffectiveDeliveryPolicy"] != effective {
+		t.Errorf("GetTopicAttributes DeliveryPolicy, EffectiveDeliveryPolicy = %q, %q, %v; want %s and %s",
+			attrs.Attributes["DeliveryPolicy"], attrs.Attributes["EffectiveDeliveryPolicy"], err, stored, effective)
 	}
 	if err := set(strings.Replace(in, `"numRetries":10`, `"numRetries":101`, 1)); err == nil {
 		t.Error("SetTopicAttributes(numRetries 101) error = nil, want InvalidParameter")

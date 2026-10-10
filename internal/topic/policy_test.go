@@ -571,3 +571,159 @@ func TestTLSSkipVerify(t *testing.T) {
 func unmarshalStrings(body string, dst map[string]string) error {
 	return json.Unmarshal([]byte(body), &dst)
 }
+
+func TestOpenRepairsLegacyDeliveryPolicy(t *testing.T) {
+	dir := t.TempDir()
+	e := openEngine(t, dir, &fakeQueues{})
+	write := func(name, policy string) {
+		t.Helper()
+		def := &topicDef{Name: name, Attributes: map[string]string{"DisplayName": "kept", "DeliveryPolicy": policy}}
+		if err := e.persistTopic(def); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("legacy-bad", `{"anything":1}`)
+	write("legacy-valid", `{"http":{"disableSubscriptionOverrides":false,"defaultRequestPolicy":{"headerContentType":"application/json"},"defaultThrottlePolicy":{"maxReceivesPerSecond":2}}}`)
+	arn := e.topicARN("legacy-valid")
+	httpSub := arn + ":11111111-1111-4111-8111-111111111111"
+	sqsSub := arn + ":22222222-2222-4222-8222-222222222222"
+	for _, s := range []*subDef{
+		{ARN: httpSub, TopicARN: arn, Protocol: "http", Endpoint: testEndpoint, Attributes: map[string]string{"DeliveryPolicy": `{"bogus":1}`}},
+		{ARN: sqsSub, TopicARN: arn, Protocol: "sqs", Endpoint: queueARN("q"), Attributes: map[string]string{"DeliveryPolicy": goldenSubIn}},
+	} {
+		if err := e.persistSub(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	again := openEngine(t, dir, &fakeQueues{}) // must not fail
+	if got := again.topics["legacy-bad"].Attributes; got["DeliveryPolicy"] != "" || got["DisplayName"] != "kept" {
+		t.Errorf("legacy-bad attributes = %v, want DeliveryPolicy dropped and DisplayName kept", got)
+	}
+	const want = `{"http":{"disableSubscriptionOverrides":false,"defaultThrottlePolicy":{"maxReceivesPerSecond":2},"defaultRequestPolicy":{"headerContentType":"application/json"}}}`
+	if got := again.topics["legacy-valid"].Attributes["DeliveryPolicy"]; got != want {
+		t.Errorf("legacy-valid DeliveryPolicy = %s, want %s", got, want)
+	}
+	for _, sub := range []string{httpSub, sqsSub} {
+		if got := again.subs[sub].Attributes["DeliveryPolicy"]; got != "" {
+			t.Errorf("subscription %s DeliveryPolicy = %q, want it dropped", sub, got)
+		}
+	}
+}
+
+func TestPolicyErrorsHaveNoGoTypes(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"float retries", `{"http":{"defaultHealthyRetryPolicy":{"numRetries":5.5}}}`, "numRetries must be an integer"},
+		{"string flag", `{"http":{"disableSubscriptionOverrides":"yes"}}`, "disableSubscriptionOverrides must be true or false"},
+		{"string content type", `{"http":{"defaultRequestPolicy":{"headerContentType":5}}}`, "headerContentType must be a string"},
+		{"unknown key", `{"http":{"bogus":1}}`, `unknown key "bogus"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := normalizeTopicPolicy(tt.in)
+			if !errors.Is(err, ErrInvalidParameter) || !strings.Contains(err.Error(), tt.want) || strings.Contains(err.Error(), "Go ") {
+				t.Errorf("normalizeTopicPolicy(%s) error = %v, want %q without Go internals", tt.in, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestEffectiveTopicPolicyOverlaysDefaults(t *testing.T) {
+	e, _ := newEngine(t)
+	arn := mustTopic(t, e, "overlay")
+	effective := func() string {
+		attrs, err := e.TopicAttributes(t.Context(), arn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return attrs[slicesIndex(attrs, "EffectiveDeliveryPolicy")].Value
+	}
+	if err := e.SetTopicAttribute(t.Context(), arn, "DeliveryPolicy", `{}`); err != nil {
+		t.Fatal(err)
+	}
+	if got := effective(); got != defaultDeliveryPolicy {
+		t.Errorf("EffectiveDeliveryPolicy after {} = %s, want the default", got)
+	}
+	attrs, _ := e.TopicAttributes(t.Context(), arn)
+	if got := attrs[slicesIndex(attrs, "DeliveryPolicy")].Value; got != `{}` {
+		t.Errorf("DeliveryPolicy after {} = %s, want {}", got)
+	}
+	if err := e.SetTopicAttribute(t.Context(), arn, "DeliveryPolicy", `{"http":{"defaultThrottlePolicy":{"maxReceivesPerSecond":3}}}`); err != nil {
+		t.Fatal(err)
+	}
+	const partial = `{"http":{"defaultHealthyRetryPolicy":{"minDelayTarget":20,"maxDelayTarget":20,"numRetries":3,"numMaxDelayRetries":0,"numNoDelayRetries":0,"numMinDelayRetries":0,"backoffFunction":"linear"},"disableSubscriptionOverrides":false,"defaultThrottlePolicy":{"maxReceivesPerSecond":3},"defaultRequestPolicy":{"headerContentType":"text/plain; charset=UTF-8"}}}`
+	if got := effective(); got != partial {
+		t.Errorf("EffectiveDeliveryPolicy with only a throttle = %s, want %s", got, partial)
+	}
+	if err := e.SetTopicAttribute(t.Context(), arn, "DeliveryPolicy", goldenTopicIn); err != nil {
+		t.Fatal(err)
+	}
+	if got := effective(); got != goldenTopicOut {
+		t.Errorf("EffectiveDeliveryPolicy with the full policy = %s, want %s", got, goldenTopicOut)
+	}
+}
+
+func TestRestoreEdgeCases(t *testing.T) {
+	restoreToken := func(t *testing.T, e *Engine, ep *recordingEndpoint, before int) string {
+		t.Helper()
+		synctest.Wait()
+		for _, p := range ep.got()[before:] {
+			if p.header.Get("X-Amz-Sns-Message-Type") == "UnsubscribeConfirmation" {
+				env := map[string]string{}
+				_ = unmarshalStrings(p.body, env)
+				return env["Token"]
+			}
+		}
+		t.Fatal("no UnsubscribeConfirmation received")
+		return ""
+	}
+	t.Run("endpoint subscribed again", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e, _ := newEngine(t)
+			ep := startEndpoint(t, e, ok)
+			stop := runDeliveries(e)
+			defer stop()
+			arn := mustTopic(t, e, "again")
+			old := confirmedHTTP(t, e, arn, ep.srv.URL, nil)
+			synctest.Wait()
+			before := len(ep.got())
+			if err := e.Unsubscribe(t.Context(), old, false, testBase); err != nil {
+				t.Fatal(err)
+			}
+			token := restoreToken(t, e, ep, before)
+			fresh := confirmedHTTP(t, e, arn, ep.srv.URL, nil)
+			if fresh == old {
+				t.Fatalf("new subscription reuses ARN %s", old)
+			}
+			if got, err := e.ConfirmSubscription(t.Context(), arn, token, false); err != nil || got != fresh {
+				t.Errorf("ConfirmSubscription(restore token) = %q, %v; want the new subscription %q", got, err, fresh)
+			}
+			if _, err := e.SubscriptionAttributes(t.Context(), old); !errors.Is(err, ErrNotFound) {
+				t.Errorf("old subscription error = %v, want %v: nothing is restored", err, ErrNotFound)
+			}
+		})
+	})
+	t.Run("topic deleted and created again", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e, _ := newEngine(t)
+			ep := startEndpoint(t, e, ok)
+			stop := runDeliveries(e)
+			defer stop()
+			arn := mustTopic(t, e, "recreate")
+			sub := confirmedHTTP(t, e, arn, ep.srv.URL, nil)
+			synctest.Wait()
+			before := len(ep.got())
+			if err := e.Unsubscribe(t.Context(), sub, false, testBase); err != nil {
+				t.Fatal(err)
+			}
+			token := restoreToken(t, e, ep, before)
+			if err := e.DeleteTopic(t.Context(), arn); err != nil {
+				t.Fatal(err)
+			}
+			mustTopic(t, e, "recreate")
+			if _, err := e.ConfirmSubscription(t.Context(), arn, token, false); !errors.Is(err, ErrInvalidParameter) {
+				t.Errorf("ConfirmSubscription(restore token of a deleted topic) error = %v, want %v", err, ErrInvalidParameter)
+			}
+		})
+	})
+}
