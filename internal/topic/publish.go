@@ -172,6 +172,9 @@ func validatePublish(in PublishInput) error {
 	case in.DeduplicationID != "":
 		// Unverified. A standard topic does accept MessageGroupId (sns-errors).
 		return invalid("MessageDeduplicationId is for FIFO topics, which are not supported")
+	case in.GroupID != "" && (len(in.GroupID) > 128 || strings.ContainsFunc(in.GroupID, func(r rune) bool { return r < 0x21 || r > 0x7e })):
+		// SQS applies this rule when the group is forwarded; check it here so the publish fails (unverified on AWS).
+		return invalid("MessageGroupId must be 1 to 128 printable ASCII characters")
 	case len(in.Subject) > maxSubject:
 		return invalid("subject is longer than %d characters", maxSubject)
 	case strings.ContainsFunc(in.Subject, func(r rune) bool { return r < 0x20 || r > 0x7e }):
