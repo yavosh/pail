@@ -347,11 +347,12 @@ func TestSNSFilterPolicy(t *testing.T) {
 		t.Errorf("attribute scope: queue bodies = %v, want [hit]", got)
 	}
 
-	for name, value := range map[string]string{"FilterPolicyScope": "MessageBody", "FilterPolicy": `{"order":{"kind":["book"]}}`} {
+	// The scope comes first: a nested policy is invalid in attribute scope.
+	for _, kv := range [][2]string{{"FilterPolicyScope", "MessageBody"}, {"FilterPolicy", `{"order":{"kind":["book"]}}`}} {
 		if _, err := sc.SetSubscriptionAttributes(ctx, &sns.SetSubscriptionAttributesInput{
-			SubscriptionArn: &subARN, AttributeName: aws.String(name), AttributeValue: aws.String(value),
+			SubscriptionArn: &subARN, AttributeName: aws.String(kv[0]), AttributeValue: aws.String(kv[1]),
 		}); err != nil {
-			t.Fatalf("SetSubscriptionAttributes(%s) error = %v", name, err)
+			t.Fatalf("SetSubscriptionAttributes(%s) error = %v", kv[0], err)
 		}
 	}
 	publish(`{"order":{"kind":"pen"}}`, "blue")

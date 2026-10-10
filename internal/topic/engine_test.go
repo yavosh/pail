@@ -361,6 +361,14 @@ func TestSubscribe(t *testing.T) {
 	if again := mustSubscribe(t, e, arn, "q1", map[string]string{"RawMessageDelivery": "false"}); again != first {
 		t.Errorf("Subscribe with default attribute = %q, want %q", again, first)
 	}
+	scoped := map[string]string{"FilterPolicyScope": ""}
+	sc1 := mustSubscribe(t, e, arn, "q3", scoped)
+	if again := mustSubscribe(t, e, arn, "q3", scoped); again != sc1 {
+		t.Errorf("Subscribe again with an empty scope = %q, want %q", again, sc1)
+	}
+	if err := e.SetSubscriptionAttribute(t.Context(), arn+":x", "Bogus", "x"); !errors.Is(err, ErrInvalidParameter) {
+		t.Errorf("SetSubscriptionAttribute(missing, Bogus) error = %v, want %v", err, ErrInvalidParameter)
+	}
 	tests := []struct {
 		name                      string
 		topic, protocol, endpoint string
@@ -381,6 +389,7 @@ func TestSubscribe(t *testing.T) {
 		{"bad filter scope", arn, "sqs", queueARN("q2"), map[string]string{"FilterPolicyScope": "Everything"}, ErrInvalidParameter},
 		{"redrive policy", arn, "sqs", queueARN("q2"), map[string]string{"RedrivePolicy": "{}"}, ErrInvalidParameter},
 		{"bad raw value", arn, "sqs", queueARN("q2"), map[string]string{"RawMessageDelivery": "yes"}, ErrInvalidParameter},
+		{"empty raw value", arn, "sqs", queueARN("q2"), map[string]string{"RawMessageDelivery": ""}, ErrInvalidParameter},
 		{"different attributes", arn, "sqs", ep, map[string]string{"RawMessageDelivery": "true"}, ErrInvalidParameter},
 	}
 	for _, tt := range tests {

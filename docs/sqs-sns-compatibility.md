@@ -246,7 +246,7 @@ A subscription without a filter policy receives every message. With a policy, it
   - `{"numeric": ["=", n]}`, or one or two pairs of an operator (`<`, `<=`, `>`, `>=`) and a number. With two pairs, one is a lower bound and the other is an upper bound, in either order.
   - `{"exists": true}` or `{"exists": false}`.
 - An empty array, a boolean, a null, an array inside the array, and an object with more than one key return `InvalidParameter`. So do `$or` and the operators that pail does not implement, such as `suffix`, `equals-ignore-case`, `cidr`, and `wildcard`.
-- A policy has at most 5 keys, and the product of the lengths of its arrays is at most 150. These limits come from the AWS documentation (unverified).
+- A policy has at most 5 keys that map to an array, counting nested ones, and the product of the lengths of those arrays is at most 150. These limits come from the AWS documentation (unverified).
 - In `MessageAttributes` scope, the key names a message attribute:
   - `String` and `Number` (with or without a custom label) give one value. A `Number` value compares as a number. A `String` value never matches a number or `numeric`.
   - `String.Array` gives its elements. The key matches when any element matches (unverified).

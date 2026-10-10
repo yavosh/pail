@@ -34,6 +34,8 @@ func TestCompileFilterErrors(t *testing.T) {
 		{"string value", `{"a":"x"}`, ""},
 		{"number value", `{"a":1}`, ""},
 		{"$or", `{"$or":{"a":["x"]}}`, "MessageBody"},
+		{"$or array", `{"$or":[{"a":["x"]},{"b":["y"]}]}`, ""},
+		{"$or scalar array", `{"$or":["x"]}`, ""},
 		{"nested in attribute scope", `{"a":{"b":["x"]}}`, ""},
 		{"bool element", `{"a":[true]}`, ""},
 		{"null element", `{"a":[null]}`, ""},

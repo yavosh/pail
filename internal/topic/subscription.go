@@ -35,18 +35,26 @@ func (e *Engine) checkEndpoint(protocol, endpoint string) (string, error) {
 // checked against its scope.
 func checkSubAttrs(attrs map[string]string) error {
 	for k, v := range attrs {
-		switch k {
-		case attrFilter, attrScope:
-		case attrRaw:
-			if v != "true" && v != "false" {
-				return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
-			}
-		default:
-			return fmt.Errorf("subscription attribute %q is not supported: %w", k, ErrInvalidParameter)
+		if err := checkSubAttr(k, v); err != nil {
+			return err
 		}
 	}
 	_, err := compileFilter(attrs)
 	return err
+}
+
+// checkSubAttr checks one attribute name and value without the filter policy.
+func checkSubAttr(k, v string) error {
+	switch k {
+	case attrFilter, attrScope:
+	case attrRaw:
+		if v != "true" && v != "false" {
+			return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
+		}
+	default:
+		return fmt.Errorf("subscription attribute %q is not supported: %w", k, ErrInvalidParameter)
+	}
+	return nil
 }
 
 // rawDelivery reports whether s delivers the message without the envelope.
@@ -70,11 +78,13 @@ func (e *Engine) Subscribe(ctx context.Context, topicARN, protocol, endpoint str
 	if err := checkSubAttrs(attrs); err != nil {
 		return "", err
 	}
+	stored := maps.Clone(attrs)
+	maps.DeleteFunc(stored, func(_, v string) bool { return v == "" }) // "" means unset
 	for _, s := range e.topicSubs(topicARN) {
 		if s.Protocol != protocol || s.Endpoint != endpoint {
 			continue
 		}
-		for k, v := range attrs {
+		for k, v := range stored {
 			if subAttrValue(s, k) != v {
 				// The message text is unverified.
 				return "", fmt.Errorf("subscription %s already exists with different attributes: %w", s.ARN, ErrInvalidParameter)
@@ -82,8 +92,6 @@ func (e *Engine) Subscribe(ctx context.Context, topicARN, protocol, endpoint str
 		}
 		return s.ARN, nil
 	}
-	stored := maps.Clone(attrs)
-	maps.DeleteFunc(stored, func(_, v string) bool { return v == "" }) // "" means unset
 	def := &subDef{ARN: topicARN + ":" + newUUID(), TopicARN: topicARN, Protocol: protocol, Endpoint: endpoint, Attributes: stored, Created: time.Now().Unix()}
 	if err := e.persistSub(def); err != nil {
 		return "", err
@@ -204,6 +212,9 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 // SetSubscriptionAttribute sets one attribute of a subscription.
 func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value string) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := checkSubAttr(name, value); err != nil {
 		return err
 	}
 	e.mu.Lock()

@@ -71,6 +71,9 @@ func compileFilter(attrs map[string]string) (*filterPolicy, error) {
 func (p *filterPolicy) walk(prefix []string, m map[string]any) error {
 	for _, k := range slices.Sorted(maps.Keys(m)) {
 		path := append(slices.Clone(prefix), k)
+		if k == "$or" {
+			return invalid("FilterPolicy operator $or is not supported")
+		}
 		switch v := m[k].(type) {
 		case []any:
 			conds, err := compileConds(k, v)
@@ -79,9 +82,6 @@ func (p *filterPolicy) walk(prefix []string, m map[string]any) error {
 			}
 			p.leaves = append(p.leaves, filterLeaf{path, conds})
 		case map[string]any:
-			if k == "$or" {
-				return invalid("FilterPolicy operator $or is not supported")
-			}
 			if !p.body {
 				return invalid("FilterPolicy key %q: a nested policy needs FilterPolicyScope %s", k, scopeBody)
 			}
