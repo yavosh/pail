@@ -20,6 +20,7 @@ import (
 	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/server"
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/topic"
 	"github.com/yavosh/pail/internal/vfs/localdisk"
 )
 
@@ -106,12 +107,16 @@ func startPailTLS(t *testing.T) *pail {
 	if err != nil {
 		t.Fatal(err)
 	}
+	topics, err := topic.Open(context.Background(), fsys, testRegion, queues)
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewUnstartedServer(server.NewHandler(config.Config{
 		Domain:          "example.com",
 		AccessKeyID:     testKey,
 		SecretAccessKey: testSecret,
 		Region:          testRegion,
-	}, st, queues))
+	}, st, queues, topics))
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 

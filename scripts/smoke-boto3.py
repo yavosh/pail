@@ -5,6 +5,7 @@ Needs SMOKE_ENDPOINT, SMOKE_ACCESS_KEY, and SMOKE_SECRET_KEY. Uses no real AWS s
 """
 import base64
 import hashlib
+import json
 import os
 import sys
 import tempfile
@@ -47,6 +48,7 @@ print(f"boto3 {boto3.__version__}, botocore {botocore.__version__}")
 
 s3 = boto3.client("s3", endpoint_url=endpoint, region_name="us-east-1")
 sqs = boto3.client("sqs", endpoint_url=endpoint, region_name="us-east-1")
+sns = boto3.client("sns", endpoint_url=endpoint, region_name="us-east-1")
 bucket = "smoke-py-" + os.urandom(4).hex()
 print(f"bucket: {bucket}")
 
@@ -331,5 +333,24 @@ with Step("sqs FIFO queue"):
           f"unexpected attributes: {messages[0]['Attributes']}")
     sqs.delete_message(QueueUrl=fifo_url, ReceiptHandle=messages[0]["ReceiptHandle"])
     sqs.delete_queue(QueueUrl=fifo_url)
+
+with Step("sns publish to an SQS subscription"):
+    topic_arn = sns.create_topic(Name=queue_name)["TopicArn"]
+    fan_url = sqs.create_queue(QueueName=queue_name)["QueueUrl"]
+    fan_arn = sqs.get_queue_attributes(
+        QueueUrl=fan_url, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
+    sns.subscribe(TopicArn=topic_arn, Protocol="sqs", Endpoint=fan_arn)
+    sns.publish(
+        TopicArn=topic_arn, Message="hello", Subject="greeting",
+        MessageAttributes={"color": {"DataType": "String", "StringValue": "blue"}},
+    )
+    messages = sqs.receive_message(QueueUrl=fan_url, WaitTimeSeconds=1).get("Messages", [])
+    check(len(messages) == 1, f"received {len(messages)} messages, want 1")
+    envelope = json.loads(messages[0]["Body"])
+    check(envelope["Type"] == "Notification", f"unexpected envelope: {envelope}")
+    check(envelope["Message"] == "hello", f"unexpected envelope: {envelope}")
+    check(envelope["MessageAttributes"]["color"]["Value"] == "blue", f"unexpected envelope: {envelope}")
+    sns.delete_topic(TopicArn=topic_arn)
+    sqs.delete_queue(QueueUrl=fan_url)
 
 tmp.cleanup()

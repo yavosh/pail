@@ -68,7 +68,7 @@ go test ./test/diff -record -run '^TestDiff/(sqs|sns)-' -v
 The recording identity needs these actions, scoped to `pail-diff-*` resources where IAM allows it:
 
 - SQS: `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`, `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility`, `sqs:PurgeQueue`, `sqs:TagQueue`, `sqs:UntagQueue`, `sqs:ListQueueTags`, `sqs:ListQueues`, and `sqs:DeleteQueue`.
-- SNS: `sns:CreateTopic`, `sns:GetTopicAttributes`, `sns:Publish`, and `sns:DeleteTopic`.
+- SNS: `sns:CreateTopic`, `sns:DeleteTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:Subscribe`, `sns:Unsubscribe`, `sns:ListSubscriptionsByTopic`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`, `sns:Publish`, `sns:TagResource`, `sns:UntagResource`, and `sns:ListTagsForResource`.
 
 A recording makes a few dozen SQS and SNS requests, well inside the free tier.
 
@@ -106,7 +106,23 @@ go test ./test/diff -record -run '^TestDiff/sqs-(fifo|dead-letter|fair-queue)$' 
 
 The recording identity also needs `sqs:ListDeadLetterSourceQueues`.
 
-The steps of `sns-topic-basics` are still in `pending.txt`. After you record a new scenario, remove each line whose step matches AWS.
+The SNS scenarios are:
+
+- `sns-topic-basics`: create, read, publish to, and delete a topic, and the error for a deleted topic.
+- `sns-topic-attributes`: attributes set at creation and later, idempotent and conflicting `CreateTopic`, invalid and FIFO topic names, tags, and `DeleteTopic` of a deleted topic.
+- `sns-sqs-delivery`: a topic with an SQS subscription, in envelope, raw, and `MessageStructure` `json` delivery, with message attributes and `String.Array`.
+- `sns-publish-batch`: `PublishBatch` successes, a partial failure, and the batch validation errors.
+- `sns-errors`: `Publish` and `Subscribe` validation errors, a missing subscription, an unknown action, and a deleted topic.
+
+AWS delivers to an SQS queue only when the queue policy allows the topic. The `sns-sqs-delivery` scenario sets a policy that lets the service `sns.amazonaws.com` send when `aws:SourceArn` equals the topic ARN. pail does not enforce queue policies.
+
+Record the four newer scenarios with:
+
+```bash
+go test ./test/diff -record -run '^TestDiff/sns-(topic-attributes|sqs-delivery|publish-batch|errors)$' -v
+```
+
+The steps of the four newer scenarios are in `pending.txt`. After you record them, remove each line whose step matches AWS, and fix or list each difference.
 
 ## What is compared
 
@@ -117,6 +133,8 @@ The steps of `sns-topic-basics` are still in `pending.txt`. After you record a n
 - `Content-Length` only for object data. XML formatting and error messages differ between servers.
 - The body. Successful object reads are compared byte for byte, including XML content. A body that is not valid UTF-8 is stored as base64. Protocol XML is compared element by element. Values that change on every run, such as dates, owner IDs, upload IDs, continuation tokens, and the `Location` URL of a completed upload, are compared for presence only. Bucket names in protocol responses become `{bucket}`.
 - SQS JSON bodies become sorted `path: value` lines, with array indexes such as `Messages[0].Body`. An error keeps only its `__type`. Values that change on every run, such as `ReceiptHandle`, `SenderId`, and timestamps, are compared for presence only.
+- An SQS message body that holds an SNS `Notification` or `SubscriptionConfirmation` envelope is flattened into a nested object, such as `Messages[0].Body.Message: hello`. The keys `Signature`, `SigningCertURL`, `Timestamp`, `UnsubscribeURL`, `SubscribeURL`, and `Token` are compared for presence only, and so is the `MD5OfBody` of such a message. `MessageId`, `TopicArn`, `Type`, `Subject`, `Message`, `SignatureVersion`, and `MessageAttributes` stay compared.
+- The `Message` of a failed SNS batch entry is dropped, as for SQS.
 - In SQS and SNS bodies, the endpoint, the scenario name, UUIDs, and 12-digit account IDs become `{endpoint}`, `{name}`, `{uuid}`, and `{account}`. An SNS `ErrorResponse` keeps its `Type` and `Code`.
 - `x-amzn-query-error` by value, and `x-amzn-RequestId` for presence only. SQS and SNS steps never compare `Content-Length`.
 

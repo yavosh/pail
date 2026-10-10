@@ -1,0 +1,93 @@
+{
+  "scenario": "sns-publish-batch",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "6a33e4edc56aa74a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-batch",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "ba19054504bb360b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishBatchResponse\n  PublishBatchResult\n    Failed: \n    Successful\n      member\n        MessageId: {uuid}\n        Id: a\n      member\n        MessageId: {uuid}\n        Id: b\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-batch-partial",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "dfc4238a11a9ef53",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishBatchResponse\n  PublishBatchResult\n    Failed\n      member\n        Code: InvalidParameter\n        SenderFault: true\n        Id: empty\n    Successful\n      member\n        MessageId: {uuid}\n        Id: ok\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-batch-empty",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "e0ff0115837e9ff2",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: ValidationError\n"
+    },
+    {
+      "step": "publish-batch-too-many",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "d15a1a8858c55550",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: TooManyEntriesInBatchRequest\n"
+    },
+    {
+      "step": "publish-batch-duplicate-ids",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "e3af3d41b20aa8bd",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: BatchEntryIdsNotDistinct\n"
+    },
+    {
+      "step": "publish-batch-invalid-id",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "6d7a400ed57ac177",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidBatchEntryId\n"
+    },
+    {
+      "step": "delete-topic",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    }
+  ]
+}

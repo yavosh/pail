@@ -59,12 +59,21 @@ func TestSQSRouting(t *testing.T) {
 	})
 }
 
-func TestSNSStub(t *testing.T) {
-	t.Run("list topics is unsupported", func(t *testing.T) {
-		_, err := startPail(t).snsClient().ListTopics(context.Background(), &sns.ListTopicsInput{})
+func TestSNSRouting(t *testing.T) {
+	for name, start := range map[string]func(*testing.T) *pail{"plain": startPail, "tls": startPailTLS} {
+		t.Run(name+" list topics", func(t *testing.T) {
+			out, err := start(t).snsClient().ListTopics(context.Background(), &sns.ListTopicsInput{})
+			if err != nil || len(out.Topics) != 0 {
+				t.Errorf("ListTopics = %v, %v; want no topics and no error", out, err)
+			}
+		})
+	}
+
+	t.Run("unimplemented action", func(t *testing.T) {
+		_, err := startPail(t).snsClient().ConfirmSubscription(context.Background(), &sns.ConfirmSubscriptionInput{TopicArn: aws.String("arn"), Token: aws.String("t")})
 		status, code, msg := apiFailureMessage(t, err)
-		if status != 400 || code != "InvalidAction" || msg != "ListTopics is not supported" {
-			t.Errorf("ListTopics: status %d, code %q, message %q, want 400 InvalidAction %q", status, code, msg, "ListTopics is not supported")
+		if status != 400 || code != "InvalidAction" || msg != "ConfirmSubscription is not supported" {
+			t.Errorf("ConfirmSubscription: status %d, code %q, message %q, want 400 InvalidAction %q", status, code, msg, "ConfirmSubscription is not supported")
 		}
 	})
 

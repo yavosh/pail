@@ -30,7 +30,9 @@ func TestHandler(t *testing.T) {
 		want     string
 		wantMsg  string // checked when set
 	}{
-		{"signed", testSecret, listBody, 400, "InvalidAction", "ListTopics is not supported"},
+		{"unimplemented action", testSecret, "Action=ConfirmSubscription&Version=2010-03-31", 400, "InvalidAction", "ConfirmSubscription is not supported"},
+		{"unknown action", testSecret, "Action=Bogus&Version=2010-03-31", 400, "InvalidAction", "Bogus is not supported"},
+		{"no action", testSecret, "Version=2010-03-31", 400, "InvalidAction", "the action is not supported"},
 		{"unsigned", "", listBody, 403, "MissingAuthenticationToken", ""},
 		{"wrong secret", "wrong", listBody, 403, "SignatureDoesNotMatch", ""},
 		{"over the cap", testSecret, "Action=" + strings.Repeat("x", maxRequestBytes), 413, "RequestEntityTooLarge", ""},

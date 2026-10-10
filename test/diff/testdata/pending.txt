@@ -4,9 +4,3 @@
 # Replay tolerates differences in a pending step and logs them (go test -v).
 # Differences in any other step still fail. Once a pending step has no
 # unlisted difference, the test fails until you remove its line.
-
-sns-topic-basics/create-topic SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sns-topic-basics/get-topic-attributes SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sns-topic-basics/publish SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sns-topic-basics/delete-topic SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md
-sns-topic-basics/get-deleted-topic-attributes SQS and SNS land in PRs 3-8 of docs/plans/2026-10-09-sqs-sns.md

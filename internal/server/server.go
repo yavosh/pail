@@ -14,6 +14,7 @@ import (
 	"github.com/yavosh/pail/internal/config"
 	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/store"
+	"github.com/yavosh/pail/internal/topic"
 	"github.com/yavosh/pail/internal/vfs/localdisk"
 )
 
@@ -29,6 +30,7 @@ type Server struct {
 	fs     *localdisk.FS
 	store  *store.Store
 	queues *queue.Engine
+	topics *topic.Engine
 }
 
 // New returns a Server for cfg. Call Listen, then Serve.
@@ -56,13 +58,18 @@ func (s *Server) Listen(ctx context.Context) error {
 		_ = fsys.Close()
 		return fmt.Errorf("open queues in %s: %w", s.cfg.DataDir, err)
 	}
+	topics, err := topic.Open(ctx, fsys, s.cfg.Region, queues)
+	if err != nil {
+		_ = fsys.Close()
+		return fmt.Errorf("open topics in %s: %w", s.cfg.DataDir, err)
+	}
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", s.cfg.Addr)
 	if err != nil {
 		_ = fsys.Close()
 		return fmt.Errorf("listen on %s: %w", s.cfg.Addr, err)
 	}
-	s.fs, s.store, s.queues, s.ln = fsys, st, queues, ln
+	s.fs, s.store, s.queues, s.topics, s.ln = fsys, st, queues, topics, ln
 	return nil
 }
 
@@ -80,7 +87,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.ln == nil {
 		return errors.New("serve: not listening")
 	}
-	srv := &http.Server{Handler: NewHandler(s.cfg, s.store, s.queues), ReadHeaderTimeout: readHeaderTimeout}
+	srv := &http.Server{Handler: NewHandler(s.cfg, s.store, s.queues, s.topics), ReadHeaderTimeout: readHeaderTimeout}
 	// Shutdown waits for handlers, and a long poll can wait 20 s, longer than shutdownTimeout.
 	srv.RegisterOnShutdown(s.queues.StopWaiters)
 	// After a shutdown timeout, handlers still running see a closed data

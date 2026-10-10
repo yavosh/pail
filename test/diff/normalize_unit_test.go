@@ -299,6 +299,15 @@ func TestCanonicalJSON(t *testing.T) {
 		{"empty body", "", "", false},
 		{"empty object", "{}", "{}\n", false},
 		{"empty array", `{"Messages":[]}`, "Messages: []\n", false},
+		{"notification envelope", `{"Messages":[{"MD5OfBody":"abc","Body":"{\"Type\":\"Notification\",\"MessageId\":\"m\",\"TopicArn\":\"arn\",\"Subject\":\"s\",\"Message\":\"hello\",\"Timestamp\":\"t\",\"SignatureVersion\":\"1\",\"Signature\":\"sig\",\"SigningCertURL\":\"u\",\"UnsubscribeURL\":\"v\",\"MessageAttributes\":{\"color\":{\"Type\":\"String\",\"Value\":\"blue\"}}}"}]}`,
+			"Messages[0].Body.Message: hello\nMessages[0].Body.MessageAttributes.color.Type: String\nMessages[0].Body.MessageAttributes.color.Value: blue\n" +
+				"Messages[0].Body.MessageId: m\nMessages[0].Body.Signature: <volatile>\nMessages[0].Body.SignatureVersion: 1\nMessages[0].Body.SigningCertURL: <volatile>\n" +
+				"Messages[0].Body.Subject: s\nMessages[0].Body.Timestamp: <volatile>\nMessages[0].Body.TopicArn: arn\nMessages[0].Body.Type: Notification\n" +
+				"Messages[0].Body.UnsubscribeURL: <volatile>\nMessages[0].MD5OfBody: <volatile>\n", false},
+		{"confirmation envelope", `{"Messages":[{"Body":"{\"Type\":\"SubscriptionConfirmation\",\"Token\":\"tok\",\"SubscribeURL\":\"u\",\"MessageId\":\"m\"}"}]}`,
+			"Messages[0].Body.MessageId: m\nMessages[0].Body.SubscribeURL: <volatile>\nMessages[0].Body.Token: <volatile>\nMessages[0].Body.Type: SubscriptionConfirmation\n", false},
+		{"other JSON bodies stay strings", `{"Messages":[{"Body":"{\"Type\":\"Other\",\"Message\":\"x\"}","MD5OfBody":"abc"},{"Body":"plain"}]}`,
+			"Messages[0].Body: {\"Type\":\"Other\",\"Message\":\"x\"}\nMessages[0].MD5OfBody: abc\nMessages[1].Body: plain\n", false},
 	}
 	for _, tt := range tests {
 		got, isErr, err := canonicalJSON(tt.in)
@@ -440,5 +449,29 @@ func TestNormalizeServiceKeepsDigestsAndMasksAccounts(t *testing.T) {
 	want := "MD5OfMessageBody: 5d41402abc4b2a76b9719d911017c592\nQueueUrl: https://q/{account}/x\n"
 	if got.Body != want {
 		t.Errorf("body = %q, want %q", got.Body, want)
+	}
+}
+
+func TestCanonicalXMLDropsFailedBatchMessages(t *testing.T) {
+	const in = `<PublishBatchResponse><PublishBatchResult><Successful><member><Id>a</Id><MessageId>m</MessageId></member></Successful>` +
+		`<Failed><member><Id>b</Id><Code>InvalidParameter</Code><Message>text</Message><SenderFault>true</SenderFault></member></Failed></PublishBatchResult></PublishBatchResponse>`
+	want := "PublishBatchResponse\n  PublishBatchResult\n    Successful\n      member\n        Id: a\n        MessageId: m\n" +
+		"    Failed\n      member\n        Id: b\n        Code: InvalidParameter\n        SenderFault: true\n"
+	got, _, err := canonicalXML(in)
+	if err != nil || got != want {
+		t.Errorf("canonicalXML(%s) = %q, %v; want %q", in, got, err, want)
+	}
+}
+
+func TestCanonicalXMLMasksSubscriptionPrincipal(t *testing.T) {
+	const in = `<GetSubscriptionAttributesResponse><GetSubscriptionAttributesResult><Attributes>` +
+		`<entry><key>Owner</key><value>000000000000</value></entry>` +
+		`<entry><key>SubscriptionPrincipal</key><value>arn:aws:iam::123456789012:user/me</value></entry>` +
+		`</Attributes></GetSubscriptionAttributesResult></GetSubscriptionAttributesResponse>`
+	want := "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: Owner\n        value: 000000000000\n" +
+		"      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n"
+	got, _, err := canonicalXML(in)
+	if err != nil || got != want {
+		t.Errorf("canonicalXML(%s) = %q, %v; want %q", in, got, err, want)
 	}
 }
