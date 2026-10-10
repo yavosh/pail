@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -58,6 +59,11 @@ type Engine struct {
 	sign   *signer              // nil until first needed
 	client *http.Client         // posts to HTTP and HTTPS endpoints
 	jobs   chan httpJob         // deliveries that RunDeliveries sends
+	// restores holds subscriptions removed by an unsigned Unsubscribe, by
+	// UnsubscribeConfirmation token. A restart loses them.
+	restores map[string]restore
+	limMu    sync.Mutex
+	nextPost map[string]time.Time // earliest next post per subscription ARN, for throttling
 }
 
 // topicDef is the persisted part of a topic. Attributes holds only the ones a
@@ -92,17 +98,38 @@ type Subscription struct {
 	ARN, Owner, Protocol, Endpoint, TopicARN string
 }
 
+// Option changes how Open builds an Engine.
+type Option func(*Engine)
+
+// WithTLSSkipVerify makes the HTTP client accept any certificate from an
+// HTTPS endpoint. Use it only for local testing.
+func WithTLSSkipVerify(skip bool) Option {
+	return func(e *Engine) {
+		if !skip {
+			return
+		}
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in flag for local testing
+		e.client.Transport = tr
+		clogTopic().Warn("certificate checks are off for HTTPS subscription endpoints")
+	}
+}
+
 // Open loads the topics and subscriptions from fsys.
-func Open(ctx context.Context, fsys vfs.FS, region string, queues Queues) (*Engine, error) {
+func Open(ctx context.Context, fsys vfs.FS, region string, queues Queues, opts ...Option) (*Engine, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	e := &Engine{fs: fsys, region: region, queues: queues, topics: map[string]*topicDef{}, subs: map[string]*subDef{}}
+	e := &Engine{fs: fsys, region: region, queues: queues, topics: map[string]*topicDef{}, subs: map[string]*subDef{},
+		restores: map[string]restore{}, nextPost: map[string]time.Time{}}
 	e.client = &http.Client{
 		Timeout:       httpTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	e.jobs = make(chan httpJob, jobQueueSize)
+	for _, opt := range opts {
+		opt(e)
+	}
 	for _, dir := range []string{topicsDir, subsDir} {
 		if err := fsys.MkdirAll(dir); err != nil {
 			return nil, fmt.Errorf("create %s: %w", dir, err)
@@ -201,6 +228,9 @@ func (e *Engine) checkSub(def subDef) error {
 	if def.Pending && def.Token == "" {
 		return fmt.Errorf("pending subscription %q has no token", def.ARN)
 	}
+	if err := checkProtocolAttrs(def.Protocol, def.Attributes); err != nil {
+		return err
+	}
 	return checkSubAttrs(def.Attributes)
 }
 
@@ -238,6 +268,13 @@ func checkTopicName(name string) error {
 		return fmt.Errorf("topic name %q must be 1 to 256 letters, digits, hyphens, or underscores: %w", name, ErrInvalidParameter)
 	}
 	return nil
+}
+
+// lock takes e.mu and drops the pending subscriptions whose token expired.
+// Expiry is lazy, so the engine runs no goroutine for it.
+func (e *Engine) lock() {
+	e.mu.Lock()
+	e.sweep()
 }
 
 // findTopic returns the topic that arn names. The caller holds e.mu.
@@ -297,6 +334,9 @@ func (e *Engine) CreateTopic(ctx context.Context, name string, attrs, tags map[s
 	}
 	attrs = maps.Clone(attrs)
 	maps.DeleteFunc(attrs, noopAttr)
+	for k, v := range attrs {
+		attrs[k] = canonTopicAttr(k, v)
+	}
 	arn := e.topicARN(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -341,6 +381,7 @@ func (e *Engine) DeleteTopic(ctx context.Context, arn string) error {
 			return fmt.Errorf("delete subscription %s: %w", s.ARN, err)
 		}
 		delete(e.subs, s.ARN)
+		e.forgetPost(s.ARN)
 	}
 	if err := e.fs.Remove(topicFile(t.Name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("delete topic %s: %w", t.Name, err)

@@ -42,6 +42,11 @@ func TestParsePrecedence(t *testing.T) {
 		{"version flag", []string{"--version"}, nil, func(c Config) Config { c.Version = true; return c }},
 		{"healthcheck flag", []string{"--healthcheck"}, nil, func(c Config) Config { c.Healthcheck = true; return c }},
 		{"healthcheck reads addr env", []string{"--healthcheck"}, map[string]string{"PAIL_ADDR": ":1"}, func(c Config) Config { c.Healthcheck = true; c.Addr = ":1"; return c }},
+		{"sns tls skip verify flag", []string{"--sns-tls-skip-verify"}, nil, func(c Config) Config { c.SNSTLSSkipVerify = true; return c }},
+		{"sns tls skip verify env true", nil, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "true"}, func(c Config) Config { c.SNSTLSSkipVerify = true; return c }},
+		{"sns tls skip verify env false", nil, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "false"}, func(c Config) Config { return c }},
+		{"sns tls skip verify flag beats env", []string{"--sns-tls-skip-verify"}, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "false"}, func(c Config) Config { c.SNSTLSSkipVerify = true; return c }},
+		{"sns tls skip verify flag false beats env", []string{"--sns-tls-skip-verify=false"}, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "true"}, func(c Config) Config { return c }},
 		{"empty flag value beats env", []string{"--domain="}, map[string]string{"PAIL_DOMAIN": "e.test"}, func(c Config) Config { return c }},
 	}
 	for _, tt := range tests {
@@ -66,6 +71,7 @@ func TestParseErrors(t *testing.T) {
 	}{
 		{"bad level flag", []string{"--log-level", "loud"}, nil, "PAIL_LOG_LEVEL"},
 		{"bad level env", nil, map[string]string{"PAIL_LOG_LEVEL": "loud"}, "--log-level"},
+		{"bad sns tls env", nil, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "maybe"}, "PAIL_SNS_TLS_SKIP_VERIFY"},
 		{"positional argument", []string{"extra"}, nil, `unexpected argument "extra"`},
 		{"unknown flag", []string{"--nope"}, nil, "nope"},
 	}

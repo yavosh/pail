@@ -118,6 +118,7 @@ The SNS scenarios are:
 - `sns-errors`: `Publish` and `Subscribe` validation errors, a missing subscription, an unknown action, and a deleted topic.
 - `sns-filter-policies`: filter policies in attribute and body scope, their validation errors and limits, `{}`, and the attribute order.
 - `sns-filter-edge-cases`: `anything-but` on an absent attribute and on another type, `exists` `false` on a missing body path, body policies with `MessageStructure` `json`, and the key count of nested policies.
+- `sns-delivery-policy`: topic and subscription `DeliveryPolicy` normalization, the effective policy of an HTTP subscription, and the validation errors.
 - `sns-http-subscriptions`: HTTP endpoint errors, pending subscriptions, `ConfirmSubscription` errors, unsigned links, and `Unsubscribe` of pending and SQS subscriptions.
 
 AWS delivers to an SQS queue only when the queue policy allows the topic. The `sns-sqs-delivery` scenario sets a policy that lets the service `sns.amazonaws.com` send when `aws:SourceArn` equals the topic ARN. pail does not enforce queue policies.

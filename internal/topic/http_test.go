@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// defaultSubPolicy is the EffectiveDeliveryPolicy of an HTTP subscription of a topic with no policy.
+const defaultSubPolicy = `{"healthyRetryPolicy":{"minDelayTarget":20,"maxDelayTarget":20,"numRetries":3,"numMaxDelayRetries":0,"numNoDelayRetries":0,"numMinDelayRetries":0,"backoffFunction":"linear"},"sicklyRetryPolicy":null,"throttlePolicy":null,"requestPolicy":{"headerContentType":"text/plain; charset=UTF-8"},"guaranteed":false}`
+
 const (
 	testBase     = "http://pail.test:9000"
 	testEndpoint = "http://192.0.2.1/pail"
@@ -83,7 +86,7 @@ func TestHTTPPendingSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"PendingConfirmation": "true", "ConfirmationWasAuthenticated": "false", "Protocol": "http", "Endpoint": testEndpoint, "EffectiveDeliveryPolicy": httpDeliveryPolicy}
+	want := map[string]string{"PendingConfirmation": "true", "ConfirmationWasAuthenticated": "false", "Protocol": "http", "Endpoint": testEndpoint, "EffectiveDeliveryPolicy": defaultSubPolicy}
 	got := map[string]string{}
 	for _, a := range attrs {
 		got[a.Key] = a.Value
@@ -228,18 +231,18 @@ func TestHTTPUnsignedUnsubscribe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := e.Unsubscribe(t.Context(), tt.sub, false); !errors.Is(err, tt.want) {
+			if err := e.Unsubscribe(t.Context(), tt.sub, false, testBase); !errors.Is(err, tt.want) {
 				t.Errorf("Unsubscribe(%q, unsigned) error = %v, want %v", tt.sub, err, tt.want)
 			}
 		})
 	}
-	if err := e.Unsubscribe(t.Context(), pending, true); !errors.Is(err, ErrInvalidParameter) {
+	if err := e.Unsubscribe(t.Context(), pending, true, testBase); !errors.Is(err, ErrInvalidParameter) {
 		t.Errorf("Unsubscribe(pending, signed) error = %v, want %v", err, ErrInvalidParameter)
 	}
 	if _, ok := e.subs[pending]; !ok {
 		t.Error("pending subscription was removed, want it kept")
 	}
-	if err := e.Unsubscribe(t.Context(), auth, true); err != nil {
+	if err := e.Unsubscribe(t.Context(), auth, true, testBase); err != nil {
 		t.Errorf("Unsubscribe(authenticated, signed) error = %v, want nil", err)
 	}
 }

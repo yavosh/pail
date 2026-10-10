@@ -52,7 +52,7 @@ func (h *handler) unsubscribe(r *http.Request, p params) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "", h.topics.Unsubscribe(r.Context(), arn, signed(r))
+	return "", h.topics.Unsubscribe(r.Context(), arn, signed(r), baseURL(r))
 }
 
 func (h *handler) listSubscriptions(r *http.Request, p params) (string, error) {

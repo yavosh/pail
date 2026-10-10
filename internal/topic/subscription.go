@@ -45,8 +45,8 @@ func (e *Engine) checkEndpoint(protocol, endpoint string) (string, error) {
 }
 
 // checkSubAttrs validates subscription attributes. pail supports
-// RawMessageDelivery, FilterPolicy, and FilterPolicyScope; the policy is
-// checked against its scope.
+// RawMessageDelivery, FilterPolicy, FilterPolicyScope, and DeliveryPolicy; the
+// filter policy is checked against its scope.
 func checkSubAttrs(attrs map[string]string) error {
 	for k, v := range attrs {
 		if err := checkSubAttr(k, v); err != nil {
@@ -65,8 +65,22 @@ func checkSubAttr(k, v string) error {
 		if v != "true" && v != "false" {
 			return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
 		}
+	case attrDelivery:
+		if v != "" {
+			_, err := normalizeSubPolicy(v)
+			return err
+		}
 	default:
 		return fmt.Errorf("subscription attribute %q is not supported: %w", k, ErrInvalidParameter)
+	}
+	return nil
+}
+
+// checkProtocolAttrs rejects a DeliveryPolicy on an SQS subscription (recorded
+// in sns-delivery-policy). On Subscribe it is unverified.
+func checkProtocolAttrs(protocol string, attrs map[string]string) error {
+	if attrs[attrDelivery] != "" && protocol == protocolSQS {
+		return fmt.Errorf("subscription attribute %s applies only to HTTP and HTTPS subscriptions: %w", attrDelivery, ErrInvalidParameter)
 	}
 	return nil
 }
@@ -108,7 +122,7 @@ func (e *Engine) Subscribe(ctx context.Context, in SubscribeInput) (arn string, 
 // addSub stores the subscription, or finds the matching one, and returns a
 // copy with the topic's signature version.
 func (e *Engine) addSub(in SubscribeInput) (subDef, string, error) {
-	e.mu.Lock()
+	e.lock()
 	defer e.mu.Unlock()
 	t, err := e.findTopic(in.TopicARN)
 	if err != nil {
@@ -117,12 +131,18 @@ func (e *Engine) addSub(in SubscribeInput) (subDef, string, error) {
 	if _, err := e.checkEndpoint(in.Protocol, in.Endpoint); err != nil {
 		return subDef{}, "", err
 	}
+	if err := checkProtocolAttrs(in.Protocol, in.Attributes); err != nil {
+		return subDef{}, "", err
+	}
 	if err := checkSubAttrs(in.Attributes); err != nil {
 		return subDef{}, "", err
 	}
 	version := topicAttrValue(t, in.TopicARN, "SignatureVersion")
 	stored := maps.Clone(in.Attributes)
 	maps.DeleteFunc(stored, unsetValue)
+	for k, v := range stored {
+		stored[k] = canonSubAttr(k, v)
+	}
 	for _, s := range e.topicSubs(in.TopicARN) {
 		if s.Protocol != in.Protocol || s.Endpoint != in.Endpoint {
 			continue
@@ -137,9 +157,7 @@ func (e *Engine) addSub(in SubscribeInput) (subDef, string, error) {
 	}
 	def := &subDef{ARN: in.TopicARN + ":" + newUUID(), TopicARN: in.TopicARN, Protocol: in.Protocol, Endpoint: in.Endpoint, Attributes: stored, Created: time.Now().Unix()}
 	if in.Protocol != protocolSQS {
-		b := make([]byte, 32)
-		_, _ = rand.Read(b)
-		def.Pending, def.Token = true, hex.EncodeToString(b)
+		def.Pending, def.Token = true, newToken()
 	}
 	if err := e.persistSub(def); err != nil {
 		return subDef{}, "", err
@@ -148,18 +166,36 @@ func (e *Engine) addSub(in SubscribeInput) (subDef, string, error) {
 	return *def, version, nil
 }
 
+// newToken returns a random 64-character hex confirmation token.
+func newToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 // ConfirmSubscription confirms the pending subscription of a topic that holds
 // token and returns its ARN. authenticated records whether the caller signed
 // the request and asked to authenticate Unsubscribe. Confirming a confirmed
-// subscription again changes nothing (unverified).
+// subscription again changes nothing (unverified). A token expires tokenTTL
+// after the subscription was created. The token of an UnsubscribeConfirmation
+// restores the removed subscription.
 func (e *Engine) ConfirmSubscription(ctx context.Context, topicARN, token string, authenticated bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	e.mu.Lock()
+	e.lock()
 	defer e.mu.Unlock()
 	if _, err := e.findTopic(topicARN); err != nil {
 		return "", err
+	}
+	if r, ok := e.restores[token]; ok && r.sub.TopicARN == topicARN {
+		sub := r.sub
+		if err := e.persistSub(&sub); err != nil {
+			return "", err
+		}
+		e.subs[sub.ARN] = &sub
+		delete(e.restores, token)
+		return sub.ARN, nil
 	}
 	for _, s := range e.topicSubs(topicARN) {
 		if token == "" || s.Token != token {
@@ -202,29 +238,51 @@ func unsetValue(k, v string) bool {
 
 // Unsubscribe removes a subscription. A missing one is ErrNotFound (unverified).
 // An unsigned call may remove only a subscription whose confirmation was not
-// authenticated; otherwise it is ErrAuthorization (unverified).
-func (e *Engine) Unsubscribe(ctx context.Context, arn string, signed bool) error {
+// authenticated; otherwise it is ErrAuthorization (unverified). When an unsigned
+// call removes an HTTP or HTTPS subscription, pail posts an
+// UnsubscribeConfirmation to its endpoint. baseURL forms the SubscribeURL.
+func (e *Engine) Unsubscribe(ctx context.Context, arn string, signed bool, baseURL string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	s, err := e.findSub(arn)
+	removed, version, err := e.removeSub(arn, signed)
 	if err != nil {
 		return err
 	}
+	if !signed && removed.Protocol != protocolSQS {
+		e.sendUnsubscribeConfirmation(removed, version, baseURL)
+	}
+	return nil
+}
+
+// removeSub deletes a subscription and returns it with its topic's signature
+// version. An unsigned removal also keeps it for restoration.
+func (e *Engine) removeSub(arn string, signed bool) (subDef, string, error) {
+	e.lock()
+	defer e.mu.Unlock()
+	s, err := e.findSub(arn)
+	if err != nil {
+		return subDef{}, "", err
+	}
 	if s.Pending {
 		// Signed or not, AWS keeps a pending subscription (recorded in sns-http-subscriptions).
-		return fmt.Errorf("subscription %s is pending confirmation: %w", arn, ErrInvalidParameter)
+		return subDef{}, "", fmt.Errorf("subscription %s is pending confirmation: %w", arn, ErrInvalidParameter)
 	}
 	if !signed && s.authenticated() {
-		return fmt.Errorf("subscription %s needs a signed request: %w", arn, ErrAuthorization)
+		return subDef{}, "", fmt.Errorf("subscription %s needs a signed request: %w", arn, ErrAuthorization)
 	}
 	if err := e.fs.Remove(subFile(s.ARN)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("delete subscription %s: %w", s.ARN, err)
+		return subDef{}, "", fmt.Errorf("delete subscription %s: %w", s.ARN, err)
 	}
 	delete(e.subs, s.ARN)
-	return nil
+	e.forgetPost(s.ARN)
+	removed := *s
+	removed.Token = newToken()
+	if !signed && s.Protocol != protocolSQS {
+		e.restores[removed.Token] = restore{sub: removed, expires: time.Now().Add(tokenTTL)}
+	}
+	t, _ := e.findTopic(s.TopicARN) // a subscription always has its topic
+	return removed, topicAttrValue(t, s.TopicARN, "SignatureVersion"), nil
 }
 
 func listing(s *subDef) Subscription {
@@ -250,7 +308,7 @@ func (e *Engine) ListSubscriptions(ctx context.Context, next string) ([]Subscrip
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
 	}
-	e.mu.Lock()
+	e.lock()
 	defer e.mu.Unlock()
 	out, after := e.listSubs(slices.Sorted(maps.Keys(e.subs)), next)
 	return out, after, nil
@@ -261,7 +319,7 @@ func (e *Engine) ListSubscriptionsByTopic(ctx context.Context, topicARN, next st
 	if err := ctx.Err(); err != nil {
 		return nil, "", err
 	}
-	e.mu.Lock()
+	e.lock()
 	defer e.mu.Unlock()
 	if _, err := e.findTopic(topicARN); err != nil {
 		return nil, "", err
@@ -280,12 +338,13 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	e.mu.Lock()
+	e.lock()
 	defer e.mu.Unlock()
 	s, err := e.findSub(arn)
 	if err != nil {
 		return nil, err
 	}
+	t, _ := e.findTopic(s.TopicARN) // a subscription always has its topic
 	// AWS returns the caller's ARN as SubscriptionPrincipal; the value's shape is unverified.
 	policy := s.Attributes[attrFilter]
 	out := []Attribute{
@@ -295,7 +354,8 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		{attrFilter, policy},
 		{"TopicArn", s.TopicARN},
 		{"Endpoint", s.Endpoint},
-		{"EffectiveDeliveryPolicy", httpDeliveryPolicy},
+		{"EffectiveDeliveryPolicy", marshalPolicy(effectivePolicy(t, s))},
+		{attrDelivery, s.Attributes[attrDelivery]},
 		{attrScope, subAttrValue(s, attrScope)},
 		{"Protocol", s.Protocol},
 		{"PendingConfirmation", strconv.FormatBool(s.Pending)},
@@ -305,6 +365,9 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 	if s.Protocol == protocolSQS {
 		// AWS lists EffectiveDeliveryPolicy for HTTP subscriptions (recorded in sns-http-subscriptions).
 		out = slices.DeleteFunc(out, func(a Attribute) bool { return a.Key == "EffectiveDeliveryPolicy" })
+	}
+	if s.Attributes[attrDelivery] == "" {
+		out = slices.DeleteFunc(out, func(a Attribute) bool { return a.Key == attrDelivery })
 	}
 	if policy == "" {
 		// Without a policy, AWS lists neither filter attribute, even with a scope set.
@@ -321,10 +384,13 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 	if err := checkSubAttr(name, value); err != nil {
 		return err
 	}
-	e.mu.Lock()
+	e.lock()
 	defer e.mu.Unlock()
 	s, err := e.findSub(arn)
 	if err != nil {
+		return err
+	}
+	if err := checkProtocolAttrs(s.Protocol, map[string]string{name: value}); err != nil {
 		return err
 	}
 	updated := *s
@@ -335,7 +401,7 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 	if unsetValue(name, value) {
 		delete(updated.Attributes, name)
 	} else {
-		updated.Attributes[name] = value
+		updated.Attributes[name] = canonSubAttr(name, value)
 	}
 	if err := checkSubAttrs(updated.Attributes); err != nil {
 		return err

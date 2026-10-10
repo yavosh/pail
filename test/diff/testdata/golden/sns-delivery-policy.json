@@ -1,0 +1,279 @@
+{
+  "scenario": "sns-delivery-policy",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "6a33e4edc56aa74a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-topic-policy",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "b7a445004279e104",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-topic-attributes",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "8590881ac066dd33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetTopicAttributesResponse\n  GetTopicAttributesResult\n    Attributes\n      entry\n        key: Policy\n        value: {\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:{account}:{name}\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"{account}\"}}}]}\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: SubscriptionsPending\n        value: 0\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":5,\"maxDelayTarget\":30,\"numRetries\":10,\"numMaxDelayRetries\":3,\"numNoDelayRetries\":1,\"numMinDelayRetries\":2,\"backoffFunction\":\"exponential\"},\"disableSubscriptionOverrides\":false,\"defaultThrottlePolicy\":{\"maxReceivesPerSecond\":5},\"defaultRequestPolicy\":{\"headerContentType\":\"application/json\"}}}\n      entry\n        key: SubscriptionsConfirmed\n        value: 0\n      entry\n        key: DisplayName\n        value: \n      entry\n        key: DeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":5,\"maxDelayTarget\":30,\"numRetries\":10,\"numMaxDelayRetries\":3,\"numNoDelayRetries\":1,\"numMinDelayRetries\":2,\"backoffFunction\":\"exponential\"},\"disableSubscriptionOverrides\":false,\"defaultThrottlePolicy\":{\"maxReceivesPerSecond\":5},\"defaultRequestPolicy\":{\"headerContentType\":\"application/json\"}}}\n      entry\n        key: SubscriptionsDeleted\n        value: 0\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-topic-too-many-retries",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "4830b1483e276748",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-topic-bad-backoff",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "f33412bd61c6cdb9",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-topic-min-over-max",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "a5c239c9c5f58ba7",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-topic-phases-over-retries",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "ab0a7e75fa3b21f2",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-topic-bad-content-type",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "e2d4cf2d81afb593",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-topic-unknown-key",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "b57e824464dde7a1",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-topic-not-json",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "9ae050c351779765",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "unset-topic-policy",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "f0850940b975f3df",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-topic-attributes-after-unset",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "8590881ac066dd33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetTopicAttributesResponse\n  GetTopicAttributesResult\n    Attributes\n      entry\n        key: Policy\n        value: {\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:{account}:{name}\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"{account}\"}}}]}\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: SubscriptionsPending\n        value: 0\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"disableSubscriptionOverrides\":false,\"defaultRequestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"}}}\n      entry\n        key: SubscriptionsConfirmed\n        value: 0\n      entry\n        key: DisplayName\n        value: \n      entry\n        key: SubscriptionsDeleted\n        value: 0\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-topic-policy-again",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "b7a445004279e104",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "subscribe-https",
+      "request": "POST sns Subscribe",
+      "fingerprint": "72c31f04b39d2107",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-pending-attributes",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: {httpEndpoint}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"healthyRetryPolicy\":{\"minDelayTarget\":5,\"maxDelayTarget\":30,\"numRetries\":10,\"numMaxDelayRetries\":3,\"numNoDelayRetries\":1,\"numMinDelayRetries\":2,\"backoffFunction\":\"exponential\"},\"sicklyRetryPolicy\":null,\"throttlePolicy\":{\"maxReceivesPerSecond\":5},\"requestPolicy\":{\"headerContentType\":\"application/json\"},\"guaranteed\":false}\n      entry\n        key: Protocol\n        value: https\n      entry\n        key: PendingConfirmation\n        value: true\n      entry\n        key: ConfirmationWasAuthenticated\n        value: false\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-pending-sub-policy",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "430b9218981647f0",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-pending-attributes-after",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: {httpEndpoint}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"healthyRetryPolicy\":{\"minDelayTarget\":2,\"maxDelayTarget\":4,\"numRetries\":2,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"sicklyRetryPolicy\":null,\"throttlePolicy\":{\"maxReceivesPerSecond\":1},\"requestPolicy\":{\"headerContentType\":\"text/plain\"},\"guaranteed\":false}\n      entry\n        key: DeliveryPolicy\n        value: {\"healthyRetryPolicy\":{\"minDelayTarget\":2,\"maxDelayTarget\":4,\"numRetries\":2,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"sicklyRetryPolicy\":null,\"throttlePolicy\":{\"maxReceivesPerSecond\":1},\"requestPolicy\":{\"headerContentType\":\"text/plain\"},\"guaranteed\":false}\n      entry\n        key: Protocol\n        value: https\n      entry\n        key: PendingConfirmation\n        value: true\n      entry\n        key: ConfirmationWasAuthenticated\n        value: false\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-sub-too-many-retries",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "5e6b1f390cc13c64",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "get-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\n"
+    },
+    {
+      "step": "subscribe-sqs",
+      "request": "POST sns Subscribe",
+      "fingerprint": "acc96363bebb5ddb",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-sqs-sub-policy",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "430b9218981647f0",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "get-sqs-attributes",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: arn:aws:sqs:us-east-1:{account}:{name}\n      entry\n        key: Protocol\n        value: sqs\n      entry\n        key: PendingConfirmation\n        value: false\n      entry\n        key: ConfirmationWasAuthenticated\n        value: true\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "delete-topic",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

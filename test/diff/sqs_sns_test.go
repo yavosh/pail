@@ -519,6 +519,52 @@ func snsHTTPSubscriptionsScenario() scenario {
 	}}
 }
 
+func snsDeliveryPolicyScenario() scenario {
+	setTopic := func(name, value string) step {
+		return snsStep(name, "Action=SetTopicAttributes&TopicArn={topicArn}&AttributeName=DeliveryPolicy&AttributeValue="+url.QueryEscape(value)+snsVersion)
+	}
+	setSub := func(name, value string) step {
+		return snsStep(name, "Action=SetSubscriptionAttributes&SubscriptionArn={subscriptionArn}&AttributeName=DeliveryPolicy&AttributeValue="+url.QueryEscape(value)+snsVersion)
+	}
+	topicPolicy := func(retry string) string {
+		return `{"http":{"defaultHealthyRetryPolicy":{` + retry + `},"disableSubscriptionOverrides":false,` +
+			`"defaultThrottlePolicy":{"maxReceivesPerSecond":5},"defaultRequestPolicy":{"headerContentType":"application/json"}}}`
+	}
+	const retry = `"minDelayTarget":5,"maxDelayTarget":30,"numRetries":10,"numNoDelayRetries":1,"numMinDelayRetries":2,"numMaxDelayRetries":3,"backoffFunction":"exponential"`
+	subPolicy := `{"healthyRetryPolicy":{"minDelayTarget":2,"maxDelayTarget":4,"numRetries":2,"numNoDelayRetries":0,"numMinDelayRetries":0,"numMaxDelayRetries":0,"backoffFunction":"linear"},` +
+		`"throttlePolicy":{"maxReceivesPerSecond":1},"requestPolicy":{"headerContentType":"text/plain"}}`
+	const attributes = "Action=GetTopicAttributes&TopicArn={topicArn}" + snsVersion
+	const subAttributes = "Action=GetSubscriptionAttributes&SubscriptionArn={subscriptionArn}" + snsVersion
+	return scenario{name: "sns-delivery-policy", topics: []string{"{name}"}, queues: []string{"{name}"}, steps: []step{
+		snsStep("create-topic", "Action=CreateTopic&Name={name}"+snsVersion),
+		setTopic("set-topic-policy", topicPolicy(retry)),
+		snsStep("get-topic-attributes", attributes),
+		setTopic("set-topic-too-many-retries", topicPolicy(strings.Replace(retry, `"numRetries":10`, `"numRetries":101`, 1))),
+		setTopic("set-topic-bad-backoff", topicPolicy(strings.Replace(retry, "exponential", "cubic", 1))),
+		setTopic("set-topic-min-over-max", topicPolicy(strings.Replace(retry, `"minDelayTarget":5`, `"minDelayTarget":40`, 1))),
+		setTopic("set-topic-phases-over-retries", topicPolicy(strings.Replace(retry, `"numMaxDelayRetries":3`, `"numMaxDelayRetries":30`, 1))),
+		setTopic("set-topic-bad-content-type", strings.Replace(topicPolicy(retry), "application/json", "text/bogus", 1)),
+		setTopic("set-topic-unknown-key", `{"http":{"bogus":1}}`),
+		setTopic("set-topic-not-json", "{"),
+		// Unset before any subscription: AWS updates the subscription counts with a delay.
+		setTopic("unset-topic-policy", ""),
+		snsStep("get-topic-attributes-after-unset", attributes),
+		setTopic("set-topic-policy-again", topicPolicy(retry)),
+		snsStep("subscribe-https", "Action=Subscribe&TopicArn={topicArn}&Protocol=https&Endpoint={httpEndpoint}&ReturnSubscriptionArn=true"+snsVersion),
+		snsStep("get-pending-attributes", subAttributes),
+		setSub("set-pending-sub-policy", subPolicy),
+		snsStep("get-pending-attributes-after", subAttributes),
+		setSub("set-sub-too-many-retries", strings.Replace(subPolicy, `"numRetries":2`, `"numRetries":101`, 1)),
+		sqsStep("create-queue", "CreateQueue", `{"QueueName":"{name}"}`),
+		sqsStep("get-queue-arn", "GetQueueAttributes", `{"QueueUrl":"{queueUrl}","AttributeNames":["QueueArn"]}`),
+		snsStep("subscribe-sqs", "Action=Subscribe&TopicArn={topicArn}&Protocol=sqs&Endpoint={queueArn}"+snsVersion),
+		setSub("set-sqs-sub-policy", subPolicy),
+		snsStep("get-sqs-attributes", subAttributes),
+		snsStep("delete-topic", "Action=DeleteTopic&TopicArn={topicArn}"+snsVersion),
+		sqsStep("delete-queue", "DeleteQueue", `{"QueueUrl":"{queueUrl}"}`),
+	}}
+}
+
 func TestSQSStepBodiesAreJSON(t *testing.T) {
 	vars := map[string]string{"name": "pail-diff-1"}
 	for _, v := range variables {

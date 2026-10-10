@@ -2,8 +2,11 @@ package topic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,17 +18,23 @@ const (
 	jobQueueSize = 1000
 	// deliveryWorkers is pail's choice: it bounds the posts in flight.
 	deliveryWorkers = 100
-	maxAttempts     = 4 // 1 + 3 retries, AWS's default healthyRetryPolicy
-	retryDelay      = 20 * time.Second
-
-	// httpDeliveryPolicy is the EffectiveDeliveryPolicy of an HTTP subscription (unverified).
-	httpDeliveryPolicy = `{"healthyRetryPolicy":{"minDelayTarget":20,"maxDelayTarget":20,"numRetries":3,"numMaxDelayRetries":0,"numNoDelayRetries":0,"numMinDelayRetries":0,"backoffFunction":"linear"},"sicklyRetryPolicy":null,"throttlePolicy":null,"requestPolicy":{"headerContentType":"text/plain; charset=UTF-8"},"guaranteed":false}`
+	// tokenTTL is how long a confirmation token lives (AWS docs, unverified).
+	tokenTTL = 3 * 24 * time.Hour
 )
+
+// restore is a subscription that an unsigned Unsubscribe removed. Its
+// UnsubscribeConfirmation token brings it back until expires.
+type restore struct {
+	sub     subDef
+	expires time.Time
+}
 
 // httpJob is one POST to an HTTP or HTTPS endpoint.
 type httpJob struct {
 	url, body string
 	header    http.Header
+	plan      deliveryPlan
+	sub       string // subscription ARN, the throttle key; empty for a confirmation
 }
 
 // newJob returns a POST of body with the headers SNS sends. subscriptionARN is
@@ -43,7 +52,7 @@ func newJob(endpoint, body, msgType, messageID, topicARN, subscriptionARN string
 	if raw {
 		h.Set("x-amz-sns-rawdelivery", "true")
 	}
-	return httpJob{url: endpoint, body: body, header: h}
+	return httpJob{url: endpoint, body: body, header: h, plan: defaultPlan}
 }
 
 // enqueue hands a job to RunDeliveries without blocking. A full queue drops it.
@@ -65,18 +74,24 @@ func redact(endpoint string) string {
 // and queues it. A failure is logged: the subscription stays pending. The
 // caller must not hold e.mu.
 func (e *Engine) sendConfirmation(sub subDef, version, baseURL string) {
-	c := confirmation{
-		messageID: newUUID(), topicARN: sub.TopicARN, token: sub.Token,
-		timestamp:        time.Now().UTC().Format(timestampFormat),
-		signatureVersion: version, baseURL: baseURL,
-	}
-	sig, err := e.signString(version, c.stringToSign())
+	e.sendSigned(sub, confirmation{topicARN: sub.TopicARN, token: sub.Token, signatureVersion: version, baseURL: baseURL})
+}
+
+// sendUnsubscribeConfirmation tells the endpoint of a removed subscription,
+// which sub.Token can restore. The caller must not hold e.mu.
+func (e *Engine) sendUnsubscribeConfirmation(sub subDef, version, baseURL string) {
+	e.sendSigned(sub, confirmation{topicARN: sub.TopicARN, token: sub.Token, unsubscribe: sub.ARN, signatureVersion: version, baseURL: baseURL})
+}
+
+func (e *Engine) sendSigned(sub subDef, c confirmation) {
+	c.messageID, c.timestamp = newUUID(), time.Now().UTC().Format(timestampFormat)
+	sig, err := e.signString(c.signatureVersion, c.stringToSign())
 	if err != nil {
-		clogTopic().Warn("confirmation not signed", "subscription", sub.ARN, "error", err)
+		clogTopic().Warn("confirmation not signed", "subscription", sub.ARN, "type", c.typ(), "error", err)
 		return
 	}
 	c.signature = sig
-	e.enqueue(newJob(sub.Endpoint, c.envelope(), "SubscriptionConfirmation", c.messageID, sub.TopicARN, "", false))
+	e.enqueue(newJob(sub.Endpoint, c.envelope(), c.typ(), c.messageID, sub.TopicARN, "", false))
 }
 
 // RunDeliveries posts queued jobs with deliveryWorkers workers until ctx is
@@ -98,25 +113,81 @@ func (e *Engine) RunDeliveries(ctx context.Context) {
 	}
 }
 
-// runJob posts j and retries a failure that AWS's default policy retries.
+// runJob posts j and retries a failure on the schedule of its delivery policy.
 func (e *Engine) runJob(ctx context.Context, j httpJob) {
-	for attempt := 1; ; attempt++ {
+	for attempt := 0; ; attempt++ {
+		if !e.throttle(ctx, j.sub, j.plan.perSecond) {
+			return
+		}
 		retry, err := e.post(ctx, j)
 		if err == nil || ctx.Err() != nil {
 			return
 		}
-		if !retry || attempt == maxAttempts {
-			clogTopic().Warn("http delivery failed", "endpoint", redact(j.url), "message", j.header.Get("x-amz-sns-message-id"), "attempts", attempt, "error", err)
+		if !retry || attempt == len(j.plan.delays) {
+			clogTopic().Warn("http delivery failed", "endpoint", redact(j.url), "message", j.header.Get("x-amz-sns-message-id"), "attempts", attempt+1, "error", err)
 			return
 		}
-		timer := time.NewTimer(retryDelay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
+		if !sleep(ctx, j.plan.delays[attempt]) {
 			return
-		case <-timer.C:
 		}
 	}
+}
+
+// sleep waits d and reports false when ctx ends first.
+func sleep(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// throttle waits for the next free slot of subscription sub, which allows
+// perSecond posts per second. It reports false when ctx ends first.
+func (e *Engine) throttle(ctx context.Context, sub string, perSecond int) bool {
+	if sub == "" || perSecond <= 0 {
+		return ctx.Err() == nil
+	}
+	e.limMu.Lock()
+	now := time.Now()
+	at := now
+	if next := e.nextPost[sub]; next.After(now) {
+		at = next
+	}
+	e.nextPost[sub] = at.Add(time.Second / time.Duration(perSecond))
+	e.limMu.Unlock()
+	return sleep(ctx, at.Sub(now))
+}
+
+// forgetPost drops the throttle state of a removed subscription.
+func (e *Engine) forgetPost(sub string) {
+	e.limMu.Lock()
+	delete(e.nextPost, sub)
+	e.limMu.Unlock()
+}
+
+// sweep removes the pending subscriptions and restore entries that outlived
+// tokenTTL. The caller holds e.mu.
+func (e *Engine) sweep() {
+	now := time.Now()
+	for arn, s := range e.subs {
+		if !s.Pending || !now.After(time.Unix(s.Created, 0).Add(tokenTTL)) {
+			continue
+		}
+		if err := e.fs.Remove(subFile(arn)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			clogTopic().Warn("expired subscription not removed", "subscription", arn, "error", err)
+			continue
+		}
+		delete(e.subs, arn)
+		e.forgetPost(arn)
+	}
+	maps.DeleteFunc(e.restores, func(_ string, r restore) bool { return now.After(r.expires) })
 }
 
 // post sends j once. A network error, a 5xx, and a 429 are retryable; which
