@@ -106,7 +106,7 @@ AWS reference: [CreateBucket](https://docs.aws.amazon.com/AmazonS3/latest/API/AP
 
 | Gap | Current pail behavior | Impact |
 | --- | --- | --- |
-| UploadPartCopy | Confirmed 501 | SDK-managed multipart copies, particularly copies over 5 GiB, cannot work. |
+| UploadPartCopy | Confirmed 501 (fixed on branch feat/s3-upload-part-copy) | SDK-managed multipart copies, particularly copies over 5 GiB, cannot work. |
 | GET/HEAD with partNumber | Routes reject them; GET confirmed 501 | Completed multipart parts cannot be retrieved individually. |
 | GetObjectAttributes | Confirmed 501 | Missing combined size, ETag, checksum, and multipart-part inspection API. |
 | Explicit versionId=null | GET confirmed 501; routes also exclude versioned HEAD/DELETE | Unversioned-object workflows using explicit null versions fail. Copy and batch delete already handle null versions. |
@@ -116,7 +116,7 @@ AWS reference: [CreateBucket](https://docs.aws.amazon.com/AmazonS3/latest/API/AP
 | Website redirect metadata | PUT accepted WebsiteRedirectLocation; HEAD did not return it (fixed on branch feat/s3-object-options) | Metadata is silently lost independently of website hosting support. |
 | Maximum multipart object size | Hard-coded to 5 TiB | Current AWS documentation specifies 48.8 TiB; README's “as on AWS” claim is outdated. |
 
-Status: the storage-class and website-redirect gaps are fixed on branch feat/s3-object-options. The explicit `versionId=null`, multipart expected size, multipart listing URL encoding, and maximum multipart object size gaps are fixed on branch feat/s3-multipart-extras. The other three are open. `resolve` in `internal/s3api/route.go` has no route for `UploadPartCopy`, `GetObjectAttributes`, or `partNumber` reads.
+Status: the storage-class and website-redirect gaps are fixed on branch feat/s3-object-options. The explicit `versionId=null`, multipart expected size, multipart listing URL encoding, and maximum multipart object size gaps are fixed on branch feat/s3-multipart-extras. `UploadPartCopy` is fixed on branch feat/s3-upload-part-copy. The other two are open. `resolve` in `internal/s3api/route.go` has no route for `GetObjectAttributes` or `partNumber` reads.
 
 Relevant code: `internal/s3api/route.go`, `internal/s3api/multipart.go`, `internal/s3api/objects.go`, `internal/store/uploads.go:38`.
 

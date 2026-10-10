@@ -94,7 +94,7 @@ func TestResolve(t *testing.T) {
 		{http.MethodPut, object, "x-id=PutObject", nil, opPutObject},
 		{http.MethodPut, object, "", copySrc, opCopyObject},
 		{http.MethodPut, object, "partNumber=1&uploadId=u", nil, opUploadPart},
-		{http.MethodPut, object, "partNumber=1&uploadId=u", copySrc, ""},
+		{http.MethodPut, object, "partNumber=1&uploadId=u", copySrc, opUploadPartCopy},
 		{http.MethodPut, object, "uploadId=u", nil, ""},
 		{http.MethodPut, object, "partNumber=1", nil, ""},
 		{http.MethodPut, object, "tagging", nil, ""},

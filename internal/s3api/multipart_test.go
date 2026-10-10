@@ -170,7 +170,6 @@ func TestMultipartErrors(t *testing.T) {
 		{"part with another algorithm", http.MethodPut, "/bkt/crc?partNumber=3&uploadId=" + crcID, "x", map[string]string{"x-amz-checksum-sha1": "Kq5sNclPz7QV2+lfQIuc6R7oRu0="}, 400, "InvalidRequest"},
 		{"part with a malformed checksum", http.MethodPut, "/bkt/crc?partNumber=3&uploadId=" + crcID, "x", map[string]string{"x-amz-checksum-crc32": "nope!"}, 400, "InvalidRequest"},
 		{"part with a trailer but no aws-chunked", http.MethodPut, "/bkt/crc?partNumber=3&uploadId=" + crcID, "x", map[string]string{"x-amz-trailer": "x-amz-checksum-crc32"}, 400, "InvalidRequest"},
-		{"part copy source is not implemented", http.MethodPut, "/bkt/k?partNumber=3&uploadId=" + id, "", map[string]string{"x-amz-copy-source": "/bkt/k"}, 501, "NotImplemented"},
 
 		{"complete with an empty body", http.MethodPost, "/bkt/k?uploadId=" + id, "", nil, 400, "MalformedXML"},
 		{"complete with no parts", http.MethodPost, "/bkt/k?uploadId=" + id, complete(), nil, 400, "MalformedXML"},

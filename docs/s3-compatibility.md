@@ -99,7 +99,7 @@ pail has no versioning, so the only valid `versionId` is `null`. It names the cu
 
 ## Multipart uploads
 
-pail supports `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`, `AbortMultipartUpload`, `ListParts`, and `ListMultipartUploads`.
+pail supports `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`, `CompleteMultipartUpload`, `AbortMultipartUpload`, `ListParts`, and `ListMultipartUploads`.
 
 - Part numbers run from 1 to 10,000. A repeated part number replaces the part.
 - Every part except the last must be at least 5 MiB. An object is at most 53,687,091,200,000 bytes (48.8 TiB), which is 10,000 parts of 5 GiB, as on AWS.
@@ -109,6 +109,17 @@ pail supports `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`, 
 - `ListParts` and `ListMultipartUploads` return at most 1,000 entries per page.
 - `ListMultipartUploads` supports `encoding-type=url`. It encodes `Key`, `KeyMarker`, `NextKeyMarker`, `Prefix`, `Delimiter`, and `CommonPrefixes` as `ListObjects` does, and returns `EncodingType`. Any other value fails with `400 InvalidArgument`.
 - The object ETag is the MD5 of the part MD5s, followed by `-<parts>`.
+
+### UploadPartCopy
+
+`UploadPartCopy` copies a source object, or a byte range of it, into a part of an upload.
+
+- `x-amz-copy-source` works as in `CopyObject`, including `versionId=null`. `x-amz-source-expected-bucket-owner` applies to the source bucket.
+- `x-amz-copy-source-range` must have the form `bytes=first-last`. A range that is malformed, or that extends past the last byte of the source, returns `400 InvalidArgument`. Without the header, pail copies the whole source.
+- `x-amz-copy-source-if-match`, `-if-none-match`, `-if-modified-since`, and `-if-unmodified-since` act as on `CopyObject`. A failed condition returns `412 PreconditionFailed`.
+- A missing source returns `404 NoSuchKey`. An unknown upload returns `404 NoSuchUpload`. A source in the `GLACIER` or `DEEP_ARCHIVE` class returns `403 InvalidObjectState`, which is unverified.
+- The response is a `CopyPartResult` with `LastModified` and the `ETag` of the copied bytes. If the upload has a checksum algorithm, the result also carries the part checksum, computed from the copied bytes. This is unverified. The response also returns `x-amz-server-side-encryption`, as `UploadPart` does, which is unverified.
+- A copied part follows the `UploadPart` size rules: at most 5 GiB, and the 5 MiB minimum applies at `CompleteMultipartUpload`. The maximum is unverified.
 
 ### Multipart checksums
 

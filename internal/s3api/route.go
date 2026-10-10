@@ -42,6 +42,7 @@ const (
 	opDeleteObject            operation = "DeleteObject"
 	opCreateMultipartUpload   operation = "CreateMultipartUpload"
 	opUploadPart              operation = "UploadPart"
+	opUploadPartCopy          operation = "UploadPartCopy"
 	opCompleteMultipartUpload operation = "CompleteMultipartUpload"
 	opAbortMultipartUpload    operation = "AbortMultipartUpload"
 	opListParts               operation = "ListParts"
@@ -217,6 +218,8 @@ func resolveOperation(method string, t target, q url.Values, h http.Header) oper
 			return opPutObjectACL
 		case method == http.MethodPut && only("uploadId") && part && !copySource:
 			return opUploadPart
+		case method == http.MethodPut && only("uploadId") && part && copySource:
+			return opUploadPartCopy
 		case method == http.MethodPut && only() && !part && copySource:
 			return opCopyObject
 		case method == http.MethodPut && only() && !part:

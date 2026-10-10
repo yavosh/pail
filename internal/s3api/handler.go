@@ -82,6 +82,7 @@ func (h *handler) routes() {
 
 		opCreateMultipartUpload:   h.handleCreateMultipartUpload,
 		opUploadPart:              h.handleUploadPart,
+		opUploadPartCopy:          h.handleUploadPartCopy,
 		opCompleteMultipartUpload: h.handleCompleteMultipartUpload,
 		opAbortMultipartUpload:    h.handleAbortMultipartUpload,
 		opListParts:               h.handleListParts,
