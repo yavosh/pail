@@ -325,3 +325,86 @@ func TestFifoGroupLocking(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteWakesWaitingReceive(t *testing.T) {
+	t.Run("single delete", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e := newEngine(t)
+			mustCreate(t, e, "q.fifo", fifoAttrs)
+			sendOne(t, e, "q.fifo", fifoMsg("a1", "a"))
+			sendOne(t, e, "q.fifo", fifoMsg("a2", "a"))
+			first := receive(t, e, "q.fifo", ReceiveInput{})
+			start := time.Now()
+			wait := startReceive(t.Context(), e, "q.fifo", ReceiveInput{WaitTimeSeconds: new(20)})
+			synctest.Wait()
+			if _, err := e.Delete(t.Context(), "q.fifo", []string{first[0].ReceiptHandle}); err != nil {
+				t.Fatalf("Delete error = %v", err)
+			}
+			got, err := wait()
+			if err != nil || len(got) != 1 || got[0].Body != "a2" || time.Since(start) != 0 {
+				t.Errorf("Receive = %v, %v after %v; want a2 at once", bodies(got), err, time.Since(start))
+			}
+		})
+	})
+	t.Run("multiple handles", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			e := newEngine(t)
+			mustCreate(t, e, "q.fifo", fifoAttrs)
+			for _, m := range []SendInput{fifoMsg("a1", "a"), fifoMsg("b1", "b"), fifoMsg("a2", "a")} {
+				sendOne(t, e, "q.fifo", m)
+			}
+			first := receive(t, e, "q.fifo", ReceiveInput{Max: 2})
+			start := time.Now()
+			wait := startReceive(t.Context(), e, "q.fifo", ReceiveInput{WaitTimeSeconds: new(20)})
+			synctest.Wait()
+			handles := []string{first[0].ReceiptHandle, "garbage", first[1].ReceiptHandle}
+			if _, err := e.Delete(t.Context(), "q.fifo", handles); err != nil {
+				t.Fatalf("Delete error = %v", err)
+			}
+			got, err := wait()
+			if err != nil || len(got) != 1 || got[0].Body != "a2" || time.Since(start) != 0 {
+				t.Errorf("Receive = %v, %v after %v; want a2 at once", bodies(got), err, time.Since(start))
+			}
+		})
+	})
+}
+
+func TestStandardQueueGroupIDRules(t *testing.T) {
+	e := newEngine(t)
+	mustCreate(t, e, "q", nil)
+	for _, g := range []string{"a\x01b", "a b", strings.Repeat("a", 129)} {
+		if res := sendOne(t, e, "q", SendInput{Body: "x", GroupID: g}); !errors.Is(res.Err, ErrInvalidParameterValue) {
+			t.Errorf("Send(group %q) error = %v, want ErrInvalidParameterValue", g, res.Err)
+		}
+	}
+	if res := sendOne(t, e, "q", SendInput{Body: "x", GroupID: "tenant-1"}); res.Err != nil {
+		t.Errorf("Send(group tenant-1) error = %v, want nil", res.Err)
+	}
+}
+
+func TestFifoBatchDeduplication(t *testing.T) {
+	e := newEngine(t)
+	mustCreate(t, e, "q.fifo", fifoAttrs)
+	res, err := e.Send(t.Context(), "q.fifo", []SendInput{fifoMsg("a", "g"), fifoMsg("a", "g")})
+	if err != nil {
+		t.Fatalf("Send error = %v", err)
+	}
+	if res[0].Err != nil || res[1].Err != nil || res[0].MessageID != res[1].MessageID || res[0].SequenceNumber != res[1].SequenceNumber {
+		t.Errorf("results = %+v, %+v; want the same message twice", res[0], res[1])
+	}
+	if got := attr(t, e, "q.fifo", "ApproximateNumberOfMessages"); got != "1" {
+		t.Errorf("messages = %s, want 1", got)
+	}
+}
+
+func TestPurgeKeepsDeduplication(t *testing.T) {
+	e := newEngine(t)
+	mustCreate(t, e, "q.fifo", fifoAttrs)
+	first := sendOne(t, e, "q.fifo", fifoMsg("a", "g"))
+	if err := e.Purge(t.Context(), "q.fifo"); err != nil {
+		t.Fatalf("Purge error = %v", err)
+	}
+	if dup := sendOne(t, e, "q.fifo", fifoMsg("a", "g")); dup.MessageID != first.MessageID {
+		t.Errorf("send after Purge = %+v, want the first result %+v", dup, first)
+	}
+}

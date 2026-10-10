@@ -92,10 +92,10 @@ Queue definitions, which are attributes and tags, persist in the data directory.
 
 ### FIFO queues
 
-AWS recordings in `sqs-fifo` verify these rules once a maintainer records them. Until then, every rule here is unverified.
+The `sqs-fifo` scenario covers these rules. A rule is verified once a maintainer records the scenario. Rules marked unverified have no recorded step.
 
-- A name that ends in `.fifo` is a FIFO queue. `CreateQueue` for such a name needs the `FifoQueue` attribute set to `true`, and `FifoQueue` `true` needs a `.fifo` name. Otherwise it returns `InvalidParameterValue`. `FifoQueue` `false` on a standard queue is accepted and not stored.
-- `FifoQueue` can't change after creation. `SetQueueAttributes` returns `InvalidAttributeValue`.
+- A name that ends in `.fifo` is a FIFO queue. `CreateQueue` for such a name needs the `FifoQueue` attribute set to `true`, and `FifoQueue` `true` needs a `.fifo` name. Otherwise it returns `InvalidParameterValue`. `FifoQueue` `false` on a standard queue is accepted and not stored (unverified).
+- `FifoQueue` can't change after creation. `SetQueueAttributes` returns `InvalidAttributeValue` (verified once recorded).
 - A FIFO queue has these attributes. They are not valid on a standard queue, which returns `InvalidAttributeName`.
 
   | Attribute | Default | Values |
@@ -104,11 +104,11 @@ AWS recordings in `sqs-fifo` verify these rules once a maintainer records them. 
   | `DeduplicationScope` | `queue` | `queue` or `messageGroup` |
   | `FifoThroughputLimit` | `perQueue` | `perQueue` or `perMessageGroupId` |
 
-  `GetQueueAttributes` with `All` also returns `FifoQueue`. A standard queue never returns these attributes.
+  `GetQueueAttributes` with `All` also returns `FifoQueue`. A standard queue with these attributes is covered by `sqs-fair-queue`. A standard queue never returns these attributes.
 - A send needs `MessageGroupId`, 1 to 128 printable ASCII characters. A missing group returns `MissingParameter`.
 - A send needs `MessageDeduplicationId` unless the queue has `ContentBasedDeduplication` set to `true`. Without either, it returns `InvalidParameterValue`. The ID has the same character rules as the group. An explicit ID takes priority over the content hash.
 - A per-message `DelaySeconds` returns `InvalidParameterValue`. The queue's `DelaySeconds` applies.
-- Deduplication: a send with the same ID within 5 minutes of the first send is not enqueued again. It returns the first message's `MessageId`, checksums, and `SequenceNumber`. The window starts at the first send, and a duplicate does not extend it. With `DeduplicationScope` `messageGroup`, the same ID in another group is not a duplicate. The content ID is the SHA-256 hash of the body, in hexadecimal.
+- Deduplication: a send with the same ID within 5 minutes of the first send is not enqueued again. It returns the first message's `MessageId`, checksums, and `SequenceNumber`. The window starts at the first send, and a duplicate does not extend it. The exact 5-minute boundary is unverified. `PurgeQueue` does not reset deduplication (unverified). With `DeduplicationScope` `messageGroup`, the same ID in another group is not a duplicate. The content ID is the SHA-256 hash of the body, in hexadecimal.
 - `SequenceNumber` is a per-queue counter, written in 20 digits. It increases with each enqueued message. `SendMessage` and `SendMessageBatch` return it. A restart resets it, because messages do not persist.
 - Group locking: while a message of a group is in flight, `ReceiveMessage` returns no other message of that group. A message that is delayed or hidden also blocks the later messages of its group. Messages that one call receives can include several of the same group, as on AWS. When a visibility timeout ends, the first message of the group comes back first.
 - `ReceiveRequestAttemptId` is accepted and ignored. A retry with the same ID does not return the same messages again.
@@ -116,15 +116,16 @@ AWS recordings in `sqs-fifo` verify these rules once a maintainer records them. 
 
 ### Dead-letter queues
 
-These rules are unverified until a maintainer records `sqs-dead-letter`.
+The `sqs-dead-letter` scenario covers most of these rules. Rules marked unverified have no recorded step.
 
 - `RedrivePolicy` is a JSON object with `deadLetterTargetArn` and `maxReceiveCount`. `maxReceiveCount` is 1 to 1,000, as a JSON number or a decimal string. pail stores the canonical form `{"deadLetterTargetArn":"<arn>","maxReceiveCount":<n>}`, and returns it from `GetQueueAttributes`. Other fields are dropped.
-- `CreateQueue` and `SetQueueAttributes` check the policy. A bad shape returns `InvalidAttributeValue`. These cases return `InvalidParameterValue`: a target that is not an existing queue of this account and region, a queue that targets itself, a target of the other type (FIFO or standard), and a target whose `RedriveAllowPolicy` does not permit the source. An empty value removes the policy.
-- `RedriveAllowPolicy` is a JSON object with `redrivePermission`: `allowAll`, `denyAll`, or `byQueue`. `byQueue` needs `sourceQueueArns` with 1 to 10 ARNs. The other values must not have it. pail enforces the policy only when a source sets its `RedrivePolicy`. A later change does not affect existing sources.
+- `CreateQueue` and `SetQueueAttributes` check the policy. A bad shape returns `InvalidAttributeValue`. These cases return `InvalidParameterValue`: a target that is not an existing queue of this account and region, a queue that targets itself (unverified), a target of the other type (FIFO or standard), and a target whose `RedriveAllowPolicy` does not permit the source. An empty value removes the policy.
+- `RedriveAllowPolicy` is a JSON object with `redrivePermission`: `allowAll`, `denyAll`, or `byQueue`. `byQueue` needs `sourceQueueArns` with 1 to 10 ARNs. The other values must not have it. pail enforces the policy only when a source sets its `RedrivePolicy`. A later change does not affect existing sources. `denyAll` is covered by a recorded step (verified once recorded). `byQueue` is unverified.
 - When a receive finds a visible message whose receive count is at least `maxReceiveCount`, it moves the message to the dead-letter queue instead of returning it. The move happens on that receive, not in the background. The message keeps its `MessageId`, body, attributes, send time, and receive count. A FIFO target gives it a new sequence number.
-- The moved message is visible at once in the target. A long poll on the target wakes. `ReceiveMessage` on the target returns `DeadLetterQueueSourceArn` as a system attribute. Its `ApproximateReceiveCount` continues from the source count.
+- The moved message is visible at once in the target. A long poll on the target wakes. `ReceiveMessage` on the target returns `DeadLetterQueueSourceArn` as a system attribute. Its `ApproximateReceiveCount` continues from the source count (verified once recorded).
 - If the target queue is deleted, the message is delivered from the source as usual.
-- `ListDeadLetterSourceQueues` returns the URLs of the queues whose `RedrivePolicy` targets the queue, as `queueUrls`. `MaxResults` and `NextToken` work as in `ListQueues`. An unknown queue returns `QueueDoesNotExist`. The response lists `queueUrls` as an empty array when there are none (unverified).
+- `ListDeadLetterSourceQueues` returns the URLs of the queues whose `RedrivePolicy` targets the queue, as `queueUrls`. `MaxResults` and `NextToken` work as in `ListQueues` (unverified). An unknown queue returns `QueueDoesNotExist`. The response lists `queueUrls` as an empty array when there are none (unverified).
+- A cycle of redrive policies (a to b to a) moves a message back and forth, so neither queue delivers it, as on AWS. Only a queue that targets itself is rejected (unverified).
 - Message move tasks (`StartMessageMoveTask` and related operations) are not supported.
 
 ### Fair queues

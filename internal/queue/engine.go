@@ -174,7 +174,6 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 		return err
 	}
 	attrs = canonicalAttrs(attrs)
-	maps.DeleteFunc(attrs, func(k, v string) bool { return v == "" && slices.Contains(clearable, k) })
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if q, ok := e.queues[name]; ok {
@@ -185,6 +184,8 @@ func (e *Engine) CreateQueue(ctx context.Context, name string, attrs, tags map[s
 		}
 		return nil
 	}
+	// An empty policy means "unset" only for a new queue.
+	maps.DeleteFunc(attrs, func(k, v string) bool { return v == "" && slices.Contains(clearable, k) })
 	if len(tags) > maxTags {
 		return fmt.Errorf("%d tags: %w", len(tags), ErrTooManyTags)
 	}

@@ -200,3 +200,33 @@ func TestStandardQueueReturnsGroupID(t *testing.T) {
 		t.Errorf("ReceiveMessage = %+v, want MessageGroupId tenant and no SequenceNumber", got)
 	}
 }
+
+func TestFifoBatchDeduplication(t *testing.T) {
+	e := newEnv(t)
+	u := e.createFifo("orders.fifo", "")
+	var out struct {
+		Successful []struct {
+			ID             string `json:"Id"`
+			MessageID      string `json:"MessageId"`
+			SequenceNumber string
+		}
+	}
+	e.ok("SendMessageBatch", fmt.Sprintf(`{"QueueUrl":%q,"Entries":[{"Id":"a","MessageBody":"x","MessageGroupId":"g","MessageDeduplicationId":"d"},{"Id":"b","MessageBody":"x","MessageGroupId":"g","MessageDeduplicationId":"d"}]}`, u), &out)
+	if len(out.Successful) != 2 || out.Successful[0].MessageID != out.Successful[1].MessageID || out.Successful[0].SequenceNumber != out.Successful[1].SequenceNumber {
+		t.Fatalf("Successful = %+v, want two entries with the same MessageId and SequenceNumber", out.Successful)
+	}
+	var got receivedBody
+	e.ok("ReceiveMessage", fmt.Sprintf(`{"QueueUrl":%q,"MaxNumberOfMessages":10}`, u), &got)
+	if len(got.Messages) != 1 {
+		t.Errorf("ReceiveMessage = %+v, want one message", got)
+	}
+}
+
+func TestRedriveAllowPolicyEnforced(t *testing.T) {
+	e := newEnv(t)
+	e.ok("CreateQueue", `{"QueueName":"dlq","Attributes":{"RedriveAllowPolicy":"{\"redrivePermission\":\"denyAll\"}"}}`, nil)
+	const redrive = `{"QueueName":"src","Attributes":{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:000000000000:dlq\",\"maxReceiveCount\":1}"}}`
+	e.fail("CreateQueue", redrive, 400, invalidParam, "InvalidParameterValue")
+	e.ok("SetQueueAttributes", `{"QueueUrl":"http://pail.test:9000/000000000000/dlq","Attributes":{"RedriveAllowPolicy":"{\"redrivePermission\":\"allowAll\"}"}}`, nil)
+	e.ok("CreateQueue", redrive, nil)
+}

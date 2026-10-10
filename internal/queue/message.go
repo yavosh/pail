@@ -212,6 +212,9 @@ func (q *queue) checkRouting(s SendInput) (key string, err error) {
 		if s.DeduplicationID != "" {
 			return "", fmt.Errorf("MessageDeduplicationId is not valid for a standard queue: %w", ErrInvalidParameterValue)
 		}
+		if s.GroupID != "" && !validID(s.GroupID) {
+			return "", fmt.Errorf("MessageGroupId must be 1 to 128 printable ASCII characters: %w", ErrInvalidParameterValue)
+		}
 		return "", nil
 	}
 	switch {
@@ -401,10 +404,9 @@ func (e *Engine) Receive(ctx context.Context, name string, in ReceiveInput) ([]M
 	}
 }
 
-// take receives up to limit visible messages. On a FIFO queue, a group with an
-// in-flight message, or with an earlier message that is not visible, is skipped.
-// A message past maxReceiveCount moves to the dead-letter queue instead. The
-// caller holds e.mu.
+// take receives up to limit visible messages. A FIFO group with an in-flight or
+// hidden message is skipped. A message past maxReceiveCount moves to the
+// dead-letter queue instead. The caller holds e.mu.
 func (e *Engine) take(q *queue, now time.Time, limit, timeout int) []Message {
 	dlq, maxReceives := e.deadLetterTarget(q)
 	var locked map[string]bool
@@ -537,6 +539,7 @@ func (e *Engine) Delete(ctx context.Context, name string, handles []string) ([]e
 		return nil, err
 	}
 	errs := make([]error, len(handles))
+	deleted := false
 	for i, h := range handles {
 		id, seq, ok := e.parseHandle(name, h)
 		if !ok {
@@ -546,7 +549,11 @@ func (e *Engine) Delete(ctx context.Context, name string, handles []string) ([]e
 		j := slices.IndexFunc(q.messages, func(m *message) bool { return m.id == id })
 		if j >= 0 && q.messages[j].seq == seq {
 			q.messages = slices.Delete(q.messages, j, j+1)
+			deleted = true
 		}
+	}
+	if deleted {
+		q.notify() // deleting a FIFO group's head unlocks the next message
 	}
 	return errs, nil
 }

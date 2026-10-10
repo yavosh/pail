@@ -265,3 +265,43 @@ func TestStandardQueueKeepsGroupID(t *testing.T) {
 		t.Errorf("Receive = %+v, want the group ID and no sequence number or deduplication ID", got)
 	}
 }
+
+func TestCreateExistingQueueComparesEmptyPolicy(t *testing.T) {
+	e := newEngine(t)
+	mustCreate(t, e, "dlq", nil)
+	mustCreate(t, e, "src", redrive("dlq", "1"))
+	mustCreate(t, e, "plain", nil)
+	if err := e.CreateQueue(t.Context(), "src", map[string]string{"RedrivePolicy": ""}, nil); !errors.Is(err, ErrQueueNameExists) {
+		t.Errorf("CreateQueue(src, empty RedrivePolicy) error = %v, want ErrQueueNameExists", err)
+	}
+	if err := e.CreateQueue(t.Context(), "plain", map[string]string{"RedrivePolicy": "", "RedriveAllowPolicy": ""}, nil); err != nil {
+		t.Errorf("CreateQueue(plain, empty policies) error = %v, want nil", err)
+	}
+	if err := e.CreateQueue(t.Context(), "new", map[string]string{"RedrivePolicy": ""}, nil); err != nil {
+		t.Errorf("CreateQueue(new, empty RedrivePolicy) error = %v, want nil", err)
+	}
+	if got := attr(t, e, "src", "RedrivePolicy"); got == "" {
+		t.Error("RedrivePolicy of src was removed, want kept")
+	}
+}
+
+func TestFifoRedrivePersists(t *testing.T) {
+	dir := t.TempDir()
+	e := openEngine(t, dir)
+	mustCreate(t, e, "dlq.fifo", fifoAttrs)
+	mustCreate(t, e, "src.fifo", map[string]string{"FifoQueue": "true", "RedrivePolicy": redrive("dlq.fifo", "1")["RedrivePolicy"]})
+	want := attr(t, e, "src.fifo", "RedrivePolicy")
+	r := openEngine(t, dir)
+	if got := attr(t, r, "src.fifo", "RedrivePolicy"); got != want {
+		t.Errorf("RedrivePolicy after reopen = %q, want %q", got, want)
+	}
+	if got := attr(t, r, "src.fifo", "DeduplicationScope"); got != "queue" {
+		t.Errorf("DeduplicationScope after reopen = %q, want queue", got)
+	}
+	sendOne(t, r, "src.fifo", fifoMsg("poison", "g"))
+	receive(t, r, "src.fifo", ReceiveInput{VisibilityTimeout: new(0)})
+	receive(t, r, "src.fifo", ReceiveInput{})
+	if got := receive(t, r, "dlq.fifo", ReceiveInput{}); len(got) != 1 || got[0].DeadLetterSourceARN != r.ARN("src.fifo") {
+		t.Errorf("DLQ Receive after reopen = %+v, want the moved message", got)
+	}
+}
