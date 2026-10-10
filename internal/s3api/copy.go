@@ -164,6 +164,10 @@ func (h *handler) handleUploadPartCopy(w http.ResponseWriter, r *http.Request, t
 		writeError(w, r, apiErr)
 		return
 	}
+	if apiErr, ok := rejectSSEC(r.Header); !ok {
+		writeError(w, r, apiErr)
+		return
+	}
 	q := r.URL.Query()
 	number, ok := parseDigits(q.Get("partNumber"))
 	if !ok || number < 1 || number > store.MaxParts {
@@ -195,7 +199,6 @@ func (h *handler) handleUploadPartCopy(w http.ResponseWriter, r *http.Request, t
 	}
 	first, length := int64(0), info.Size
 	if spec := r.Header.Get("x-amz-copy-source-range"); spec != "" {
-		var ok bool
 		if first, length, ok = parseCopyRange(spec, info.Size); !ok {
 			writeError(w, r, errInvalidArgument)
 			return

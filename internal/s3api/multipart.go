@@ -164,6 +164,10 @@ func (h *handler) handleUploadPart(w http.ResponseWriter, r *http.Request, t tar
 		writeError(w, r, apiErr)
 		return
 	}
+	if apiErr, ok := rejectSSEC(r.Header); !ok {
+		writeError(w, r, apiErr)
+		return
+	}
 	q := r.URL.Query()
 	number, ok := parseDigits(q.Get("partNumber"))
 	if !ok || number < 1 || number > store.MaxParts {

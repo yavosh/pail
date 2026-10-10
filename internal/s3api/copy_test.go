@@ -290,3 +290,30 @@ func TestParseCopyRange(t *testing.T) {
 		}
 	}
 }
+
+func TestPartWritesRejectSSEC(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	sendWith(t, srv, http.MethodPut, "/bkt", "", nil)
+	sendWith(t, srv, http.MethodPut, "/bkt/src", "data", nil)
+	_, _, body := sendWith(t, srv, http.MethodPost, "/bkt/dst?uploads", "", nil)
+	var created struct {
+		UploadID string `xml:"UploadId"`
+	}
+	if err := xml.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	part := "/bkt/dst?partNumber=1&uploadId=" + created.UploadID
+	tests := []struct {
+		name   string
+		header map[string]string
+	}{
+		{"UploadPart with a customer key", map[string]string{"x-amz-server-side-encryption-customer-algorithm": "AES256"}},
+		{"UploadPartCopy with a customer key", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-server-side-encryption-customer-algorithm": "AES256"}},
+		{"UploadPartCopy with a source key", map[string]string{"x-amz-copy-source": "bkt/src", "x-amz-copy-source-server-side-encryption-customer-algorithm": "AES256"}},
+	}
+	for _, tt := range tests {
+		if status, code, _ := sendWith(t, srv, http.MethodPut, part, "data", tt.header); status != http.StatusForbidden || code != "AccessDenied" {
+			t.Errorf("%s: PUT %s = %d %q, want 403 AccessDenied", tt.name, part, status, code)
+		}
+	}
+}

@@ -21,7 +21,7 @@ These headers apply to `PutObject`, `CopyObject`, `CreateMultipartUpload`, and t
   - pail returns no KMS key ID header and ignores the KMS key ID, context, and bucket key headers.
   - An SSE-KMS `ETag` on AWS isn't the MD5 digest of the body. pail returns the MD5 digest.
   - `CopyObject` takes the method from its own request, not from the source.
-- SSE-C: any `x-amz-server-side-encryption-customer-*` header returns `403 AccessDenied`, as AWS does on new buckets. `x-amz-copy-source-server-side-encryption-customer-*` headers get the same answer. This is unverified.
+- SSE-C: any `x-amz-server-side-encryption-customer-*` header on `PutObject` returns `403 AccessDenied`, as AWS does on new buckets. `CopyObject`, `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`, and browser forms give the same answer, and so do `x-amz-copy-source-server-side-encryption-customer-*` headers. Those cases are unverified.
 - Object Lock: `x-amz-object-lock-mode`, `x-amz-object-lock-retain-until-date`, and `x-amz-object-lock-legal-hold` return `400 InvalidRequest`, as on an AWS bucket without Object Lock. `CreateBucket` with `x-amz-bucket-object-lock-enabled: true` returns `501 NotImplemented`. AWS creates the bucket, so this difference is unverified.
 - Storage class: `x-amz-storage-class` accepts `STANDARD`, `REDUCED_REDUNDANCY`, `STANDARD_IA`, `ONEZONE_IA`, `INTELLIGENT_TIERING`, `GLACIER`, `DEEP_ARCHIVE`, and `GLACIER_IR`. Any other value returns `400 InvalidStorageClass`.
   - `PutObject`, `HeadObject`, `GetObject`, and `UploadPart` return `x-amz-storage-class` for a class other than `STANDARD`. `GetObject` is unverified.
@@ -120,6 +120,7 @@ pail supports `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`, `Complete
 - A missing source returns `404 NoSuchKey`. An unknown upload returns `404 NoSuchUpload`. A source in the `GLACIER` or `DEEP_ARCHIVE` class returns `403 InvalidObjectState`, which is unverified.
 - The response is a `CopyPartResult` with `LastModified` and the `ETag` of the copied bytes. If the upload has a checksum algorithm, the result also carries the part checksum, computed from the copied bytes. This is unverified. The response also returns `x-amz-server-side-encryption`, as `UploadPart` does, which is unverified.
 - A copied part follows the `UploadPart` size rules: at most 5 GiB, and the 5 MiB minimum applies at `CompleteMultipartUpload`. The maximum is unverified.
+- An empty source without a range copies an empty part. Any range on an empty source returns `400 InvalidArgument`. Both are unverified.
 
 ### Multipart checksums
 

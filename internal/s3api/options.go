@@ -30,13 +30,12 @@ const defaultEncryption = "AES256"
 // on a new bucket. pail stores the values and does not act on them.
 func parseObjectOptions(h http.Header) (store.ObjectOptions, apiError, bool) {
 	var opts store.ObjectOptions
+	if apiErr, ok := rejectSSEC(h); !ok {
+		return opts, apiErr, false
+	}
 	lock := false
 	for name := range h {
-		lower := strings.ToLower(name)
-		if strings.HasPrefix(lower, "x-amz-server-side-encryption-customer-") || strings.HasPrefix(lower, "x-amz-copy-source-server-side-encryption-customer-") {
-			return opts, errSSECUnsupported, false
-		}
-		lock = lock || slices.Contains(objectLockHeaders, lower)
+		lock = lock || slices.Contains(objectLockHeaders, strings.ToLower(name))
 	}
 	if lock {
 		return opts, errObjectLockMissing, false
@@ -86,4 +85,16 @@ func storageClassName(o store.ObjectOptions) string {
 // isArchived reports whether the object needs a restore before it can be read.
 func isArchived(o store.ObjectOptions) bool {
 	return slices.Contains(archiveStorageClasses, o.StorageClass)
+}
+
+// rejectSSEC refuses customer-provided encryption keys, for the request object
+// or a copy source, as AWS does on a new bucket.
+func rejectSSEC(h http.Header) (apiError, bool) {
+	for name := range h {
+		lower := strings.ToLower(name)
+		if strings.HasPrefix(lower, "x-amz-server-side-encryption-customer-") || strings.HasPrefix(lower, "x-amz-copy-source-server-side-encryption-customer-") {
+			return errSSECUnsupported, false
+		}
+	}
+	return apiError{}, true
 }
