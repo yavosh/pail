@@ -313,7 +313,7 @@ pail posts to an HTTP or HTTPS endpoint in the background. `Publish` does not wa
 - pail makes at most 4 attempts, 20 seconds apart. This is the default `healthyRetryPolicy` of AWS. A custom `DeliveryPolicy` is not applied.
 - Each attempt times out after 15 seconds. pail does not follow redirects.
 - pail verifies the TLS certificate of an HTTPS endpoint against the system roots. An endpoint with a self-signed certificate fails.
-- A fixed pool of 100 workers (pail's choice) posts at most 100 requests at once. A queue of 1,000 deliveries waits for a free worker. pail drops a delivery when the queue is full, and logs a warning.
+- A fixed pool of 100 workers (pail's choice) posts at most 100 requests at once. A queue of 1,000 deliveries waits for a free worker. pail drops a delivery when the queue is full, and logs a warning. A worker holds a delivery through its retries, so a slow or unreachable endpoint can delay deliveries to other endpoints.
 - A delivery is in memory. A restart loses the deliveries that wait, and a pending subscription stays pending.
 - Any client with credentials can make pail send a `POST` to any URL that pail can reach. Run pail only where that is acceptable.
 
@@ -325,7 +325,7 @@ An SNS message links to pail with an unsigned `GET`. pail routes a request to SN
 - Its method is `GET` and its path is `/`.
 - Its query has `Action` set to `ConfirmSubscription` or `Unsubscribe`.
 
-pail reads only the query to route. Every other unsigned request goes to S3, including a `POST` with `Action` in the query and a `GET` of a bucket path, and a `GET` of a virtual-hosted bucket root with one of those two actions. SNS accepts these two actions without a signature. Any other unsigned action returns `MissingAuthenticationToken`, and a request with a bad signature still fails.
+pail ignores the host when it routes, so an unsigned `GET` of a virtual-hosted bucket root with one of those two actions goes to SNS too. Every other unsigned request goes to S3, including a `POST` with `Action` in the query and a `GET` of a bucket path. SNS accepts these two actions without a signature. Any other unsigned action returns `MissingAuthenticationToken`, and a request with a bad signature still fails.
 
 ### Signatures
 
