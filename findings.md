@@ -166,7 +166,7 @@ The differential suite has 15 golden fixtures and 266 exchanges, with no entries
 2. Fix destructive-operation conditions: single/batch delete and destination-conditional copy.
    Status: fixed. Single and batch delete are fixed (PR #49). Destination-conditional copy is fixed on branch feat/s3-copy-conditions-owner.
 3. Complete smaller gaps: expected-owner checks, multipart size validation, null versions, multipart URL encoding, redirect metadata.
-   Status: partly fixed on branch feat/s3-object-options. Redirect metadata is fixed. The other gaps are open.
+   Status: partly fixed. Redirect metadata is fixed on branch feat/s3-object-options. Expected-owner checks are fixed on branch feat/s3-copy-conditions-owner. The other gaps are open.
 4. Add high-value APIs: UploadPartCopy, GetObjectAttributes, part-number reads.
    Status: open.
 5. Expand scope deliberately: tagging first; versioning and notifications according to actual users.

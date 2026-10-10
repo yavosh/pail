@@ -152,7 +152,7 @@ func expectedOwner(r *http.Request, t target, op operation) (apiError, bool) {
 }
 
 // checkExpectedOwner validates an expected-owner header against pail's one
-// account. UploadPartCopy can reuse it for x-amz-source-expected-bucket-owner.
+// account. CopyObject also calls it for x-amz-source-expected-bucket-owner.
 func checkExpectedOwner(header http.Header, name string) (apiError, bool) {
 	values := header.Values(name)
 	if len(values) == 0 {

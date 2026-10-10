@@ -163,7 +163,7 @@ pail serves one account, `000000000000`. It checks `x-amz-expected-bucket-owner`
 
 - A value that isn't exactly 12 digits returns `400 InvalidBucketOwnerAWSAccountID`.
 - A 12-digit value other than the account returns `403 AccessDenied`.
-- The account ID has no effect.
+- The account's own ID, `000000000000`, passes.
 - `CopyObject` applies the same rules to `x-amz-source-expected-bucket-owner` for the source bucket.
 - The check covers bucket and object requests, signed or anonymous. It doesn't cover `CreateBucket`, because the bucket doesn't exist yet, or `ListBuckets`. Browser POST forms ignore the header. The AWS recording covers the common operations, not these three.
 
