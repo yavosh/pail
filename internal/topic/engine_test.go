@@ -454,17 +454,24 @@ func TestSubscriptionFilterAttributes(t *testing.T) {
 	e := openEngine(t, dir, &fakeQueues{})
 	arn := mustTopic(t, e, "filters")
 	sub := mustSubscribe(t, e, arn, "q1", map[string]string{"FilterPolicy": `{"a":["x"]}`, "FilterPolicyScope": ""})
-	tail := func(e *Engine) []Attribute {
+	attrs := func(e *Engine) []Attribute {
 		t.Helper()
 		got, err := e.SubscriptionAttributes(t.Context(), sub)
 		if err != nil {
 			t.Fatalf("SubscriptionAttributes error = %v", err)
 		}
-		return got[len(got)-3:]
+		return got
 	}
-	want := []Attribute{{"SubscriptionArn", sub}, {"FilterPolicy", `{"a":["x"]}`}, {"FilterPolicyScope", "MessageAttributes"}}
-	if got := tail(e); !reflect.DeepEqual(got, want) {
-		t.Errorf("attributes with a policy end with %v, want %v", got, want)
+	// want is AWS's order, recorded in sns-filter-policies.
+	want := func(policy, scope string) []Attribute {
+		return []Attribute{
+			{"SubscriptionPrincipal", "arn:aws:iam::000000000000:root"}, {"Owner", "000000000000"}, {"RawMessageDelivery", "false"},
+			{"FilterPolicy", policy}, {"TopicArn", arn}, {"Endpoint", queueARN("q1")}, {"FilterPolicyScope", scope},
+			{"Protocol", "sqs"}, {"PendingConfirmation", "false"}, {"ConfirmationWasAuthenticated", "true"}, {"SubscriptionArn", sub},
+		}
+	}
+	if got, w := attrs(e), want(`{"a":["x"]}`, "MessageAttributes"); !reflect.DeepEqual(got, w) {
+		t.Errorf("attributes with a policy = %v\nwant %v", got, w)
 	}
 	if _, ok := e.subs[sub].Attributes["FilterPolicyScope"]; ok {
 		t.Error(`FilterPolicyScope "" was stored, want it unset`)
@@ -483,19 +490,29 @@ func TestSubscriptionFilterAttributes(t *testing.T) {
 		t.Errorf("scope MessageAttributes with a nested policy error = %v, want %v", err, ErrInvalidParameter)
 	}
 	again := openEngine(t, dir, &fakeQueues{})
-	want = []Attribute{{"SubscriptionArn", sub}, {"FilterPolicy", `{"o":{"k":["x"]}}`}, {"FilterPolicyScope", "MessageBody"}}
-	if got := tail(again); !reflect.DeepEqual(got, want) {
-		t.Errorf("attributes after reopen end with %v, want %v", got, want)
+	if got, w := attrs(again), want(`{"o":{"k":["x"]}}`, "MessageBody"); !reflect.DeepEqual(got, w) {
+		t.Errorf("attributes after reopen = %v\nwant %v", got, w)
 	}
-	if err := set("FilterPolicy", ""); err != nil {
-		t.Fatalf("unset policy error = %v", err)
+	// An empty policy object removes the policy, and AWS then lists no scope either.
+	for _, empty := range []string{"{}", " { } ", ""} {
+		if err := set("FilterPolicy", `{"a":["x"]}`); err != nil {
+			t.Fatalf("set policy error = %v", err)
+		}
+		if err := set("FilterPolicy", empty); err != nil {
+			t.Fatalf("set policy %q error = %v", empty, err)
+		}
+		if _, ok := e.subs[sub].Attributes["FilterPolicy"]; ok {
+			t.Errorf("FilterPolicy %q was stored, want it removed", empty)
+		}
+		if got := attrs(e); len(got) != 9 || got[8] != (Attribute{"SubscriptionArn", sub}) {
+			t.Errorf("attributes after FilterPolicy %q = %v, want 9 ending with SubscriptionArn", empty, got)
+		}
 	}
 	if err := set("FilterPolicyScope", ""); err != nil {
 		t.Fatalf("unset scope error = %v", err)
 	}
-	got, _ := e.SubscriptionAttributes(t.Context(), sub)
-	if last := got[len(got)-1]; last != (Attribute{"SubscriptionArn", sub}) {
-		t.Errorf("last attribute after unset = %v, want SubscriptionArn", last)
+	if _, ok := e.subs[sub].Attributes["FilterPolicyScope"]; ok {
+		t.Error("FilterPolicyScope is still stored after an unset")
 	}
 }
 

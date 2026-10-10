@@ -227,8 +227,8 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 - An endpoint that names a FIFO queue returns `InvalidParameter`, because pail has no FIFO topics (unverified).
 - pail confirms an SQS subscription at once. A subscription ARN is the topic ARN, a colon, and a lowercase UUID.
 - `Subscribe` is idempotent. The same topic, protocol, and endpoint return the existing ARN. Different attributes return `InvalidParameter` (unverified).
-- `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`), `FilterPolicy`, and `FilterPolicyScope`. `RedrivePolicy`, `DeliveryPolicy`, and `SubscriptionRoleArn` return `InvalidParameter`. An empty value for `FilterPolicy` or `FilterPolicyScope` unsets it. pail checks a policy against its scope whenever either one changes, so a call that leaves them inconsistent returns `InvalidParameter`. See [Filter policies](#filter-policies).
-- `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `TopicArn`, `Endpoint`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. When a policy is set, pail appends `FilterPolicy` (the text you set), then `FilterPolicyScope` (`MessageAttributes` by default). Those two positions are unverified. When no policy and no scope is set, pail returns neither. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
+- `Subscribe` and `SetSubscriptionAttributes` accept `RawMessageDelivery` (`true` or `false`), `FilterPolicy`, and `FilterPolicyScope`. `RedrivePolicy`, `DeliveryPolicy`, and `SubscriptionRoleArn` return `InvalidParameter`. An empty value for `FilterPolicy` or `FilterPolicyScope` unsets it. An empty policy object, `{}`, removes the policy too. pail checks a policy against its scope whenever either one changes, so a call that leaves them inconsistent returns `InvalidParameter`. See [Filter policies](#filter-policies).
+- `GetSubscriptionAttributes` returns `SubscriptionPrincipal`, `Owner`, `RawMessageDelivery`, `FilterPolicy`, `TopicArn`, `Endpoint`, `FilterPolicyScope`, `Protocol`, `PendingConfirmation`, `ConfirmationWasAuthenticated`, and `SubscriptionArn`, in this order. `FilterPolicy` (the text you set) and `FilterPolicyScope` (`MessageAttributes` by default) appear only when a policy is set, even when you set the scope. AWS returns the caller's ARN in `SubscriptionPrincipal`. pail returns `arn:aws:iam::000000000000:root`. The recording masks that value, so its shape is unverified.
 - `Unsubscribe` of a subscription that does not exist returns `NotFound` (unverified).
 - pail does not check the queue policy. AWS delivers only when the policy allows the topic.
 
@@ -236,8 +236,10 @@ A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JS
 
 A subscription without a filter policy receives every message. With a policy, it receives only the messages that match. pail checks the policy when you set it, and it checks the scope together with the policy.
 
+The `sns-filter-policies` recording verifies the rules below that carry no "unverified" marker, except the operators that pail rejects.
+
 - `FilterPolicyScope` is `MessageAttributes` (the default) or `MessageBody`. Any other value returns `InvalidParameter`.
-- `FilterPolicy` is a JSON object. Each key maps to an array of conditions. A message matches when every key matches (AND). A key matches when any condition in its array matches (OR). An empty object `{}` matches every message.
+- `FilterPolicy` is a JSON object. Each key maps to an array of conditions. A message matches when every key matches (AND). A key matches when any condition in its array matches (OR). An empty object `{}` removes the policy.
 - With `MessageBody`, a key can map to a nested object, and pail matches the path from the root of the message. In `MessageAttributes` scope, a nested object returns `InvalidParameter`.
 - A condition is one of:
   - A string or a number, which matches an equal value. A number compares by value, so `15` matches the `Number` attribute `15.0`. A string never matches a number, and the reverse.
@@ -246,14 +248,14 @@ A subscription without a filter policy receives every message. With a policy, it
   - `{"numeric": ["=", n]}`, or one or two pairs of an operator (`<`, `<=`, `>`, `>=`) and a number. With two pairs, one is a lower bound and the other is an upper bound, in either order.
   - `{"exists": true}` or `{"exists": false}`.
 - An empty array, a boolean, a null, an array inside the array, and an object with more than one key return `InvalidParameter`. So do `$or` and the operators that pail does not implement, such as `suffix`, `equals-ignore-case`, `cidr`, and `wildcard`.
-- A policy has at most 5 keys that map to an array, counting nested ones, and the product of the lengths of those arrays is at most 150. These limits come from the AWS documentation (unverified).
+- A policy has at most 5 keys that map to an array, counting nested ones, and the product of the lengths of those arrays is at most 150. The recording verifies that 6 top-level keys and 156 combinations return `InvalidParameter`. The count of nested keys is unverified.
 - In `MessageAttributes` scope, the key names a message attribute:
   - `String` and `Number` (with or without a custom label) give one value. A `Number` value compares as a number. A `String` value never matches a number or `numeric`.
-  - `String.Array` gives its elements. The key matches when any element matches (unverified).
+  - `String.Array` gives its elements. The key matches when any element matches.
   - `Binary` exists but has no value that a condition other than `exists` can match.
   - An attribute that is not on the message does not match any condition except `{"exists": false}`. That includes `anything-but` (unverified).
   - A value of another type satisfies `anything-but` (unverified).
-- In `MessageBody` scope, the message must be a JSON object. Any other message matches only an empty policy. An array on the path fans out into its elements, and the key matches when any of them matches. An object at the end of the path is not a value. A missing path does not match, except `{"exists": false}` (unverified).
+- In `MessageBody` scope, the message must be a JSON object. Any other message does not match. An array on the path fans out into its elements, and the key matches when any of them matches. An object at the end of the path is not a value. A missing path does not match, except `{"exists": false}` (unverified).
 - With `MessageStructure` set to `json`, a body policy matches the message that pail sends to SQS (the `sqs` value, or `default`). This is unverified.
 - pail filters before it signs. A publish that matches no subscription sends nothing.
 
