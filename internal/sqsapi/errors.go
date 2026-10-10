@@ -75,6 +75,7 @@ var mappings = []mapping{
 	{queue.ErrInvalidAttributeName, errInvalidAttributeName, ""},
 	{queue.ErrInvalidAttributeValue, errInvalidAttributeValue, ""},
 	{queue.ErrInvalidParameterValue, errInvalidParameterValue, "InvalidParameterValue"},
+	{queue.ErrUnsupportedOperation, errUnsupportedOperation, "UnsupportedOperation"},
 	{queue.ErrInvalidName, errInvalidParameterValue, "InvalidParameterValue"},
 	{queue.ErrMessageTooLong, errInvalidParameterValue, "InvalidParameterValue"},
 	{queue.ErrMessageNotAvailable, errInvalidParameterValue, "InvalidParameterValue"},

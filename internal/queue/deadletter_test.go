@@ -63,8 +63,9 @@ func TestRedrivePolicyValidation(t *testing.T) {
 	if err := e.SetAttributes(t.Context(), "late", redrive("deny", "1")); !errors.Is(err, ErrInvalidParameterValue) {
 		t.Errorf("SetAttributes(redrive to deny) error = %v, want ErrInvalidParameterValue", err)
 	}
-	if err := e.SetAttributes(t.Context(), "late", redrive("late", "1")); !errors.Is(err, ErrInvalidParameterValue) {
-		t.Errorf("SetAttributes(redrive to itself) error = %v, want ErrInvalidParameterValue", err)
+	// AWS accepts a queue as its own dead-letter target (sqs-edge-cases).
+	if err := e.SetAttributes(t.Context(), "late", redrive("late", "1")); err != nil {
+		t.Errorf("SetAttributes(redrive to itself) error = %v, want nil", err)
 	}
 }
 
@@ -100,10 +101,7 @@ func TestRedriveAllowPolicyValidation(t *testing.T) {
 		{"allowAll", `{"redrivePermission":"allowAll"}`, `{"redrivePermission":"allowAll"}`, true},
 		{"denyAll", ` {"redrivePermission":"denyAll"}`, `{"redrivePermission":"denyAll"}`, true},
 		{"byQueue", `{"redrivePermission":"byQueue","sourceQueueArns":[` + arn + `]}`, `{"redrivePermission":"byQueue","sourceQueueArns":[` + arn + `]}`, true},
-		{"byQueue without ARNs", `{"redrivePermission":"byQueue"}`, "", false},
-		{"byQueue with an empty list", `{"redrivePermission":"byQueue","sourceQueueArns":[]}`, "", false},
 		{"byQueue with 11 ARNs", `{"redrivePermission":"byQueue","sourceQueueArns":[` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `,` + arn + `]}`, "", false},
-		{"allowAll with ARNs", `{"redrivePermission":"allowAll","sourceQueueArns":[` + arn + `]}`, "", false},
 		{"unknown permission", `{"redrivePermission":"some"}`, "", false},
 		{"missing permission", `{}`, "", false},
 		{"not JSON", `nope`, "", false},
@@ -123,6 +121,63 @@ func TestRedriveAllowPolicyValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRedriveAllowPolicyARNMismatch(t *testing.T) {
+	e := newEngine(t)
+	const arn = `"arn:aws:sqs:us-east-1:000000000000:a"`
+	tests := []struct {
+		name, value string
+		want        error
+	}{
+		{"byQueue without ARNs", `{"redrivePermission":"byQueue"}`, ErrInvalidParameterValue},
+		{"byQueue with an empty list", `{"redrivePermission":"byQueue","sourceQueueArns":[]}`, ErrInvalidParameterValue},
+		{"allowAll with ARNs", `{"redrivePermission":"allowAll","sourceQueueArns":[` + arn + `]}`, ErrInvalidParameterValue},
+		{"unknown permission", `{"redrivePermission":"some"}`, ErrInvalidAttributeValue},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := "m" + string(rune('a'+i))
+			err := e.CreateQueue(t.Context(), name, map[string]string{"RedriveAllowPolicy": tt.value}, nil)
+			if !errors.Is(err, tt.want) {
+				t.Errorf("CreateQueue(RedriveAllowPolicy=%s) error = %v, want %v", tt.value, err, tt.want)
+			}
+		})
+	}
+}
+
+// A queue that targets itself delivers its messages. A move to itself would
+// wake the other long polls forever; synctest.Wait would never return.
+func TestSelfRedriveDoesNotSpin(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEngine(t)
+		mustCreate(t, e, "self", nil)
+		if err := e.SetAttributes(t.Context(), "self", redrive("self", "1")); err != nil {
+			t.Fatalf("SetAttributes error = %v", err)
+		}
+		if _, err := e.Send(t.Context(), "self", []SendInput{{Body: "m"}}); err != nil {
+			t.Fatalf("Send error = %v", err)
+		}
+		if got := receive(t, e, "self", ReceiveInput{VisibilityTimeout: new(0)}); len(got) != 1 {
+			t.Fatalf("first Receive = %v, want one message", bodies(got))
+		}
+		waits := []func() ([]Message, error){
+			startReceive(t.Context(), e, "self", ReceiveInput{WaitTimeSeconds: new(20)}),
+			startReceive(t.Context(), e, "self", ReceiveInput{WaitTimeSeconds: new(20)}),
+		}
+		synctest.Wait()
+		delivered := 0
+		for _, wait := range waits {
+			got, err := wait()
+			if err != nil {
+				t.Fatalf("Receive error = %v", err)
+			}
+			delivered += len(got)
+		}
+		if delivered != 1 {
+			t.Errorf("concurrent Receives delivered %d messages, want 1", delivered)
+		}
+	})
 }
 
 func TestMoveToDeadLetterQueue(t *testing.T) {

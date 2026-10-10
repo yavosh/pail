@@ -10,6 +10,7 @@ var (
 	ErrInvalidAttributeName   = errors.New("invalid attribute name")
 	ErrInvalidAttributeValue  = errors.New("invalid attribute value")
 	ErrInvalidParameterValue  = errors.New("invalid parameter value")
+	ErrUnsupportedOperation   = errors.New("unsupported operation")
 	ErrMissingParameter       = errors.New("missing parameter")
 	ErrMessageTooLong         = errors.New("message is too long")
 	ErrInvalidMessageContents = errors.New("invalid message contents")

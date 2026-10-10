@@ -108,7 +108,11 @@ func validateAttrs(attrs map[string]string, fifo bool) error {
 			continue
 		}
 		if !spec.ok(attrs[name]) {
-			return fmt.Errorf("attribute %s value %q: %w", name, attrs[name], ErrInvalidAttributeValue)
+			err := ErrInvalidAttributeValue
+			if name == "RedriveAllowPolicy" && allowPolicyARNMismatch(attrs[name]) {
+				err = ErrInvalidParameterValue
+			}
+			return fmt.Errorf("attribute %s value %q: %w", name, attrs[name], err)
 		}
 	}
 	return nil

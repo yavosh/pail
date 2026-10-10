@@ -266,7 +266,6 @@ func TestErrors(t *testing.T) {
 		{"subscribe with a bad protocol", "Action=Subscribe&Protocol=smoke&Endpoint=x&TopicArn=" + esc(arn), 400, "InvalidParameter"},
 		{"subscribe with a bad endpoint", "Action=Subscribe&Protocol=sqs&Endpoint=not-an-arn&TopicArn=" + esc(arn), 400, "InvalidParameter"},
 		{"get a missing subscription", "Action=GetSubscriptionAttributes&SubscriptionArn=" + esc(arn+":00000000-0000-0000-0000-000000000000"), 404, "NotFound"},
-		{"unsubscribe a missing subscription", "Action=Unsubscribe&SubscriptionArn=" + esc(arn+":00000000-0000-0000-0000-000000000000"), 404, "NotFound"},
 		{"list subscriptions of a missing topic", "Action=ListSubscriptionsByTopic&TopicArn=" + esc(missing), 404, "NotFound"},
 		{"publish without a message", "Action=Publish&TopicArn=" + esc(arn), 400, "ValidationError"},
 		{"publish with an empty message", "Action=Publish&Message=&TopicArn=" + esc(arn), 400, "InvalidParameter"},
@@ -275,7 +274,7 @@ func TestErrors(t *testing.T) {
 		{"publish to a target", "Action=Publish&Message=x&TargetArn=" + esc(arn), 400, "InvalidParameter"},
 		{"publish to a phone number", "Action=Publish&Message=x&PhoneNumber=%2B15555550100", 400, "InvalidParameter"},
 		{"publish to a missing topic", "Action=Publish&Message=x&TopicArn=" + esc(missing), 404, "NotFound"},
-		{"publish with a bad attribute", "Action=Publish&Message=x&TopicArn=" + esc(arn) + "&MessageAttributes.entry.1.Name=a&MessageAttributes.entry.1.Value.DataType=Blob", 400, "InvalidParameter"},
+		{"publish with a bad attribute", "Action=Publish&Message=x&TopicArn=" + esc(arn) + "&MessageAttributes.entry.1.Name=a&MessageAttributes.entry.1.Value.DataType=Blob", 400, "ParameterValueInvalid"},
 		{"publish with a bad binary value", "Action=Publish&Message=x&TopicArn=" + esc(arn) + "&MessageAttributes.entry.1.Name=a&MessageAttributes.entry.1.Value.DataType=Binary&MessageAttributes.entry.1.Value.BinaryValue=%21", 400, "InvalidParameter"},
 		{"tag a missing topic", "Action=TagResource&Tags.member.1.Key=a&Tags.member.1.Value=1&ResourceArn=" + esc(missing), 404, "ResourceNotFound"},
 		{"untag a missing topic", "Action=UntagResource&TagKeys.member.1=a&ResourceArn=" + esc(missing), 404, "ResourceNotFound"},
@@ -296,6 +295,16 @@ func TestErrors(t *testing.T) {
 				t.Errorf("error body %s lacks the ErrorResponse wrapper or request ID", body)
 			}
 		})
+	}
+}
+
+func TestUnsubscribeMissing(t *testing.T) {
+	g := newRig(t)
+	arn := tag(t, g.ok(t, "Action=CreateTopic&Name=gone"), "TopicArn")
+	// AWS answers 200 for a well-formed ARN of a missing subscription (sns-edge-cases).
+	status, body := g.do(t, "Action=Unsubscribe&SubscriptionArn="+esc(arn+":00000000-0000-0000-0000-000000000000"))
+	if status != 200 || !strings.Contains(body, "<UnsubscribeResponse") {
+		t.Errorf("Unsubscribe of a missing subscription = %d %s, want 200 UnsubscribeResponse", status, body)
 	}
 }
 

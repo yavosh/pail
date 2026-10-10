@@ -1,0 +1,244 @@
+{
+  "scenario": "sns-edge-cases",
+  "exchanges": [
+    {
+      "step": "create-topic-with-attributes",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "68db19d1ad646b66",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-topic-attributes",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "8590881ac066dd33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetTopicAttributesResponse\n  GetTopicAttributesResult\n    Attributes\n      entry\n        key: Policy\n        value: {\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:{account}:{name}\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"{account}\"}}}]}\n      entry\n        key: SignatureVersion\n        value: 2\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: SubscriptionsPending\n        value: 0\n      entry\n        key: KmsMasterKeyId\n        value: alias/aws/sns\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: TracingConfig\n        value: Active\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"disableSubscriptionOverrides\":false,\"defaultRequestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"}}}\n      entry\n        key: SubscriptionsConfirmed\n        value: 0\n      entry\n        key: DisplayName\n        value: \n      entry\n        key: SubscriptionsDeleted\n        value: 0\n  ResponseMetadata\n"
+    },
+    {
+      "step": "tag-too-many",
+      "request": "POST sns TagResource",
+      "fingerprint": "efb201d259f24475",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: TagLimitExceeded\n"
+    },
+    {
+      "step": "tag-missing-topic",
+      "request": "POST sns TagResource",
+      "fingerprint": "5c4dc765fffa5770",
+      "status": 404,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: ResourceNotFound\n"
+    },
+    {
+      "step": "list-tags-missing-topic",
+      "request": "POST sns ListTagsForResource",
+      "fingerprint": "ccaecd5e4686c303",
+      "status": 404,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: ResourceNotFound\n"
+    },
+    {
+      "step": "publish-dedup-id-standard",
+      "request": "POST sns Publish",
+      "fingerprint": "f22abba453c2848c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "publish-bad-attribute-type",
+      "request": "POST sns Publish",
+      "fingerprint": "7dfd5910e5c736e9",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: ParameterValueInvalid\n"
+    },
+    {
+      "step": "publish-batch-all-fail",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "01ea0d5ca140b34a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishBatchResponse\n  PublishBatchResult\n    Failed\n      member\n        Code: InvalidParameter\n        SenderFault: true\n        Id: a\n      member\n        Code: InvalidParameter\n        SenderFault: true\n        Id: b\n    Successful: \n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-batch-too-long",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "748de885af5f8e3a",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: BatchRequestTooLong\n"
+    },
+    {
+      "step": "unsubscribe-missing",
+      "request": "POST sns Unsubscribe",
+      "fingerprint": "31d1e0c69e1a86fd",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "UnsubscribeResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-fifo-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "96147c3e865e015f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "get-fifo-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}.fifo\n"
+    },
+    {
+      "step": "subscribe-fifo-queue",
+      "request": "POST sns Subscribe",
+      "fingerprint": "acc96363bebb5ddb",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "delete-fifo-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "get-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\n"
+    },
+    {
+      "step": "set-queue-policy",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "085d02d3dbeed752",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "subscribe-raw",
+      "request": "POST sns Subscribe",
+      "fingerprint": "c14f4a3800afa354",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-group-id",
+      "request": "POST sns Publish",
+      "fingerprint": "11f9e422d4a92c53",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "receive-group-id",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "5fae18bf4dd52463",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.MessageGroupId: g1\nMessages[0].Body: grouped\nMessages[0].MD5OfBody: 39306192204262ad0b88470c636a75dd\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-topic",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

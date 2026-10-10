@@ -136,7 +136,7 @@ func TestCreateQueue(t *testing.T) {
 		{"fifo name without FifoQueue", "q.fifo", nil, ErrInvalidParameterValue},
 		{"fifo name with FifoQueue false", "q2.fifo", map[string]string{"FifoQueue": "false"}, ErrInvalidParameterValue},
 		{"FifoQueue on a standard name", "n1", map[string]string{"FifoQueue": "true"}, ErrInvalidParameterValue},
-		{"FifoQueue false on a standard name", "n1b", map[string]string{"FifoQueue": "false"}, nil},
+		{"FifoQueue false on a standard name", "n1b", map[string]string{"FifoQueue": "false"}, ErrInvalidAttributeName},
 		{"FifoQueue bad value", "n1c", map[string]string{"FifoQueue": "yes"}, ErrInvalidAttributeValue},
 		{"content dedup on a standard queue", "n2", map[string]string{"ContentBasedDeduplication": "true"}, ErrInvalidAttributeName},
 		{"redrive policy without a target", "n3", map[string]string{"RedrivePolicy": "{}"}, ErrInvalidAttributeValue},
@@ -264,8 +264,14 @@ func TestSetAttributesValidation(t *testing.T) {
 	if err := e.SetAttributes(t.Context(), "q", map[string]string{"Bogus": "1"}); !errors.Is(err, ErrInvalidAttributeName) {
 		t.Errorf("SetAttributes(Bogus) error = %v, want ErrInvalidAttributeName", err)
 	}
-	if err := e.SetAttributes(t.Context(), "q", map[string]string{"FifoQueue": "true"}); !errors.Is(err, ErrInvalidAttributeValue) {
-		t.Errorf("SetAttributes(FifoQueue) error = %v, want ErrInvalidAttributeValue", err)
+	for _, v := range []string{"true", "false"} {
+		if err := e.SetAttributes(t.Context(), "q", map[string]string{"FifoQueue": v}); !errors.Is(err, ErrInvalidAttributeName) {
+			t.Errorf("SetAttributes(FifoQueue=%s) on a standard queue error = %v, want ErrInvalidAttributeName", v, err)
+		}
+	}
+	mustCreate(t, e, "q.fifo", map[string]string{"FifoQueue": "true"})
+	if err := e.SetAttributes(t.Context(), "q.fifo", map[string]string{"FifoQueue": "true"}); !errors.Is(err, ErrInvalidAttributeValue) {
+		t.Errorf("SetAttributes(FifoQueue) on a FIFO queue error = %v, want ErrInvalidAttributeValue", err)
 	}
 	if err := e.SetAttributes(t.Context(), "nope", nil); !errors.Is(err, ErrQueueDoesNotExist) {
 		t.Errorf("SetAttributes(nope) error = %v, want ErrQueueDoesNotExist", err)
