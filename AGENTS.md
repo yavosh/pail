@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## Project overview
 
-pail is a small S3-compatible server written in pure Go. It targets local testing and personal projects. The goal is S3 API compatibility, not scale.
+pail is a small S3-, SQS-, and SNS-compatible server written in pure Go. One listener serves all three. It targets local testing and personal projects. The goal is AWS API compatibility, not scale.
 
 ## Build and development commands
 
@@ -17,7 +17,7 @@ make docker          # docker build -t pail:dev; CI builds and runs the image in
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
 go test ./test/      # aws-sdk-go-v2 tests against an in-process pail, path-style and virtual-hosted
-go test ./test/diff  # replay the AWS S3 golden files against pail; see test/diff/README.md
+go test ./test/diff  # replay the AWS S3, SQS, and SNS golden files against pail; see test/diff/README.md
 make lint            # golangci-lint
 make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # AWS CLI and boto3 against a real pail
 ```
@@ -27,7 +27,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 ### Design principles
 
 - **Pure Go, zero CGO**: The binary must compile with `CGO_ENABLED=0`.
-- **API compatibility over scale**: Match S3 behavior that clients depend on. Do not add complexity for throughput or clustering.
+- **API compatibility over scale**: Match the AWS behavior that clients depend on. Do not add complexity for throughput or clustering.
 
 ## Go conventions
 
@@ -110,6 +110,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Scenarios never call `ListBuckets`, `ListTopics`, or `ListSubscriptions`, and call `ListQueues` only with `QueueNamePrefix`. Golden files must not expose the account's other resources.
 - Compare successful object bodies byte for byte, including XML objects. Normalize only protocol XML, never stored object content.
 - Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
+- A value that must differ between AWS and pail, such as an HTTP endpoint, is a per-target variable in the harness. AWS refuses internal endpoints, and pail must never post to a public one in tests.
 - Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.
 - A feature PR removes its steps from `test/diff/testdata/pending.txt`. The PR is done when they pass.
 

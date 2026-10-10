@@ -169,7 +169,7 @@ A failed batch entry uses the code `InvalidParameterValue`, `MissingParameter`, 
 
 ## SNS
 
-pail serves SNS on the same listener and port as S3 and SQS. It routes a request to SNS by the `sns` service in the SigV4 credential scope. It uses the S3 access key pair. AWS recordings in `test/diff` verify the behavior on this page, except what it marks as unverified.
+pail serves SNS on the same listener and port as S3 and SQS. It routes a request to SNS by the `sns` service in the SigV4 credential scope, and routes the two unsigned link actions there too. See [Unsigned links](#unsigned-links). It uses the S3 access key pair. AWS recordings in `test/diff` verify the behavior on this page, except what it marks as unverified.
 
 ### Protocol
 

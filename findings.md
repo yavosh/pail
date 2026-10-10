@@ -2,6 +2,8 @@
 
 Reviewed `main` at `5d1a82e` on 2026-10-07. This is a snapshot of the findings before fixes.
 
+Current status: the `Status:` lines below were checked against `main` at `722508e` on 2026-10-10. Only finding A has a fix on `main`. The other findings and the gaps in sections 2 and 3 remain open.
+
 ## Summary
 
 pail covers everyday S3 object-storage workflows, but not the full AWS S3 API. The highest-priority gaps are options that silently succeed without being enforced, rather than APIs that explicitly return `501 NotImplemented`.
@@ -14,7 +16,7 @@ The review combined route, handler, storage, and test inspection; current AWS do
 
 **Priority: High — data-loss risk**
 
-Remediation: implemented on `fix/conditional-deletes`. Both APIs now evaluate current ETags under the storage key lock; mismatch, wildcard, missing-key, stale-ETag, concurrency, and Quiet behavior have regression tests. The maintainer-recorded AWS differential fixture now replays all 30 exchanges successfully, confirming matching, mismatching, wildcard, missing-key, stale-ETag, mixed-batch, and Quiet behavior.
+Remediation: fixed in commit `0af542f`, merged in PR #49 (`7dec374`); the AWS recording is in `d8f85a2`. Both APIs now evaluate current ETags under the storage key lock; mismatch, wildcard, missing-key, stale-ETag, concurrency, and Quiet behavior have regression tests. The maintainer-recorded AWS differential fixture now replays all 30 exchanges successfully, confirming matching, mismatching, wildcard, missing-key, stale-ETag, mixed-batch, and Quiet behavior.
 
 Confirmed locally before the fix:
 - `DeleteObject(IfMatch='"wrong"')` returned 204 and deleted the object.
@@ -36,6 +38,8 @@ Source conditions are supported, but destination conditions are not. Copying ove
 
 Code: `internal/s3api/copy.go:65`.
 
+Status: open. `CopyObject` checks only the `x-amz-copy-source-if-*` conditions (`internal/s3api/copy.go`).
+
 Recommendation: Pass destination conditions through to the existing conditional-write storage implementation.
 
 AWS reference: [CopyObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html).
@@ -50,6 +54,8 @@ There is no implemented SSE or Object Lock subsystem. AWS applies the requested 
 
 Code: `internal/s3api/objects.go:42`, `internal/s3api/objects.go:125`.
 
+Status: open. No code handles server-side encryption or Object Lock headers, so pail ignores them. `docs/s3-compatibility.md` now says so.
+
 Recommendation: Reject unsupported encryption, retention, and legal-hold options before implementing the full feature. Validate PUT, copy, multipart initiation, and bucket creation consistently.
 
 ### D. Unsupported checksum headers can bypass integrity checking
@@ -61,6 +67,8 @@ pail supports CRC32, CRC32C, CRC64NVME, SHA-1, and SHA-256. Current AWS document
 `ChecksumAlgorithm="SHA512"` returned 400, but an incorrect standalone `ChecksumSHA512` returned 200, stored the object, and substituted a CRC64NVME checksum. The parser only examines known checksum headers, so an unsupported checksum is treated as absent.
 
 Code: `internal/s3api/objects.go:162`, `internal/checksum/checksum.go:39`.
+
+Status: open. `parseChecksum` reads only the five algorithms in `checksum.Algorithms`, so other checksum headers are ignored.
 
 Recommendation: Reject unsupported checksum headers rather than ignoring them; add algorithms according to client demand.
 
@@ -76,6 +84,8 @@ The configuration check compares against pail's derived canonical owner ID, wher
 
 Code: `internal/s3api/configuration.go:29`, `internal/s3api/buckets.go:73`.
 
+Status: open. Only `internal/s3api/configuration.go` checks `x-amz-expected-bucket-owner`.
+
 Recommendation: Define an account-ID model separately from canonical ACL owner IDs and enforce checks consistently.
 
 ### F. Bucket ownership controls are silently ignored
@@ -85,6 +95,8 @@ Recommendation: Define an account-ID model separately from canonical ACL owner I
 `CreateBucket(ObjectOwnership="BucketOwnerEnforced")` returned 200; setting a public bucket ACL afterward also returned 200. AWS's `BucketOwnerEnforced` disables ACLs. New AWS buckets also default to ACLs disabled and Block Public Access enabled. pail defaults to an ACL-enabled model and has no ownership-controls or public-access-block APIs.
 
 Code: `internal/s3api/buckets.go:124`, `internal/s3api/acl.go`.
+
+Status: open. No code reads `ObjectOwnership`. ACL support (`e53a83e`) keeps ACLs enabled on every bucket, and `docs/s3-compatibility.md` documents that.
 
 Recommendation: Reject unsupported ownership-control requests. Decide explicitly whether AWS's current defaults or a documented legacy-style mode should be pail's default.
 
@@ -103,6 +115,8 @@ AWS reference: [CreateBucket](https://docs.aws.amazon.com/AmazonS3/latest/API/AP
 | Storage-class options | STANDARD_IA returned 200 but no storage-class metadata was retained | Applications may believe a requested class was applied. |
 | Website redirect metadata | PUT accepted WebsiteRedirectLocation; HEAD did not return it | Metadata is silently lost independently of website hosting support. |
 | Maximum multipart object size | Hard-coded to 5 TiB | Current AWS documentation specifies 48.8 TiB; README's “as on AWS” claim is outdated. |
+
+Status: all nine gaps are open. `resolve` in `internal/s3api/route.go` has no route for `UploadPartCopy`, `GetObjectAttributes`, `partNumber` reads, or `versionId`. No code reads `x-amz-mp-object-size`, the storage-class header, or the website-redirect header. `docs/s3-compatibility.md` says `ListMultipartUploads` does not support `encoding-type`, and `maxMultipartSize` in `internal/store/uploads.go` is still 5 TiB.
 
 Relevant code: `internal/s3api/route.go`, `internal/s3api/multipart.go`, `internal/s3api/objects.go`, `internal/store/uploads.go:38`.
 
@@ -126,6 +140,8 @@ These are mostly intentional scope limitations rather than implementation bugs.
 | Reporting and advanced services | Inventory, analytics, metrics, S3 metadata configurations, SelectObjectContent. |
 | Specialized S3 products | Directory buckets/S3 Express sessions, append/rename semantics, access points, Object Lambda, multi-region access points, Outposts. |
 
+Status: no family has been added since the review. ACLs, CORS, and lifecycle expiration were already on `main` at the review. Tag filters, transitions, and version actions in lifecycle rules still return `501 NotImplemented`.
+
 For pail's local-development purpose, implementing everything would be excessive. Tagging, versioning, notifications, and selected policy controls are the most useful additions for broader application testing.
 
 ## 4. Existing strengths
@@ -146,8 +162,14 @@ The differential suite has 15 golden fixtures and 266 exchanges, with no entries
 ## Recommended implementation order
 
 1. Stop silent success: reject unsupported security, checksum, storage, and ownership options.
+   Status: open.
 2. Fix destructive-operation conditions: single/batch delete and destination-conditional copy.
+   Status: partly fixed. Single and batch delete are fixed (PR #49). Destination-conditional copy is open.
 3. Complete smaller gaps: expected-owner checks, multipart size validation, null versions, multipart URL encoding, redirect metadata.
+   Status: open.
 4. Add high-value APIs: UploadPartCopy, GetObjectAttributes, part-number reads.
+   Status: open.
 5. Expand scope deliberately: tagging first; versioning and notifications according to actual users.
+   Status: open.
 6. Add AWS-recorded scenarios for each fix, especially negative cases where requests must not mutate data.
+   Status: partly done. The `conditional-deletes` scenario covers the delete fix. No scenario covers the open findings.

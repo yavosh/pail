@@ -1,5 +1,7 @@
 # Conditional deletes
 
+Status: done in #49, merged on 2026-10-08.
+
 Implement finding A in `findings.md`: failed delete preconditions must not remove objects.
 
 ## Scope

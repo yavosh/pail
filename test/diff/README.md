@@ -35,7 +35,7 @@ Record again after you add or change a scenario. Each golden step stores a finge
 Check these steps by hand in a new recording:
 
 - `bucket-lifecycle/head-after-delete`: AWS deletes buckets with eventual consistency, so this step can flap. Record it again if it does.
-- Object writes and listings: AWS adds a default CRC64NVME checksum to every object. It shows as `x-amz-checksum-*` headers on writes and `ChecksumAlgorithm` and `ChecksumType` in listings. Those steps are in `pending.txt` until #10.
+- Object writes and listings: AWS adds a default CRC64NVME checksum to every object. It shows as `x-amz-checksum-*` headers on writes and `ChecksumAlgorithm` and `ChecksumType` in listings. pail adds the same default.
 
 The `cors-configuration`, `lifecycle-configuration`, `acl-grants`, and `post-policy` scenarios have AWS recordings checked during replay.
 The ACL scenario creates an ACL-enabled AWS bucket with `ObjectWriter` ownership.
@@ -79,6 +79,7 @@ A recording makes a few dozen SQS and SNS requests, well inside the free tier.
 
 The SQS API scenarios are:
 
+- `sqs-auth-errors`: `ListQueues` with no credentials, an unknown key, a bad signature, and a skewed clock.
 - `sqs-queue-basics`: queue lifecycle, send, receive, and delete.
 - `sqs-message-attributes`: String, Number, and Binary attributes, and the `MessageAttributeNames` filter (`All`, an exact name, `prefix.*`, and none).
 - `sqs-visibility`: visibility timeouts, receipt handles that are stale, deleted, or garbage, and `PurgeQueue`.
@@ -109,6 +110,7 @@ The recording identity also needs `sqs:ListDeadLetterSourceQueues`.
 
 The SNS scenarios are:
 
+- `sns-auth-errors`: `GetTopicAttributes` with no credentials, an unknown key, a bad signature, and a skewed clock.
 - `sns-topic-basics`: create, read, publish to, and delete a topic, and the error for a deleted topic.
 - `sns-topic-attributes`: attributes set at creation and later, idempotent and conflicting `CreateTopic`, invalid and FIFO topic names, tags, and `DeleteTopic` of a deleted topic.
 - `sns-sqs-delivery`: a topic with an SQS subscription, in envelope, raw, and `MessageStructure` `json` delivery, with message attributes and `String.Array`.
@@ -125,8 +127,6 @@ Record the four newer scenarios with:
 ```bash
 go test ./test/diff -record -run '^TestDiff/sns-(topic-attributes|sqs-delivery|publish-batch|errors)$' -v
 ```
-
-The steps of the four newer scenarios are in `pending.txt`. After you record them, remove each line whose step matches AWS, and fix or list each difference.
 
 ## What is compared
 
