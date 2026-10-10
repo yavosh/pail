@@ -7,6 +7,7 @@ This page describes how pail implements the S3 operations it supports, and where
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
 - Virtual-hosted-style requests work when `--domain` is set. For example, with `--domain localhost`, pail serves `http://<bucket>.localhost:9000/<key>`.
 - An operation that pail doesn't support returns `501 NotImplemented` with an S3 XML error. Requests with `x-amz-tagging` or `x-amz-tagging-directive` also return `501 NotImplemented`.
+- pail ignores options that it doesn't implement on object writes. Examples are server-side encryption, Object Lock, storage class, website redirect, and `x-amz-expected-bucket-owner` (checked only on CORS and lifecycle requests). It also ignores destination preconditions on `CopyObject`, and a standalone checksum header for an algorithm it doesn't support, such as `x-amz-checksum-sha512`. A browser form field for an unsupported `x-amz-*` option returns `501 NotImplemented`.
 - Like AWS, pail answers a request path with a literal `..` segment with an empty `400 Bad Request`. For GET and DELETE requests, that response includes request IDs. AWS front ends vary in sending them.
 - pail doesn't check percent-encoded dots, such as `%2E%2E`. An object with a `..` key that an older pail stored is reachable only through the encoded form.
 

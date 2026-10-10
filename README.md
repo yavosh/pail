@@ -90,6 +90,8 @@ This quickstart uses the [AWS CLI](https://aws.amazon.com/cli/).
 
 Give each client pail's endpoint, access key pair, and region. pail accepts any region in a signature. However, `CreateBucket` rejects a location constraint for any region other than pail's, which is `us-east-1` by default.
 
+The examples below use the AWS CLI. An AWS SDK takes the same endpoint, keys, and region. For S3, also turn on path-style addressing, or see [Virtual-hosted style](#virtual-hosted-style).
+
 ### AWS CLI
 
 To skip `--endpoint-url` on each command, set `AWS_ENDPOINT_URL` once:
@@ -99,70 +101,19 @@ export AWS_ENDPOINT_URL=http://127.0.0.1:9000
 aws s3 ls
 ```
 
-### aws-sdk-go-v2
+Presigned URLs work with pail:
 
-Set `BaseEndpoint` and `UsePathStyle` in the S3 client options. Without `UsePathStyle`, the SDK sends virtual-hosted-style requests.
-
-```go
-cfg, err := config.LoadDefaultConfig(ctx,
-	config.WithRegion("us-east-1"),
-	config.WithCredentialsProvider(
-		credentials.NewStaticCredentialsProvider("AKIAEXAMPLEKEY000000", "example-secret-key", "")),
-)
-if err != nil {
-	return err
-}
-client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-	o.BaseEndpoint = aws.String("http://127.0.0.1:9000")
-	o.UsePathStyle = true
-})
-```
-
-### boto3
-
-Set `endpoint_url`:
-
-```python
-import boto3
-
-s3 = boto3.client(
-    "s3",
-    endpoint_url="http://127.0.0.1:9000",
-    aws_access_key_id="AKIAEXAMPLEKEY000000",
-    aws_secret_access_key="example-secret-key",
-    region_name="us-east-1",
-)
-```
-
-Presigned URLs from the default client work with pail:
-
-```python
-url = s3.generate_presigned_url("get_object", Params={"Bucket": "demo", "Key": "example.txt"})
+```bash
+aws s3 presign s3://demo/hello.txt
 ```
 
 ### SQS
 
-Point the client at the same endpoint as S3. SQS requests use the signing scope `sqs`, and pail routes them by that scope.
+Point the AWS CLI at the same endpoint as S3. SQS requests use the signing scope `sqs`, and pail routes them by that scope. Pass `--endpoint-url`, or set `AWS_ENDPOINT_URL_SQS`:
 
-- **AWS CLI.** Pass `--endpoint-url`, or set `AWS_ENDPOINT_URL_SQS`:
-
-  ```bash
-  aws --endpoint-url http://127.0.0.1:9000 sqs create-queue --queue-name demo
-  ```
-
-- **aws-sdk-go-v2.** Set `BaseEndpoint` in the SQS client options:
-
-  ```go
-  client := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
-  	o.BaseEndpoint = aws.String("http://127.0.0.1:9000")
-  })
-  ```
-
-- **boto3.** Set `endpoint_url`:
-
-  ```python
-  sqs = boto3.client("sqs", endpoint_url="http://127.0.0.1:9000", region_name="us-east-1")
-  ```
+```bash
+aws --endpoint-url http://127.0.0.1:9000 sqs create-queue --queue-name demo
+```
 
 pail supports FIFO queues (names that end in `.fifo`, with `FifoQueue=true`) and dead-letter queues (`RedrivePolicy` and `RedriveAllowPolicy`). See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
@@ -170,63 +121,32 @@ Queue URLs use account `000000000000` and the host of the request that returned 
 
 ### SNS
 
-Point the client at the same endpoint as S3 and SQS. SNS requests use the signing scope `sns`.
+Point the AWS CLI at the same endpoint as S3 and SQS. SNS requests use the signing scope `sns`. Pass `--endpoint-url`, or set `AWS_ENDPOINT_URL_SNS`:
 
-- **AWS CLI.** Pass `--endpoint-url`, or set `AWS_ENDPOINT_URL_SNS`:
+```bash
+aws --endpoint-url http://127.0.0.1:9000 sns create-topic --name demo
+```
 
-  ```bash
-  aws --endpoint-url http://127.0.0.1:9000 sns create-topic --name demo
-  ```
+A topic ARN is `arn:aws:sns:<region>:000000000000:<name>`. To receive messages, subscribe one of these:
 
-- **aws-sdk-go-v2.** Set `BaseEndpoint` in the SNS client options:
+- A queue, with protocol `sqs` and the queue's ARN. pail confirms the subscription at once and doesn't check the queue policy.
+- A URL, with protocol `http` or `https`. pail posts a `SubscriptionConfirmation` to the URL, and the endpoint confirms through its `SubscribeURL`. pail then posts notifications in the background, with retries.
 
-  ```go
-  client := sns.NewFromConfig(cfg, func(o *sns.Options) {
-  	o.BaseEndpoint = aws.String("http://127.0.0.1:9000")
-  })
-  ```
-
-- **boto3.** Set `endpoint_url`:
-
-  ```python
-  sns = boto3.client("sns", endpoint_url="http://127.0.0.1:9000", region_name="us-east-1")
-  ```
-
-A topic ARN is `arn:aws:sns:<region>:000000000000:<name>`. To receive messages, subscribe a queue with protocol `sqs` and the queue's ARN. pail confirms the subscription at once and doesn't check the queue policy. See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
+Filter policies limit what a subscription receives. See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
 ### Browser form uploads
 
 To let a browser upload directly to pail, follow these steps:
 
-1. Set bucket CORS rules that allow your application's origin and the `POST` method.
-2. On your backend, create a boto3 client that uses Signature Version 4. Form policies require it.
+1. Set bucket CORS rules that allow your application's origin and the `POST` method:
 
-   ```python
-   from botocore.config import Config
-
-   s3 = boto3.client(
-       "s3",
-       endpoint_url="http://127.0.0.1:9000",
-       aws_access_key_id="AKIAEXAMPLEKEY000000",
-       aws_secret_access_key="example-secret-key",
-       region_name="us-east-1",
-       config=Config(signature_version="s3v4"),
-   )
+   ```bash
+   aws --endpoint-url http://127.0.0.1:9000 s3api put-bucket-cors --bucket demo --cors-configuration \
+     '{"CORSRules":[{"AllowedOrigins":["https://app.example.com"],"AllowedMethods":["POST"],"AllowedHeaders":["*"]}]}'
    ```
 
-3. Create the form grant:
-
-   ```python
-   post = s3.generate_presigned_post(
-       Bucket="demo",
-       Key="uploads/${filename}",
-       Fields={"Content-Type": "image/png"},
-       Conditions=[{"Content-Type": "image/png"}, ["content-length-range", 1, 10485760]],
-       ExpiresIn=300,
-   )
-   ```
-
-4. Return `post` to the browser. In the browser, add each `post["fields"]` value to a `FormData` object, add the file last, and send the form to `post["url"]`.
+2. On your backend, create a presigned `POST` form with an AWS SDK. Sign it with Signature Version 4. Form policies require it.
+3. Return the form's URL and fields to the browser. In the browser, add each field to a `FormData` object, add the file last, and send the form to the URL.
 
 ### Virtual-hosted style
 
@@ -245,7 +165,7 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | ACLs | `GetBucketAcl`, `PutBucketAcl`, `GetObjectAcl`, `PutObjectAcl` |
 | Browser forms | `POST Object` |
 | SQS | `CreateQueue`, `GetQueueUrl`, `DeleteQueue`, `PurgeQueue`, `ListQueues`, `ListDeadLetterSourceQueues`, `GetQueueAttributes`, `SetQueueAttributes`, `TagQueue`, `UntagQueue`, `ListQueueTags`, `SendMessage`, `SendMessageBatch`, `ReceiveMessage`, `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
-| SNS | `CreateTopic`, `DeleteTopic`, `ListTopics`, `GetTopicAttributes`, `SetTopicAttributes`, `TagResource`, `UntagResource`, `ListTagsForResource`, `Subscribe`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`, `Publish`, `PublishBatch` |
+| SNS | `CreateTopic`, `DeleteTopic`, `ListTopics`, `GetTopicAttributes`, `SetTopicAttributes`, `TagResource`, `UntagResource`, `ListTagsForResource`, `Subscribe`, `ConfirmSubscription`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`, `Publish`, `PublishBatch` |
 
 pail also verifies checksums, honors conditional headers, and accepts `aws-chunked` streaming uploads. For limits and exact behavior, see [S3 compatibility](docs/s3-compatibility.md) and [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
@@ -254,8 +174,11 @@ pail also verifies checksums, honors conditional headers, and accepts `aws-chunk
 - S3, SQS, and SNS requests use AWS Signature Version 4 (SigV4) with the configured access key pair.
 - Presigned URLs accept SigV4 and Signature Version 2 (SigV2). Form policies require SigV4. SigV2 `Authorization` headers aren't supported.
 - CORS preflight requests, and operations that a public ACL grant allows, need no signature.
+- The SNS `SubscribeURL` and `UnsubscribeURL` links need no signature, as on AWS. A link confirms a subscription with its token, or removes a subscription that was confirmed through its link.
 
 Like AWS, pail accepts a signed request for up to 15 minutes, so anyone who captures one can replay it in that window. If the network isn't trusted, keep pail on `127.0.0.1` or put it behind TLS.
+
+Anyone with the keys can subscribe any URL to an SNS topic, and pail then sends HTTP requests to that URL. That includes addresses on your local network, which AWS refuses.
 
 ## Configuration
 

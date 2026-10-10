@@ -1,5 +1,7 @@
 # CORS, lifecycle, ACLs, and browser uploads
 
+Status: done in #47, merged on 2026-10-07.
+
 Implement bucket CORS, lifecycle expiration, ACL grants, and SigV4 POST policies.
 Keep the existing single-account, unversioned storage model.
 

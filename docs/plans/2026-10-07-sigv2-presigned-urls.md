@@ -1,5 +1,7 @@
 # SigV2 presigned URLs
 
+Status: done in #48, merged on 2026-10-07.
+
 Implement [issue #43](https://github.com/yavosh/pail/issues/43) for boto3's default presigned GET and PUT URLs.
 
 ## Scope
