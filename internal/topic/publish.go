@@ -63,8 +63,8 @@ type PublishResult struct {
 // delivery is one subscription that receives a message. queue is empty for
 // an HTTP or HTTPS endpoint.
 type delivery struct {
-	arn, protocol, endpoint, queue string
-	raw                            bool
+	arn, protocol, endpoint, queue, message string
+	raw                                     bool
 }
 
 // Publish sends a message to every subscription of a topic and returns its
@@ -76,7 +76,6 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 	if err := validatePublish(in); err != nil {
 		return "", err
 	}
-	message := selectMessage(in.MessageStructure, in.Message)
 	e.mu.Lock()
 	t, err := e.findTopic(in.TopicARN)
 	if err != nil {
@@ -89,27 +88,35 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 		if s.Pending {
 			continue
 		}
-		// With MessageStructure json, a body policy sees the SQS message (unverified).
+		// With MessageStructure json, a body policy sees the text of its own protocol.
+		message := selectMessage(in.MessageStructure, in.Message, s.Protocol)
 		f, _ := compileFilter(s.Attributes) // checked when stored
 		if !f.match(in.Attributes, message) {
 			continue
 		}
 		name, _ := e.checkEndpoint(s.Protocol, s.Endpoint) // checked when stored
-		targets = append(targets, delivery{s.ARN, s.Protocol, s.Endpoint, name, s.rawDelivery()})
+		targets = append(targets, delivery{s.ARN, s.Protocol, s.Endpoint, name, message, s.rawDelivery()})
 	}
 	e.mu.Unlock()
 
 	n := notification{
 		messageID: newUUID(), topicARN: in.TopicARN, subject: in.Subject,
-		message: message, timestamp: time.Now().UTC().Format(timestampFormat),
+		timestamp:        time.Now().UTC().Format(timestampFormat),
 		signatureVersion: version, baseURL: in.BaseURL, attrs: in.Attributes,
 	}
-	if slices.ContainsFunc(targets, func(d delivery) bool { return !d.raw }) {
-		if n.signature, err = e.signString(version, n.stringToSign()); err != nil {
+	// The signature covers the message, so sign once per distinct text.
+	signatures := map[string]string{}
+	for _, d := range targets {
+		if _, done := signatures[d.message]; done || d.raw {
+			continue
+		}
+		n.message = d.message
+		if signatures[d.message], err = e.signString(version, n.stringToSign()); err != nil {
 			return "", err
 		}
 	}
 	for _, d := range targets {
+		n.message, n.signature = d.message, signatures[d.message]
 		if d.protocol != protocolSQS {
 			body := n.message
 			if !d.raw {
@@ -164,15 +171,16 @@ func (e *Engine) PublishBatch(ctx context.Context, topicARN string, entries []Pu
 	return out, nil
 }
 
-// selectMessage returns the text for the SQS protocol: with a json message
-// structure, the "sqs" value when present, else "default".
-func selectMessage(structure, message string) string {
+// selectMessage returns the text for a protocol: with a json message
+// structure, the value under the protocol name when present, else "default".
+// The sqs key is verified; the http and https keys follow the AWS docs (unverified).
+func selectMessage(structure, message, protocol string) string {
 	if structure != "json" {
 		return message
 	}
 	var m map[string]string
 	_ = json.Unmarshal([]byte(message), &m) // checked in validatePublish
-	if v, ok := m["sqs"]; ok {
+	if v, ok := m[protocol]; ok {
 		return v
 	}
 	return m["default"]

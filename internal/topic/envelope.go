@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"maps"
-	"net/url"
 	"slices"
 	"strings"
 
@@ -89,7 +88,7 @@ func (c confirmation) message() string {
 }
 
 func (c confirmation) subscribeURL() string {
-	return c.baseURL + "/?Action=ConfirmSubscription&TopicArn=" + url.QueryEscape(c.topicARN) + "&Token=" + c.token
+	return c.baseURL + "/?Action=ConfirmSubscription&TopicArn=" + c.topicARN + "&Token=" + c.token
 }
 
 // stringToSign is the canonical text that SNS signs for a SubscriptionConfirmation.

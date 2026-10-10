@@ -13,8 +13,10 @@ import (
 const (
 	httpTimeout  = 15 * time.Second // unverified
 	jobQueueSize = 1000
-	maxAttempts  = 4 // 1 + 3 retries, AWS's default healthyRetryPolicy
-	retryDelay   = 20 * time.Second
+	// deliveryWorkers is pail's choice: it bounds the posts in flight.
+	deliveryWorkers = 100
+	maxAttempts     = 4 // 1 + 3 retries, AWS's default healthyRetryPolicy
+	retryDelay      = 20 * time.Second
 
 	// httpDeliveryPolicy is the EffectiveDeliveryPolicy of an HTTP subscription (unverified).
 	httpDeliveryPolicy = `{"healthyRetryPolicy":{"minDelayTarget":20,"maxDelayTarget":20,"numRetries":3,"numMaxDelayRetries":0,"numNoDelayRetries":0,"numMinDelayRetries":0,"backoffFunction":"linear"},"sicklyRetryPolicy":null,"throttlePolicy":null,"requestPolicy":{"headerContentType":"text/plain; charset=UTF-8"},"guaranteed":false}`
@@ -77,18 +79,22 @@ func (e *Engine) sendConfirmation(sub subDef, version, baseURL string) {
 	e.enqueue(newJob(sub.Endpoint, c.envelope(), "SubscriptionConfirmation", c.messageID, sub.TopicARN, "", false))
 }
 
-// RunDeliveries posts queued jobs until ctx is done. It returns after every
-// running job has stopped.
+// RunDeliveries posts queued jobs with deliveryWorkers workers until ctx is
+// done. It returns after every worker has stopped.
 func (e *Engine) RunDeliveries(ctx context.Context) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case j := <-e.jobs:
-			wg.Go(func() { e.runJob(ctx, j) })
-		}
+	for range deliveryWorkers {
+		wg.Go(func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case j := <-e.jobs:
+					e.runJob(ctx, j)
+				}
+			}
+		})
 	}
 }
 

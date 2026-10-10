@@ -262,16 +262,16 @@ The `sns-filter-policies` and `sns-filter-edge-cases` recordings verify the rule
   - An attribute that is not on the message does not match any condition except `{"exists": false}`. That includes `anything-but`.
   - A value of another type satisfies `anything-but`. For example, `{"anything-but": ["prod"]}` matches the `Number` attribute `5`.
 - In `MessageBody` scope, the message must be a JSON object. Any other message does not match. An array on the path fans out into its elements, and the key matches when any of them matches. An object at the end of the path is not a value. A missing path, or one whose parent object is missing, does not match, except `{"exists": false}`.
-- With `MessageStructure` set to `json`, a body policy matches the message that pail sends to SQS: the `sqs` value, or `default` when there is no `sqs` value. A policy that matches only the `default` value does not match when an `sqs` value exists.
+- With `MessageStructure` set to `json`, pail chooses the text per protocol, and a body policy matches the text that its own subscription receives. For an SQS subscription, that is the `sqs` value, or `default` when there is no `sqs` value (verified). A policy that matches only the `default` value does not match when an `sqs` value exists. An `http` subscription uses the `http` value and an `https` subscription uses the `https` value, each with the same fallback (unverified, from the AWS documentation).
 - pail filters before it signs. A publish that matches no subscription sends nothing.
-- Filter policies apply to HTTP and HTTPS subscriptions too. With `MessageStructure` `json`, an HTTP delivery uses the same `sqs` or `default` text as an SQS delivery (unverified).
+- Filter policies apply to HTTP and HTTPS subscriptions too. See the `MessageStructure` rule above.
 
 ### Publish
 
 - `Publish` needs `TopicArn` and a non-empty `Message`. `TargetArn` and `PhoneNumber` return `InvalidParameter`.
 - A message and its attributes total at most 262,144 bytes. A larger one returns `InvalidParameter`.
 - `Subject` is at most 100 printable ASCII characters, with no line breaks.
-- `MessageStructure` is empty or `json`. With `json`, the message is a JSON object of string values with a `default` key. pail delivers the `sqs` value when it exists, and `default` otherwise.
+- `MessageStructure` is empty or `json`. With `json`, the message is a JSON object of string values with a `default` key. pail delivers the value under the protocol name of the subscription (`sqs`, `http`, or `https`) when it exists, and `default` otherwise. The `sqs` key is verified. The `http` and `https` keys are unverified.
 - A message has at most 10 attributes. Names follow the SQS rules. The types are `String`, `String.Array` (the value is a JSON array), `Number`, and `Binary`, with an optional custom label such as `String.json`.
 - A standard topic accepts `MessageGroupId`. pail forwards it as the `MessageGroupId` of the SQS message (unverified). `MessageDeduplicationId` returns `InvalidParameter` (unverified).
 - A missing `Message` parameter returns `ValidationError`. A long `Subject` and a bad `MessageStructure` return `InvalidParameter`. An empty `Message` returns `InvalidParameter` too: verified for a `PublishBatch` entry, unverified for `Publish`. A `MessageGroupId` must be 1 to 128 printable ASCII characters (unverified). The other rules above return `InvalidParameter` too (unverified for attribute errors; AWS may use `ParameterValueInvalid`).
@@ -304,7 +304,7 @@ pail posts to an HTTP or HTTPS endpoint in the background. `Publish` does not wa
 
 - `Subscribe` makes the subscription pending and sends a `SubscriptionConfirmation` to the endpoint. A pending subscription receives no notifications.
 - The confirmation body is a JSON object with these keys in this order: `Type` (`SubscriptionConfirmation`), `MessageId`, `Token`, `TopicArn`, `Message`, `SubscribeURL`, `Timestamp`, `SignatureVersion`, `Signature`, `SigningCertURL`.
-- `SubscribeURL` is `<scheme>://<host>/?Action=ConfirmSubscription&TopicArn=<escaped ARN>&Token=<token>`. The token is 64 hex characters.
+- `SubscribeURL` is `<scheme>://<host>/?Action=ConfirmSubscription&TopicArn=<topic ARN>&Token=<token>`. The ARN is not escaped, as in the AWS documentation. The token is 64 hex characters.
 - The string to sign is the lines `Message`, `MessageId`, `SubscribeURL`, `Timestamp`, `Token`, `TopicArn`, and `Type`, each as a name line and a value line, in that order. The topic's `SignatureVersion` picks the hash, as for notifications.
 - The endpoint confirms with an unsigned `GET` of the `SubscribeURL`, or with a signed `ConfirmSubscription` call.
 - After confirmation, `Publish` posts the [envelope](#delivery-to-sqs) to the endpoint. With `RawMessageDelivery` set to `true`, it posts the message text only, with no message attributes.
@@ -313,7 +313,7 @@ pail posts to an HTTP or HTTPS endpoint in the background. `Publish` does not wa
 - pail makes at most 4 attempts, 20 seconds apart. This is the default `healthyRetryPolicy` of AWS. A custom `DeliveryPolicy` is not applied.
 - Each attempt times out after 15 seconds. pail does not follow redirects.
 - pail verifies the TLS certificate of an HTTPS endpoint against the system roots. An endpoint with a self-signed certificate fails.
-- A waiting queue holds 1,000 deliveries. pail drops a delivery when the queue is full, and logs a warning.
+- A fixed pool of 100 workers (pail's choice) posts at most 100 requests at once. A queue of 1,000 deliveries waits for a free worker. pail drops a delivery when the queue is full, and logs a warning.
 - A delivery is in memory. A restart loses the deliveries that wait, and a pending subscription stays pending.
 - Any client with credentials can make pail send a `POST` to any URL that pail can reach. Run pail only where that is acceptable.
 
@@ -325,7 +325,7 @@ An SNS message links to pail with an unsigned `GET`. pail routes a request to SN
 - Its method is `GET` and its path is `/`.
 - Its query has `Action` set to `ConfirmSubscription` or `Unsubscribe`.
 
-pail reads only the query to route. Every other unsigned request goes to S3, including a `POST` with `Action` in the query and a `GET` of a bucket path. SNS accepts these two actions without a signature. Any other unsigned action returns `MissingAuthenticationToken`, and a request with a bad signature still fails.
+pail reads only the query to route. Every other unsigned request goes to S3, including a `POST` with `Action` in the query and a `GET` of a bucket path, and a `GET` of a virtual-hosted bucket root with one of those two actions. SNS accepts these two actions without a signature. Any other unsigned action returns `MissingAuthenticationToken`, and a request with a bad signature still fails.
 
 ### Signatures
 

@@ -254,9 +254,14 @@ func startEndpoint(t *testing.T, e *Engine, status func(n int) int) *recordingEn
 		ep.posts = append(ep.posts, post{r.Header.Clone(), string(body), time.Since(start)})
 		n := len(ep.posts)
 		ep.mu.Unlock()
-		w.WriteHeader(status(n))
+		code := status(n)
+		if code/100 == 3 {
+			w.Header().Set("Location", "/elsewhere")
+		}
+		w.WriteHeader(code)
 	}))
-	e.client = ep.srv.Client() // starts the in-memory network
+	// Keep pail's client for its timeout and redirect rule; swap only the transport.
+	e.client.Transport = ep.srv.Client().Transport // starts the in-memory network
 	return ep
 }
 
@@ -341,7 +346,7 @@ func TestHTTPConfirmationDelivery(t *testing.T) {
 					t.Fatal(err)
 				}
 				token := e.subs[sub].Token
-				wantSubscribeURL := testBase + "/?Action=ConfirmSubscription&TopicArn=" + url.QueryEscape(arn) + "&Token=" + token
+				wantSubscribeURL := testBase + "/?Action=ConfirmSubscription&TopicArn=" + arn + "&Token=" + token
 				checks := map[string]string{
 					"Type": "SubscriptionConfirmation", "Token": token, "TopicArn": arn, "SubscribeURL": wantSubscribeURL,
 					"SignatureVersion": version, "SigningCertURL": testBase + "/_pail/sns/signing-cert.pem",
@@ -459,7 +464,11 @@ func TestHTTPDeliveryRetries(t *testing.T) {
 		{"500 retries three times", always(500), []time.Duration{0, 20 * time.Second, 40 * time.Second, 60 * time.Second}},
 		{"429 retries", always(429), []time.Duration{0, 20 * time.Second, 40 * time.Second, 60 * time.Second}},
 		{"400 does not retry", always(400), []time.Duration{0}},
-		{"302 does not retry", always(302), []time.Duration{0}},
+		{"302 with a Location is not followed or retried", always(302), []time.Duration{0}},
+		{"a handler slower than the timeout is retried", func(int) int {
+			time.Sleep(time.Minute)
+			return 200
+		}, []time.Duration{0, 35 * time.Second, 70 * time.Second, 105 * time.Second}}, // 15 s timeout + 20 s delay
 		{"200 succeeds", always(200), []time.Duration{0}},
 		{"204 succeeds", always(204), []time.Duration{0}},
 		{"success stops retries", func(n int) int {
@@ -520,4 +529,37 @@ func TestHTTPDeliveryQueueFull(t *testing.T) {
 	if j := <-e.jobs; j.url != "http://one.test/" {
 		t.Errorf("queued job = %q, want the first", j.url)
 	}
+}
+
+func TestHTTPDeliveryWorkersAreBounded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e, _ := newEngine(t)
+		var mu sync.Mutex
+		running, peak := 0, 0
+		ep := startEndpoint(t, e, func(int) int {
+			mu.Lock()
+			running++
+			peak = max(peak, running)
+			mu.Unlock()
+			time.Sleep(time.Second)
+			mu.Lock()
+			running--
+			mu.Unlock()
+			return 200
+		})
+		stop := runDeliveries(e)
+		defer stop()
+		const jobs = 3 * deliveryWorkers
+		for range jobs {
+			e.enqueue(newJob(ep.srv.URL, "x", "Notification", "id", "arn", "sub", false))
+		}
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got := len(ep.got()); got != jobs {
+			t.Errorf("endpoint received %d requests, want %d", got, jobs)
+		}
+		if peak != deliveryWorkers {
+			t.Errorf("peak concurrent posts = %d, want %d", peak, deliveryWorkers)
+		}
+	})
 }
