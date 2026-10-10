@@ -272,6 +272,29 @@
       "body": "Error\n  Code: InvalidArgument\n"
     },
     {
+      "step": "copy-self-replace-tags",
+      "request": "PUT /k",
+      "fingerprint": "4105a02e37e68145",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: InvalidRequest\n"
+    },
+    {
+      "step": "put-tagging-no-tagset",
+      "request": "PUT /k?tagging",
+      "fingerprint": "233d5a3bb4753220",
+      "status": 200,
+      "headers": {
+        "Content-Length": "0",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
       "step": "delete-tagging",
       "request": "DELETE /k?tagging",
       "fingerprint": "5a57121be62909fd",
@@ -410,6 +433,28 @@
     },
     {
       "step": "get-bucket-tagging-deleted",
+      "request": "GET /?tagging",
+      "fingerprint": "2d658f99a0e16960",
+      "status": 404,
+      "headers": {
+        "Content-Type": "application/xml",
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      },
+      "body": "Error\n  Code: NoSuchTagSet\n"
+    },
+    {
+      "step": "put-bucket-tagging-empty",
+      "request": "PUT /?tagging",
+      "fingerprint": "840ecdbdc8989ae9",
+      "status": 204,
+      "headers": {
+        "X-Amz-Id-2": "<present>",
+        "X-Amz-Request-Id": "<present>"
+      }
+    },
+    {
+      "step": "get-bucket-tagging-after-empty",
       "request": "GET /?tagging",
       "fingerprint": "2d658f99a0e16960",
       "status": 404,

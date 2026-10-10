@@ -198,26 +198,54 @@ func TestLifecycleTagFilterValidation(t *testing.T) {
 	}
 	const expire = `<Expiration><Days>1</Days></Expiration>`
 	const abort = `<AbortIncompleteMultipartUpload><DaysAfterInitiation>1</DaysAfterInitiation></AbortIncompleteMultipartUpload>`
-	tag := func(k, v string) string { return "<Tag><Key>" + k + "</Key><Value>" + v + "</Value></Tag>" }
+	tagXML := func(k, v string) string { return "<Tag><Key>" + k + "</Key><Value>" + v + "</Value></Tag>" }
 	tests := []struct {
 		name       string
 		body       string
 		wantStatus int
 		wantCode   string
 	}{
-		{"one tag", rule(tag("a", "1"), expire), 200, ""},
-		{"and of tags", rule("<And>"+tag("a", "1")+tag("b", "2")+"</And>", expire), 200, ""},
-		{"and of prefix and tag", rule("<And><Prefix>p/</Prefix>"+tag("a", "1")+"</And>", expire), 200, ""},
-		{"two direct tags", rule(tag("a", "1")+tag("b", "2"), expire), 400, "MalformedXML"},
-		{"and of one tag", rule("<And>"+tag("a", "1")+"</And>", expire), 400, "MalformedXML"},
-		{"duplicate tags", rule("<And>"+tag("a", "1")+tag("a", "2")+"</And>", expire), 400, "InvalidTag"},
-		{"tag with abort", rule(tag("a", "1"), abort), 400, "InvalidArgument"},
-		{"tag with transition", rule(tag("a", "1"), `<Transition><Days>1</Days><StorageClass>GLACIER</StorageClass></Transition>`), 501, "NotImplemented"},
+		{"one tag", rule(tagXML("a", "1"), expire), 200, ""},
+		{"and of tags", rule("<And>"+tagXML("a", "1")+tagXML("b", "2")+"</And>", expire), 200, ""},
+		{"and of prefix and tag", rule("<And><Prefix>p/</Prefix>"+tagXML("a", "1")+"</And>", expire), 200, ""},
+		{"two direct tags", rule(tagXML("a", "1")+tagXML("b", "2"), expire), 400, "MalformedXML"},
+		{"and of one tag", rule("<And>"+tagXML("a", "1")+"</And>", expire), 400, "MalformedXML"},
+		{"duplicate tags", rule("<And>"+tagXML("a", "1")+tagXML("a", "2")+"</And>", expire), 400, "InvalidTag"},
+		{"tag with abort", rule(tagXML("a", "1"), abort), 400, "InvalidArgument"},
+		{"tag with transition", rule(tagXML("a", "1"), `<Transition><Days>1</Days><StorageClass>GLACIER</StorageClass></Transition>`), 501, "NotImplemented"},
 	}
 	for _, tt := range tests {
 		r := call(t, srv, http.MethodPut, "/bkt?lifecycle", tt.body, nil)
 		if r.status != tt.wantStatus || r.code != tt.wantCode {
 			t.Errorf("%s: PutBucketLifecycleConfiguration = %d %q, want %d %q", tt.name, r.status, r.code, tt.wantStatus, tt.wantCode)
 		}
+	}
+}
+
+func TestTaggingRecordedEdges(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	_ = call(t, srv, http.MethodPut, "/bkt", "", nil)
+	empty := tagDoc()
+	if r := call(t, srv, http.MethodPut, "/bkt?tagging", empty, nil); r.status != http.StatusNoContent {
+		t.Fatalf("PutBucketTagging with no tags = %d %q, want 204", r.status, r.code)
+	}
+	if r := call(t, srv, http.MethodGet, "/bkt?tagging", "", nil); r.status != 404 || r.code != "NoSuchTagSet" {
+		t.Errorf("GetBucketTagging after an empty set = %d %q, want 404 NoSuchTagSet", r.status, r.code)
+	}
+	_ = call(t, srv, http.MethodPut, "/bkt/k", "x", map[string]string{"x-amz-tagging": "a=1", "x-amz-acl": "public-read"})
+	if got := call(t, srv, http.MethodHead, "/bkt/k", "", nil).header.Get("x-amz-tagging-count"); got != "1" {
+		t.Errorf("signed HEAD: x-amz-tagging-count = %q, want 1", got)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodHead, srv.URL+"/bkt/k", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("x-amz-tagging-count") != "" {
+		t.Errorf("anonymous HEAD of a public-read object = %d with x-amz-tagging-count %q, want 200 and no count", resp.StatusCode, resp.Header.Get("x-amz-tagging-count"))
 	}
 }

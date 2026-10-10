@@ -184,13 +184,13 @@ pail supports `PutObjectTagging`, `GetObjectTagging`, `DeleteObjectTagging`, `Pu
 - `PutObjectTagging` replaces the tag set and returns `200`. `Content-MD5` is optional. It doesn't change the object's ETag or `Last-Modified`.
 - `GetObjectTagging` returns the tags in the order you stored them. An object with no tags returns an empty `TagSet`. A missing key returns `404 NoSuchKey`.
 - `DeleteObjectTagging` returns `204`.
-- `PutBucketTagging` and `DeleteBucketTagging` return `204`. `GetBucketTagging` returns `404 NoSuchTagSet` when the bucket has no tags.
+- `PutBucketTagging` and `DeleteBucketTagging` return `204`. `GetBucketTagging` returns `404 NoSuchTagSet` when the bucket has no tags, including after a `PutBucketTagging` with an empty tag set.
 - Limits: 10 tags for an object. A bucket allows 50 tags, which comes from the AWS documentation and isn't recorded. A key has 1 to 128 characters and a value has up to 256. A value can be empty.
 - A tag set with too many tags returns `400 BadRequest`. A duplicate key, an empty key, a key that starts with `aws:`, or a key or value over its limit returns `400 InvalidTag`. A malformed document returns `400 MalformedXML`. pail doesn't restrict the characters in a tag.
 - `x-amz-tagging` sets tags on `PutObject`, `CopyObject`, and `CreateMultipartUpload`. It uses URL query encoding, such as `a=1&b=2`. A key without `=` has an empty value. A multipart upload keeps its tags through `CompleteMultipartUpload`.
 - `CopyObject` takes `x-amz-tagging-directive`. `COPY`, the default, copies the source's tags. `REPLACE` takes the tags from `x-amz-tagging`. Any other value returns `400 InvalidArgument`.
 - A browser form sets tags with a `tagging` field that holds a `Tagging` XML document. This isn't recorded against AWS.
-- `GetObject` and `HeadObject` return `x-amz-tagging-count` when the object has tags.
+- `GetObject` and `HeadObject` return `x-amz-tagging-count` when the object has tags and the request is signed. An anonymous read, allowed by an ACL, gets no count, because AWS returns it only to a caller allowed to read the tags. This is unverified.
 - `PutObject` and `CopyObject` replace the whole object, so an overwrite keeps no earlier tags.
 
 ## CORS
