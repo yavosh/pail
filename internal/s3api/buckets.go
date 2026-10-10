@@ -22,8 +22,8 @@ import (
 
 // Store is the storage the S3 handlers need. *store.Store implements it.
 type Store interface {
-	PutObjectACL(ctx context.Context, bucket, key string, policy acl.Policy) error
-	PutObjectTags(ctx context.Context, bucket, key string, tags []tag.Tag) error
+	PutObjectACL(ctx context.Context, bucket, key, versionID string, policy acl.Policy) error
+	PutObjectTags(ctx context.Context, bucket, key, versionID string, tags []tag.Tag) error
 	GetBucketConfiguration(ctx context.Context, bucket, kind string) (store.BucketConfiguration, error)
 	PutBucketConfiguration(ctx context.Context, bucket, kind string, cfg *store.BucketConfiguration) error
 	CreateBucket(ctx context.Context, name string) error
@@ -31,10 +31,12 @@ type Store interface {
 	ListBuckets(ctx context.Context) ([]store.BucketInfo, error)
 	DeleteBucket(ctx context.Context, name string) error
 	PutObject(ctx context.Context, bucket, key string, body io.Reader, opts store.PutOptions) (store.ObjectInfo, error)
-	GetObject(ctx context.Context, bucket, key string) (vfs.File, store.ObjectInfo, error)
-	HeadObject(ctx context.Context, bucket, key string) (store.ObjectInfo, error)
-	DeleteObject(ctx context.Context, bucket, key string, opts store.DeleteOptions) error
+	GetObjectVersion(ctx context.Context, bucket, key, versionID string) (vfs.File, store.ObjectInfo, error)
+	HeadObjectVersion(ctx context.Context, bucket, key, versionID string) (store.ObjectInfo, error)
+	DeleteObject(ctx context.Context, bucket, key string, opts store.DeleteOptions) (store.DeleteResult, error)
 	ListObjects(ctx context.Context, bucket, prefix, startAfter string) ([]store.ObjectInfo, error)
+	ListVersions(ctx context.Context, bucket, prefix, fromKey string) ([]store.VersionInfo, error)
+	BucketVersioning(ctx context.Context, bucket string) (string, error)
 	CreateUpload(ctx context.Context, bucket, key string, opts store.UploadOptions) (store.UploadInfo, error)
 	PutPart(ctx context.Context, bucket, key, uploadID string, partNumber int, body io.Reader, opts store.PartOptions) (store.PartInfo, error)
 	ListParts(ctx context.Context, bucket, key, uploadID string) (store.UploadInfo, []store.PartInfo, error)

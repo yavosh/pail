@@ -48,6 +48,10 @@ type ObjectInfo struct {
 	// Parts is the layout of a completed multipart object. A simple object, or
 	// one completed before pail kept the layout, has none.
 	Parts []ObjectPart `json:"parts,omitempty"`
+	// VersionID is empty for the null version, which every object in a
+	// bucket that was never versioned is. A delete marker has no body.
+	VersionID    string `json:"versionId,omitempty"`
+	DeleteMarker bool   `json:"deleteMarker,omitempty"`
 }
 
 // ObjectPart is one part of a completed multipart object, in object order.
@@ -63,6 +67,9 @@ type ObjectPart struct {
 type record struct {
 	ObjectInfo
 	Blob string `json:"blob"`
+	// Seq orders the versions of a key; a newer version has a larger Seq.
+	// Writes in a versioned bucket set it. Earlier objects have none.
+	Seq int64 `json:"seq,omitempty"`
 }
 
 // PutOptions are the optional parts of a PutObject.
@@ -148,7 +155,7 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 		Checksum:          checksum.Encode(flexibleSum),
 		ChecksumType:      checksum.FullObject,
 	}
-	if err := s.commitRecord(ctx, bucket, rec, opts); err != nil {
+	if err := s.commitRecord(ctx, bucket, &rec, opts); err != nil {
 		_ = s.fs.Remove(path.Join(blobsDir(bucket), blob))
 		return ObjectInfo{}, err
 	}
@@ -156,19 +163,25 @@ func (s *Store) PutObject(ctx context.Context, bucket, key string, body io.Reade
 }
 
 // commitRecord checks the write conditions and commits rec under the key
-// lock, then removes the blob it replaced.
-func (s *Store) commitRecord(ctx context.Context, bucket string, rec record, opts PutOptions) error {
+// lock. The conditions apply to the current version; a delete marker is no object.
+// It sets rec's version ID.
+func (s *Store) commitRecord(ctx context.Context, bucket string, rec *record, opts PutOptions) error {
 	kl := s.keyLock(bucket, rec.Key)
 	kl.Lock()
 	defer kl.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	status, err := s.versioningStatus(bucket)
+	if err != nil {
+		return err
+	}
 	old, err := s.readRecord(bucket, rec.Key)
-	exists := err == nil
+	hasOld := err == nil
 	if err != nil && !errors.Is(err, ErrNoSuchKey) {
 		return err
 	}
+	exists := hasOld && !old.DeleteMarker
 	switch {
 	case opts.Anonymous && exists && (old.ACL == nil || old.ACL.Owner.ID != acl.AnonymousID):
 		return ErrAccessDenied
@@ -179,17 +192,17 @@ func (s *Store) commitRecord(ctx context.Context, bucket string, rec record, opt
 	case opts.IfMatch != "" && strings.Trim(opts.IfMatch, `"`) != old.ETag:
 		return ErrPreconditionFailed
 	}
-	if err := s.writeJSON(metaFile(bucket, rec.Key), rec); err != nil {
-		return fmt.Errorf("commit metadata: %w", err)
-	}
-	if exists && old.Blob != rec.Blob {
-		_ = s.fs.Remove(path.Join(blobsDir(bucket), old.Blob))
-	}
-	return nil
+	return s.install(bucket, status, old, hasOld, rec)
 }
 
-// GetObject opens key for reading. The caller closes the file.
+// GetObject opens the current version of key for reading. The caller closes the file.
 func (s *Store) GetObject(ctx context.Context, bucket, key string) (vfs.File, ObjectInfo, error) {
+	return s.GetObjectVersion(ctx, bucket, key, "")
+}
+
+// GetObjectVersion opens a version of key; an empty versionID names the
+// current one. A delete marker fails with a *DeleteMarkerError.
+func (s *Store) GetObjectVersion(ctx context.Context, bucket, key, versionID string) (vfs.File, ObjectInfo, error) {
 	if err := s.checkObject(ctx, bucket, key); err != nil {
 		return nil, ObjectInfo{}, err
 	}
@@ -198,7 +211,7 @@ func (s *Store) GetObject(ctx context.Context, bucket, key string) (vfs.File, Ob
 	// blob missing twice is real damage, not a race.
 	var lastBlob string
 	for range maxOpenAttempts {
-		rec, err := s.readRecord(bucket, key)
+		rec, _, err := s.lookupObject(bucket, key, versionID)
 		if err != nil {
 			return nil, ObjectInfo{}, s.missing(ctx, bucket, err)
 		}
@@ -216,64 +229,89 @@ func (s *Store) GetObject(ctx context.Context, bucket, key string) (vfs.File, Ob
 
 const maxOpenAttempts = 16
 
-// HeadObject describes key.
+// HeadObject describes the current version of key.
 func (s *Store) HeadObject(ctx context.Context, bucket, key string) (ObjectInfo, error) {
+	return s.HeadObjectVersion(ctx, bucket, key, "")
+}
+
+// HeadObjectVersion describes a version of key, as GetObjectVersion selects it.
+func (s *Store) HeadObjectVersion(ctx context.Context, bucket, key, versionID string) (ObjectInfo, error) {
 	if err := s.checkObject(ctx, bucket, key); err != nil {
 		return ObjectInfo{}, err
 	}
-	rec, err := s.readRecord(bucket, key)
+	rec, _, err := s.lookupObject(bucket, key, versionID)
 	if err != nil {
 		return ObjectInfo{}, s.missing(ctx, bucket, err)
 	}
 	return rec.ObjectInfo, nil
 }
 
-// DeleteOptions are the optional conditions of a DeleteObject.
+// DeleteOptions are the optional parts of a DeleteObject.
 type DeleteOptions struct {
 	// IfMatch requires a strong ETag match, or "*" for any existing object.
 	// nil is unconditional; a conditional missing key fails with ErrNoSuchKey.
+	// With a VersionID it applies to that version.
 	IfMatch *string
+	// VersionID removes that version for good; "null" names the null version.
+	// Empty deletes the current version: a versioned bucket gets a delete marker.
+	VersionID string
 }
 
 // DeleteObject checks opts and removes key under the key lock.
 // Removing a missing key succeeds only when the delete is unconditional.
-func (s *Store) DeleteObject(ctx context.Context, bucket, key string, opts DeleteOptions) error {
+func (s *Store) DeleteObject(ctx context.Context, bucket, key string, opts DeleteOptions) (DeleteResult, error) {
 	if err := s.checkObject(ctx, bucket, key); err != nil {
-		return err
+		return DeleteResult{}, err
 	}
 	if _, err := s.HeadBucket(ctx, bucket); err != nil {
-		return err // checked before bucketLock, so a missing bucket adds no lock entry
+		return DeleteResult{}, err // checked before bucketLock, so a missing bucket adds no lock entry
 	}
 	l := s.bucketLock(bucket)
 	l.RLock()
 	defer l.RUnlock()
 	if _, err := s.HeadBucket(ctx, bucket); err != nil {
-		return err
+		return DeleteResult{}, err
 	}
 	kl := s.keyLock(bucket, key)
 	kl.Lock()
 	defer kl.Unlock()
 	if err := ctx.Err(); err != nil {
-		return err
+		return DeleteResult{}, err
 	}
-	rec, err := s.readRecord(bucket, key)
-	if errors.Is(err, ErrNoSuchKey) && opts.IfMatch == nil {
-		return nil
-	}
+	status, err := s.versioningStatus(bucket)
 	if err != nil {
-		return err
+		return DeleteResult{}, err
 	}
-	if opts.IfMatch != nil {
-		etag := *opts.IfMatch
-		if etag != "*" && etag != rec.ETag && etag != `"`+rec.ETag+`"` {
-			return ErrPreconditionFailed
+	cur, err := s.readRecord(bucket, key)
+	hasCur := err == nil
+	if err != nil && !errors.Is(err, ErrNoSuchKey) {
+		return DeleteResult{}, err
+	}
+	if opts.VersionID != "" {
+		return s.deleteVersion(bucket, status, cur, hasCur, opts, key)
+	}
+	exists := hasCur && !cur.DeleteMarker
+	if !exists && opts.IfMatch == nil && status == "" {
+		return DeleteResult{}, nil
+	}
+	if !exists && opts.IfMatch != nil {
+		return DeleteResult{}, ErrNoSuchKey
+	}
+	if opts.IfMatch != nil && !etagMatches(*opts.IfMatch, cur.ETag) {
+		return DeleteResult{}, ErrPreconditionFailed
+	}
+	if status == "" {
+		if err := s.fs.Remove(metaFile(bucket, key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return DeleteResult{}, fmt.Errorf("delete metadata: %w", err)
 		}
+		_ = s.fs.Remove(path.Join(blobsDir(bucket), cur.Blob))
+		return DeleteResult{}, nil
 	}
-	if err := s.fs.Remove(metaFile(bucket, key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("delete metadata: %w", err)
+	marker := record{Key: key, LastModified: time.Now().UTC(), DeleteMarker: true}
+	if err := s.install(bucket, status, cur, hasCur, &marker); err != nil {
+		return DeleteResult{}, err
 	}
-	_ = s.fs.Remove(path.Join(blobsDir(bucket), rec.Blob))
-	return nil
+	return DeleteResult{VersionID: marker.VersionID, DeleteMarker: true, Versioned: true}, nil
 }
 
 // ListObjects returns the objects whose keys start with prefix and sort after
@@ -289,7 +327,7 @@ func (s *Store) ListObjects(ctx context.Context, bucket, prefix, startAfter stri
 	}
 	var out []ObjectInfo
 	for _, r := range sortedByKey(records) {
-		if r.Key > startAfter && strings.HasPrefix(r.Key, prefix) {
+		if r.Key > startAfter && strings.HasPrefix(r.Key, prefix) && !r.DeleteMarker {
 			out = append(out, r.ObjectInfo)
 		}
 	}
@@ -344,13 +382,13 @@ func (s *Store) checkObject(ctx context.Context, bucket, key string) error {
 	return ctx.Err()
 }
 
-// missing turns a missing key into ErrNoSuchBucket when the bucket is gone too.
+// missing turns a missing key or version into ErrNoSuchBucket when the bucket is gone too.
 func (s *Store) missing(ctx context.Context, bucket string, err error) error {
-	if !errors.Is(err, ErrNoSuchKey) {
+	if !errors.Is(err, ErrNoSuchKey) && !errors.Is(err, ErrNoSuchVersion) {
 		return err
 	}
 	if _, berr := s.HeadBucket(ctx, bucket); berr != nil {
 		return berr
 	}
-	return ErrNoSuchKey
+	return err
 }

@@ -151,6 +151,7 @@ func runScenario(t *testing.T, tg *target, sc scenario, bucket string, vars map[
 			t.Fatalf("step %s (%s): %v", st.name, describe(st), err)
 		}
 		captureVars(vars, resp.body)
+		captureVersion(vars, st, resp.header)
 		prev = st.name + " answered " + failure(resp, nil)
 		g.Exchanges = append(g.Exchanges, tg.normalize(st, bucket, resp))
 	}
@@ -204,6 +205,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 			t.Fatal(msg)
 		}
 		captureVars(vars, resp.body)
+		captureVersion(vars, st, resp.header)
 		got := tg.normalize(st, bucket, resp)
 		diffs := compare(w, got)
 		stepKey := sc.name + "/" + st.name

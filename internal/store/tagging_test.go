@@ -18,7 +18,7 @@ func TestObjectTagsPersistence(t *testing.T) {
 	mustCreate(t, s, "bucket")
 	before := mustPut(t, s, "bucket", "key", "body")
 	tags := []tag.Tag{{Key: "b", Value: "2"}, {Key: "a", Value: ""}}
-	if err := s.PutObjectTags(t.Context(), "bucket", "key", tags); err != nil {
+	if err := s.PutObjectTags(t.Context(), "bucket", "key", "", tags); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := Open(t.Context(), fsys)
@@ -29,7 +29,7 @@ func TestObjectTagsPersistence(t *testing.T) {
 	if body != "body" || after.ETag != before.ETag || !after.LastModified.Equal(before.LastModified) || after.Checksum != before.Checksum || !reflect.DeepEqual(after.Tags, tags) {
 		t.Fatalf("tag update: before %+v, after %+v, body %q, want the same ETag, time, and checksum, and tags %v", before, after, body, tags)
 	}
-	if err := s.PutObjectTags(t.Context(), "bucket", "key", nil); err != nil {
+	if err := s.PutObjectTags(t.Context(), "bucket", "key", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if info, err := s.HeadObject(t.Context(), "bucket", "key"); err != nil || len(info.Tags) != 0 {
@@ -48,7 +48,7 @@ func TestPutObjectTagsErrors(t *testing.T) {
 		{"missing bucket", "nobucket", "key", ErrNoSuchBucket},
 	}
 	for _, tt := range tests {
-		if err := s.PutObjectTags(t.Context(), tt.bucket, tt.key, []tag.Tag{{Key: "a"}}); !errors.Is(err, tt.want) {
+		if err := s.PutObjectTags(t.Context(), tt.bucket, tt.key, "", []tag.Tag{{Key: "a"}}); !errors.Is(err, tt.want) {
 			t.Errorf("%s: PutObjectTags error = %v, want %v", tt.name, err, tt.want)
 		}
 	}

@@ -1,10 +1,17 @@
 // Package store implements S3 storage semantics on a vfs.FS.
 //
-// Layout under the VFS root:
+// Layout under the VFS root. The current version of a key, or its delete
+// marker, always lives in objects/, so a bucket that was never versioned
+// uses no other path. A versioned write saves the old current record under
+// versions/ before it replaces the current one, and a permanent delete
+// writes the promoted version to objects/ before it removes the old file.
+// A key with any version has an objects/ file. Open repairs the duplicates
+// that a crash can leave. A key has at most one null version.
 //
 //	buckets/<bucket>/bucket.json
 //	buckets/<bucket>/objects/<sha256(key)>.json   metadata; renaming it in commits a write
 //	buckets/<bucket>/blobs/<id>                   object bytes, immutable once committed
+//	buckets/<bucket>/versions/<sha256(key)>/<versionID>.json   a noncurrent version or delete marker; null.json is the null version
 //	buckets/<bucket>/uploads/<id>/upload.json     a multipart upload; removed on complete or abort
 //	buckets/<bucket>/uploads/<id>/part-<n>.json   one uploaded part, naming its data file
 //	buckets/<bucket>/uploads/<id>/part-<n>-<id>   part bytes
@@ -79,6 +86,9 @@ func Open(ctx context.Context, fsys vfs.FS) (*Store, error) {
 		return nil, err
 	}
 	for _, b := range buckets {
+		if err := s.recoverVersions(ctx, b.Name); err != nil {
+			return nil, fmt.Errorf("recover bucket %s: %w", b.Name, err)
+		}
 		if err := s.removeOrphanBlobs(ctx, b.Name); err != nil {
 			return nil, fmt.Errorf("recover bucket %s: %w", b.Name, err)
 		}
@@ -208,8 +218,12 @@ func (s *Store) removeOrphanBlobs(ctx context.Context, bucket string) error {
 	if err != nil {
 		return err
 	}
+	older, err := s.readAllVersions(ctx, bucket)
+	if err != nil {
+		return err
+	}
 	used := map[string]bool{}
-	for _, o := range objects {
+	for _, o := range slices.Concat(objects, older) {
 		used[o.Blob] = true
 	}
 	blobs, err := s.fs.ReadDir(blobsDir(bucket))

@@ -209,6 +209,7 @@ type record struct {
 			ETag       string `json:"eTag"`
 			Annotation *bool  `json:"hasObjectAnnotation"`
 			Sequencer  string
+			VersionID  string `json:"versionId"`
 		}
 	}
 }
@@ -285,6 +286,58 @@ func TestObjectEvents(t *testing.T) {
 	r := call(t, srv, http.MethodPost, "/bkt?delete", body, md5Header(body))
 	if got := records(t, n.take()); r.status != 200 || len(got) != 2 || got[0].EventName != "ObjectRemoved:Delete" {
 		t.Errorf("DeleteObjects = %d with %d events, want 200 with 2 ObjectRemoved:Delete events", r.status, len(got))
+	}
+}
+
+func TestVersionedObjectEvents(t *testing.T) {
+	n := &fakeNotifier{}
+	srv := notifyServer(t, n)
+	_ = call(t, srv, http.MethodPut, "/bkt", "", nil)
+	doc := notificationDoc(queueRule("all", testQueueARN, "", "s3:ObjectCreated:*", "s3:ObjectRemoved:*"))
+	_ = call(t, srv, http.MethodPut, "/bkt?notification", doc, nil)
+	enable := `<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>`
+	suspend := `<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>`
+	ids := map[string]string{}
+	steps := []struct {
+		name, method, target, body string
+		wantName                   string
+		wantVersion                string // "{x}" is the saved ID x, "" means no versionId
+		save                       string
+	}{
+		{name: "put before versioning", method: http.MethodPut, target: "/bkt/k", body: "x", wantName: "ObjectCreated:Put"},
+		{name: "enable", method: http.MethodPut, target: "/bkt?versioning", body: enable},
+		{name: "put", method: http.MethodPut, target: "/bkt/k", body: "x", wantName: "ObjectCreated:Put", wantVersion: "{put}", save: "put"},
+		{name: "delete", method: http.MethodDelete, target: "/bkt/k", wantName: "ObjectRemoved:DeleteMarkerCreated", wantVersion: "{marker}", save: "marker"},
+		{name: "delete marker", method: http.MethodDelete, target: "/bkt/k?versionId={marker}", wantName: "ObjectRemoved:Delete", wantVersion: "{marker}"},
+		{name: "delete version", method: http.MethodDelete, target: "/bkt/k?versionId={put}", wantName: "ObjectRemoved:Delete", wantVersion: "{put}"},
+		{name: "suspend", method: http.MethodPut, target: "/bkt?versioning", body: suspend},
+		{name: "suspended delete", method: http.MethodDelete, target: "/bkt/k", wantName: "ObjectRemoved:DeleteMarkerCreated", wantVersion: "null"},
+	}
+	for _, s := range steps {
+		n.take()
+		target := s.target
+		for k, v := range ids {
+			target = strings.ReplaceAll(target, "{"+k+"}", v)
+		}
+		r := call(t, srv, s.method, target, s.body, nil)
+		if s.save != "" {
+			ids[s.save] = r.header.Get("x-amz-version-id")
+		}
+		got := records(t, n.take())
+		if s.wantName == "" {
+			continue
+		}
+		if len(got) != 1 {
+			t.Errorf("%s: got %d events, want 1", s.name, len(got))
+			continue
+		}
+		want := s.wantVersion
+		for k, v := range ids {
+			want = strings.ReplaceAll(want, "{"+k+"}", v)
+		}
+		if got[0].EventName != s.wantName || got[0].S3.Object.VersionID != want {
+			t.Errorf("%s: event = %q version %q, want %q version %q", s.name, got[0].EventName, got[0].S3.Object.VersionID, s.wantName, want)
+		}
 	}
 }
 

@@ -7,8 +7,9 @@ import (
 	"github.com/yavosh/pail/internal/acl"
 )
 
-// PutObjectACL changes only the ACL of the current object under its write lock.
-func (s *Store) PutObjectACL(ctx context.Context, bucket, key string, policy acl.Policy) error {
+// PutObjectACL changes only the ACL of a version under its key lock. An empty
+// versionID names the current version.
+func (s *Store) PutObjectACL(ctx context.Context, bucket, key, versionID string, policy acl.Policy) error {
 	if err := s.checkObject(ctx, bucket, key); err != nil {
 		return err
 	}
@@ -21,7 +22,7 @@ func (s *Store) PutObjectACL(ctx context.Context, bucket, key string, policy acl
 	kl := s.keyLock(bucket, key)
 	kl.Lock()
 	defer kl.Unlock()
-	rec, err := s.readRecord(bucket, key)
+	rec, current, err := s.lookupObject(bucket, key, versionID)
 	if err != nil {
 		return s.missing(ctx, bucket, err)
 	}
@@ -29,7 +30,7 @@ func (s *Store) PutObjectACL(ctx context.Context, bucket, key string, policy acl
 		return ErrAccessDenied
 	}
 	rec.ACL = &policy
-	if err := s.writeJSON(metaFile(bucket, key), rec); err != nil {
+	if err := s.updateRecord(bucket, rec, current); err != nil {
 		return fmt.Errorf("write object ACL: %w", err)
 	}
 	return nil

@@ -63,6 +63,16 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Never use `time.Tick`. It cannot be stopped, which breaks the goroutine-lifetime rule above. Use `time.NewTicker` and `Stop` it.
 - Before you write or review Go code, read [`docs/code-style.md`](docs/code-style.md). It lists the external style guides these rules come from (Effective Go, Google Go Style, modern Go idioms, Dave Cheney, Mat Ryer). Where this list is silent, follow those guides.
 
+## Versioning
+
+- The current version of a key, or its delete marker, always lives in `objects/<sha256(key)>.json`. Noncurrent versions and markers live in `versions/<sha256(key)>/<versionID>.json`; `null.json` is the null version. A bucket that was never versioned uses no `versions/` path, and its responses must not change.
+- Every transition runs under the key lock in `store.install` or `store.deleteVersion`. Write the new file before you remove the old one: a write saves the old current record under `versions/` before it replaces `objects/`, and a permanent delete writes the promoted record to `objects/` before it removes the old files. A key with any version always has an `objects/` file.
+- `record.Seq` orders versions. A version ID is the hex of `Seq` plus random bytes. `store.Open` calls `recoverVersions` to drop duplicates and orphans that a crash leaves. Keep that function in step with any new transition.
+- A key has at most one null version. A suspended write replaces it, wherever it lives.
+- Versioning state is the `versioning` bucket configuration (`Status`). It never returns to unset. `checkVersionID` in `internal/s3api/route.go` is the one place that validates a `versionId` format. The store decides whether the version exists.
+- A delete marker satisfies `errors.Is(err, store.ErrNoSuchKey)` through `*store.DeleteMarkerError`. Read paths add the marker headers with `writeReadError`.
+- Lifecycle expiration of a versioned key adds a delete marker through `install`, under the exclusive bucket lock.
+
 ## Bucket settings and browser uploads
 
 - `internal/tag` holds tags and their limits. Object tags persist in `store.ObjectOptions.Tags` with the metadata, and `store.PutObjectTags` changes only them under the key lock. Bucket tags persist as the `tagging` bucket configuration. A lifecycle tag filter matches through `tag.Has`.

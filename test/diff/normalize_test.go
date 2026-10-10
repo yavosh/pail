@@ -56,6 +56,18 @@ var comparedHeaders = []string{
 // bucket notification configuration. It must never reach a golden file.
 var arnAccountRE = regexp.MustCompile(`(arn:aws:[a-z0-9-]+:[a-z0-9-]*:)[0-9]{12}:`)
 
+// versionLineRE matches a canonical XML line that holds a version ID.
+var versionLineRE = regexp.MustCompile(`(?m)^ *(VersionId|DeleteMarkerVersionId|NextVersionIdMarker|VersionIdMarker): .+$`)
+
+// maskVersionLine replaces a random version ID; "null" is meaningful and stays.
+func maskVersionLine(line string) string {
+	prefix, value, _ := strings.Cut(line, ": ")
+	if value == "null" {
+		return line
+	}
+	return prefix + ": <version>"
+}
+
 var presenceHeaders = []string{"Last-Modified", "X-Amz-Id-2", "X-Amz-Request-Id", "X-Amzn-Requestid"}
 
 // volatileElements change on every run, so only their presence is kept.
@@ -116,6 +128,7 @@ func normalize(st step, bucket string, r response) exchange {
 			body = "unparsable XML: " + err.Error()
 		}
 		body = arnAccountRE.ReplaceAllString(body, "${1}{account}:")
+		body = versionLineRE.ReplaceAllStringFunc(body, maskVersionLine)
 	case !utf8.ValidString(body):
 		// JSON would replace invalid UTF-8, so binary bodies are stored encoded.
 		body = "base64:" + base64.StdEncoding.EncodeToString(r.body)
@@ -127,6 +140,9 @@ func normalize(st step, bucket string, r response) exchange {
 				if location, err := url.Parse(v); err == nil {
 					v = location.EscapedPath()
 				}
+			}
+			if (h == "X-Amz-Version-Id" || h == "X-Amz-Copy-Source-Version-Id") && v != "null" {
+				v = "<version>" // random on every run; "null" is meaningful
 			}
 			ex.Headers[h] = strings.ReplaceAll(v, bucket, "{bucket}")
 		}

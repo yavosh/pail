@@ -15,7 +15,7 @@ func TestObjectACLPersistence(t *testing.T) {
 	before := mustPut(t, s, "bucket", "key", "body")
 	policy := acl.Private(strings.Repeat("a", 64))
 	policy.Grants = append(policy.Grants, acl.Grant{Grantee: acl.Grantee{Type: "Group", URI: acl.AllUsers}, Permission: "READ"})
-	if err := s.PutObjectACL(t.Context(), "bucket", "key", policy); err != nil {
+	if err := s.PutObjectACL(t.Context(), "bucket", "key", "", policy); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := Open(t.Context(), fsys)

@@ -66,13 +66,15 @@ func (h *handler) handleObjectTagging(w http.ResponseWriter, r *http.Request, t 
 		writeError(w, r, apiErr)
 		return
 	}
+	versionID := r.URL.Query().Get("versionId")
 	switch r.Method {
 	case http.MethodGet:
-		info, err := h.opts.Store.HeadObject(r.Context(), t.bucket, t.key)
+		info, err := h.opts.Store.HeadObjectVersion(r.Context(), t.bucket, t.key, versionID)
 		if err != nil {
-			writeError(w, r, toAPIError(err))
+			writeReadError(w, r, err)
 			return
 		}
+		h.setVersionHeader(w, r, t.bucket, info)
 		writeTagging(w, marshalTagging(info.Tags))
 	case http.MethodPut:
 		tags, e, ok := readTagging(w, r, tag.MaxObject)
@@ -80,16 +82,18 @@ func (h *handler) handleObjectTagging(w http.ResponseWriter, r *http.Request, t 
 			writeError(w, r, e)
 			return
 		}
-		if err := h.opts.Store.PutObjectTags(r.Context(), t.bucket, t.key, tags); err != nil {
+		if err := h.opts.Store.PutObjectTags(r.Context(), t.bucket, t.key, versionID, tags); err != nil {
 			writeError(w, r, toAPIError(err))
 			return
 		}
+		setRequestedVersion(w, versionID)
 		w.WriteHeader(http.StatusOK)
 	case http.MethodDelete:
-		if err := h.opts.Store.PutObjectTags(r.Context(), t.bucket, t.key, nil); err != nil {
+		if err := h.opts.Store.PutObjectTags(r.Context(), t.bucket, t.key, versionID, nil); err != nil {
 			writeError(w, r, toAPIError(err))
 			return
 		}
+		setRequestedVersion(w, versionID)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

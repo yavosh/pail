@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -90,7 +91,12 @@ func TestResolve(t *testing.T) {
 		{http.MethodPut, bucket, "tagging", nil, opPutBucketTagging},
 		{http.MethodDelete, bucket, "tagging", nil, opDeleteBucketTagging},
 		{http.MethodPost, bucket, "tagging", nil, ""},
-		{http.MethodGet, bucket, "versioning", nil, ""},
+		{http.MethodGet, bucket, "versioning", nil, opGetBucketVersioning},
+		{http.MethodPut, bucket, "versioning", nil, opPutBucketVersioning},
+		{http.MethodDelete, bucket, "versioning", nil, ""},
+		{http.MethodGet, bucket, "versions&prefix=a", nil, opListObjectVersions},
+		{http.MethodGet, bucket, "versions&versioning", nil, ""},
+		{http.MethodGet, bucket, "website", nil, ""},
 		{http.MethodPut, bucket, "acl", nil, opPutBucketACL},
 		{http.MethodGet, bucket, "location&tagging", nil, ""},
 		{http.MethodPut, object, "", nil, opPutObject},
@@ -142,6 +148,9 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+// goodID has the form of an ID that pail issues.
+const goodID = "0123456789abcdef0123456789abcdef"
+
 func TestCheckVersionID(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -152,6 +161,9 @@ func TestCheckVersionID(t *testing.T) {
 		{"no versionId", opGetObject, "", true},
 		{"null", opGetObject, "versionId=null", true},
 		{"null twice", opDeleteObject, "versionId=null&versionId=null", true},
+		{"issued ID", opGetObject, "versionId=" + goodID, true},
+		{"upper case ID", opGetObject, "versionId=" + strings.ToUpper(goodID), false},
+		{"short ID", opGetObject, "versionId=" + goodID[1:], false},
 		{"bogus on get", opGetObject, "versionId=bogus", false},
 		{"bogus on head", opHeadObject, "versionId=bogus", false},
 		{"bogus on delete", opDeleteObject, "versionId=bogus", false},

@@ -106,9 +106,9 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 		}
 	}
 
-	f, info, err := h.opts.Store.GetObject(r.Context(), src.bucket, src.key)
+	f, info, err := h.opts.Store.GetObjectVersion(r.Context(), src.bucket, src.key, src.versionID)
 	if err != nil {
-		writeError(w, r, toAPIError(err))
+		writeCopySourceError(w, r, err)
 		return
 	}
 	defer func() { _ = f.Close() }()
@@ -145,6 +145,8 @@ func (h *handler) handleCopyObject(w http.ResponseWriter, r *http.Request, t tar
 	}
 	h.setExpiration(w, r, t.bucket, dst)
 	setEncryptionHeader(w.Header(), dst.ServerSideEncryption)
+	setWriteVersion(w, dst)
+	h.setCopySourceVersion(w, r, src.bucket, info)
 	h.notify(w, r, t, createdEvent("ObjectCreated:Copy", t.key, dst))
 	writeXML(w, r, http.StatusOK, resp)
 }
@@ -196,9 +198,9 @@ func (h *handler) handleUploadPartCopy(w http.ResponseWriter, r *http.Request, t
 		writeError(w, r, apiErr)
 		return
 	}
-	f, info, err := h.opts.Store.GetObject(r.Context(), src.bucket, src.key)
+	f, info, err := h.opts.Store.GetObjectVersion(r.Context(), src.bucket, src.key, src.versionID)
 	if err != nil {
-		writeError(w, r, toAPIError(err))
+		writeCopySourceError(w, r, err)
 		return
 	}
 	defer func() { _ = f.Close() }()
@@ -231,6 +233,7 @@ func (h *handler) handleUploadPartCopy(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 	setEncryptionHeader(w.Header(), part.ServerSideEncryption)
+	h.setCopySourceVersion(w, r, src.bucket, info)
 	writeXML(w, r, http.StatusOK, response{
 		Xmlns: s3Namespace, LastModified: part.LastModified.UTC().Format(timeFormat), ETag: quoteETag(part.ETag),
 		checksumFields: newChecksumFields(part.ChecksumAlgorithm, part.Checksum),
@@ -259,6 +262,7 @@ func parseCopySource(raw string) (target, apiError, bool) {
 	rest, query, hasQuery := strings.Cut(strings.TrimPrefix(raw, "/"), "?")
 	rest, err := url.PathUnescape(rest)
 	bucket, key, _ := strings.Cut(rest, "/")
+	var versionID string
 	if err != nil || bucket == "" || key == "" {
 		return target{}, errInvalidCopySource, false
 	}
@@ -268,15 +272,13 @@ func parseCopySource(raw string) (target, apiError, bool) {
 			return target{}, errInvalidArgument, false
 		}
 		for name, values := range q {
-			switch {
-			case name != "versionId":
+			if name != "versionId" || slices.ContainsFunc(values, func(v string) bool { return !validVersionID(v) }) {
 				return target{}, errInvalidArgument, false
-			case slices.ContainsFunc(values, func(v string) bool { return v != "null" }):
-				return target{}, errNotImplemented, false // pail has no versioning
 			}
+			versionID = values[0]
 		}
 	}
-	src := target{bucket: bucket, key: key}
+	src := target{bucket: bucket, key: key, versionID: versionID}
 	if apiErr, ok := checkObjectTarget(src); !ok {
 		return target{}, apiErr, false
 	}

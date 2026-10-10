@@ -103,7 +103,21 @@ func initiatedUploadID(body []byte) string {
 }
 
 // variables are the placeholders a step can use, besides "{name}".
-var variables = []string{"uploadId", "queueUrl", "queueArn", "receiptHandle", "messageId", "topicArn", "subscriptionArn", "httpEndpoint"}
+var variables = []string{"uploadId", "queueUrl", "queueArn", "receiptHandle", "messageId", "topicArn", "subscriptionArn", "httpEndpoint", "versionId", "previousVersionId"}
+
+// captureVersion keeps the version ID that a write returned in {versionId},
+// and the one before it in {previousVersionId}. Reads repeat old IDs, so only
+// PUT, POST, and a DELETE without a versionId count.
+func captureVersion(vars map[string]string, st step, h http.Header) {
+	v := h.Get("X-Amz-Version-Id")
+	q, _ := url.ParseQuery(st.query)
+	write := st.method == http.MethodPut || st.method == http.MethodPost || st.method == http.MethodDelete && !q.Has("versionId")
+	if !write || v == "" || v == "null" || v == vars["versionId"] {
+		return
+	}
+	vars["previousVersionId"] = vars["versionId"]
+	vars["versionId"] = v
+}
 
 // captureVars updates vars from one response. The latest value wins, and a
 // response without a value keeps the earlier one.
@@ -458,6 +472,25 @@ func cleanupBucket(t *testing.T, tg *target, bucket string) {
 		t.Fatalf("cleanup refuses bucket %q: not created by this suite", bucket)
 	}
 	ctx := context.Background()
+	// A versioned bucket keeps old versions and delete markers; remove them first.
+	for range 100 {
+		resp, err := tg.do(ctx, step{method: http.MethodGet, query: "versions"}, bucket)
+		if err != nil || resp.status != http.StatusOK {
+			break
+		}
+		var versions struct {
+			Version, DeleteMarker []struct {
+				Key       string
+				VersionID string `xml:"VersionId"`
+			}
+		}
+		if err := xml.Unmarshal(resp.body, &versions); err != nil || len(versions.Version)+len(versions.DeleteMarker) == 0 {
+			break
+		}
+		for _, v := range append(versions.Version, versions.DeleteMarker...) {
+			_, _ = tg.do(ctx, step{method: http.MethodDelete, key: v.Key, query: "versionId=" + url.QueryEscape(v.VersionID)}, bucket)
+		}
+	}
 list:
 	for range 100 {
 		resp, err := tg.do(ctx, step{method: http.MethodGet, query: "list-type=2"}, bucket)

@@ -288,14 +288,25 @@ func (h *handler) notificationConfig(ctx context.Context, bucket string) notific
 type objectEvent struct {
 	name, key, eTag string
 	size            *int64 // nil on a removal
+	versionID       string // empty when the bucket has no version to name
 }
 
 func createdEvent(name, key string, info store.ObjectInfo) objectEvent {
-	return objectEvent{name: name, key: key, eTag: info.ETag, size: &info.Size}
+	return objectEvent{name: name, key: key, eTag: info.ETag, size: &info.Size, versionID: info.VersionID}
 }
 
-func removedEvent(key string) objectEvent {
-	return objectEvent{name: "ObjectRemoved:Delete", key: key}
+// removedEvent describes a DeleteObject that asked for requested (empty for
+// none) and got res. In a versioned bucket, a delete without a version adds a
+// delete marker, and a delete with one removes it for good.
+func removedEvent(key, requested string, res store.DeleteResult) objectEvent {
+	ev := objectEvent{name: "ObjectRemoved:Delete", key: key}
+	if res.Versioned {
+		ev.versionID = versionLabel(res.VersionID)
+		if requested == "" {
+			ev.name = "ObjectRemoved:DeleteMarkerCreated"
+		}
+	}
+	return ev
 }
 
 type (
@@ -328,6 +339,7 @@ type (
 		Key        string `json:"key"`
 		Size       *int64 `json:"size,omitempty"`
 		ETag       string `json:"eTag,omitempty"`
+		VersionID  string `json:"versionId,omitempty"`
 		Annotation *bool  `json:"hasObjectAnnotation,omitempty"`
 		Sequencer  string `json:"sequencer"`
 	}
@@ -351,7 +363,7 @@ func (h *handler) eventJSON(w http.ResponseWriter, r *http.Request, bucket, conf
 	obj := eventObject{
 		// AWS URL-encodes the key but keeps its slashes.
 		Key:  strings.ReplaceAll(url.QueryEscape(ev.key), "%2F", "/"),
-		Size: ev.size, ETag: ev.eTag, Sequencer: h.sequencer(),
+		Size: ev.size, ETag: ev.eTag, VersionID: ev.versionID, Sequencer: h.sequencer(),
 	}
 	if ev.name == "ObjectCreated:Copy" {
 		obj.Annotation = new(false)

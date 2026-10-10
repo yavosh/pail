@@ -44,7 +44,7 @@ func TestCopyDestinationConditions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		// Reset the destination so each case starts from the same state.
-		_ = st.DeleteObject(ctx, "bkt", "fresh", store.DeleteOptions{})
+		_, _ = st.DeleteObject(ctx, "bkt", "fresh", store.DeleteOptions{})
 		if _, err := st.PutObject(ctx, "bkt", "dest", strings.NewReader("dest"), store.PutOptions{}); err != nil {
 			t.Fatal(err)
 		}

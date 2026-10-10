@@ -103,7 +103,7 @@ func TestBucketLifecycle(t *testing.T) {
 	if err := s.DeleteBucket(ctx, "b1"); !errors.Is(err, ErrBucketNotEmpty) {
 		t.Errorf("DeleteBucket(non-empty) error = %v, want ErrBucketNotEmpty", err)
 	}
-	if err := s.DeleteObject(ctx, "b1", "k", DeleteOptions{}); err != nil {
+	if _, err := s.DeleteObject(ctx, "b1", "k", DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteBucket(ctx, "b1"); err != nil {
@@ -155,7 +155,6 @@ func TestPutGetRoundTrip(t *testing.T) {
 }
 
 func TestMissing(t *testing.T) {
-	ctx := context.Background()
 	s, _ := newStore(t)
 	mustCreate(t, s, "b")
 	tests := []struct {
@@ -167,8 +166,8 @@ func TestMissing(t *testing.T) {
 		{"get missing bucket", getErr(s, "nope", "k"), ErrNoSuchBucket},
 		{"head missing key", headErr(s, "b", "nope"), ErrNoSuchKey},
 		{"put missing bucket", putErr(s, "nope", "k"), ErrNoSuchBucket},
-		{"delete missing bucket", s.DeleteObject(ctx, "nope", "k", DeleteOptions{}), ErrNoSuchBucket},
-		{"delete missing key", s.DeleteObject(ctx, "b", "nope", DeleteOptions{}), nil},
+		{"delete missing bucket", deleteErr(s, "nope", "k"), ErrNoSuchBucket},
+		{"delete missing key", deleteErr(s, "b", "nope"), nil},
 		{"list missing bucket", listErr(s, "nope"), ErrNoSuchBucket},
 	}
 	for _, tt := range tests {
@@ -188,6 +187,11 @@ func getErr(s *Store, bucket, key string) error {
 
 func headErr(s *Store, bucket, key string) error {
 	_, err := s.HeadObject(context.Background(), bucket, key)
+	return err
+}
+
+func deleteErr(s *Store, bucket, key string) error {
+	_, err := s.DeleteObject(context.Background(), bucket, key, DeleteOptions{})
 	return err
 }
 
@@ -296,7 +300,7 @@ func TestDeleteRemovesBlob(t *testing.T) {
 	if n := dirLen(t, fsys, "buckets/b/blobs"); n != 1 {
 		t.Errorf("blobs after overwrite = %d, want 1", n)
 	}
-	if err := s.DeleteObject(ctx, "b", "k", DeleteOptions{}); err != nil {
+	if _, err := s.DeleteObject(ctx, "b", "k", DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if n := dirLen(t, fsys, "buckets/b/blobs"); n != 0 {
@@ -520,7 +524,7 @@ func TestMissingBucketAddsNoLock(t *testing.T) {
 	for i := range 10 {
 		name := fmt.Sprint("nope-", i)
 		_ = putErr(s, name, "k")
-		_ = s.DeleteObject(ctx, name, "k", DeleteOptions{})
+		_, _ = s.DeleteObject(ctx, name, "k", DeleteOptions{})
 		_ = s.DeleteBucket(ctx, name)
 	}
 	if n := len(s.buckets); n != 0 {

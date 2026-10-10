@@ -15,7 +15,7 @@ import (
 
 func (h *handler) resourceACL(r *http.Request, t target) (acl.Policy, error) {
 	if t.key != "" {
-		info, err := h.opts.Store.HeadObject(r.Context(), t.bucket, t.key)
+		info, err := h.opts.Store.HeadObjectVersion(r.Context(), t.bucket, t.key, r.URL.Query().Get("versionId"))
 		if err != nil {
 			return acl.Policy{}, err
 		}
@@ -96,12 +96,13 @@ func (h *handler) handleACL(w http.ResponseWriter, r *http.Request, t target) {
 		body, _ := xml.Marshal(policy)
 		err = h.opts.Store.PutBucketConfiguration(r.Context(), t.bucket, "acl", &store.BucketConfiguration{XML: body})
 	} else {
-		err = h.opts.Store.PutObjectACL(r.Context(), t.bucket, t.key, policy)
+		err = h.opts.Store.PutObjectACL(r.Context(), t.bucket, t.key, r.URL.Query().Get("versionId"), policy)
 	}
 	if err != nil {
 		writeError(w, r, toAPIError(err))
 		return
 	}
+	setRequestedVersion(w, r.URL.Query().Get("versionId"))
 	w.WriteHeader(http.StatusOK)
 }
 

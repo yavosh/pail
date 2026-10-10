@@ -19,8 +19,8 @@ type replacingStore struct {
 	afterHead func() error
 }
 
-func (s *replacingStore) HeadObject(ctx context.Context, bucket, key string) (store.ObjectInfo, error) {
-	info, err := s.Store.HeadObject(ctx, bucket, key)
+func (s *replacingStore) HeadObjectVersion(ctx context.Context, bucket, key, versionID string) (store.ObjectInfo, error) {
+	info, err := s.Store.HeadObjectVersion(ctx, bucket, key, versionID)
 	if err != nil {
 		return store.ObjectInfo{}, err
 	}

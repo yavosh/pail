@@ -548,7 +548,8 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 	if err := tf.Commit(path.Join(blobsDir(bucket), blob)); err != nil {
 		return ObjectInfo{}, fmt.Errorf("commit blob: %w", err)
 	}
-	if err := s.commitRecord(ctx, bucket, record{ObjectInfo: info, Blob: blob}, PutOptions{IfMatch: opts.IfMatch, IfNoneMatch: opts.IfNoneMatch}); err != nil {
+	rec := record{ObjectInfo: info, Blob: blob}
+	if err := s.commitRecord(ctx, bucket, &rec, PutOptions{IfMatch: opts.IfMatch, IfNoneMatch: opts.IfNoneMatch}); err != nil {
 		_ = s.fs.Remove(path.Join(blobsDir(bucket), blob))
 		return ObjectInfo{}, err
 	}
@@ -557,7 +558,7 @@ func (s *Store) CompleteUpload(ctx context.Context, bucket, key, uploadID string
 	if err := s.markEnded(bucket, uploadID); err == nil {
 		_ = s.removeUpload(bucket, uploadID)
 	}
-	return info, nil
+	return rec.ObjectInfo, nil
 }
 
 // checkParts matches the client's list against the stored parts and returns

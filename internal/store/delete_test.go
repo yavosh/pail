@@ -39,7 +39,7 @@ func TestConditionalDelete(t *testing.T) {
 			if tc.exists {
 				before = mustPut(t, s, "bucket", "key", body)
 			}
-			if err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: tc.ifMatch}); !errors.Is(err, tc.want) {
+			if _, err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: tc.ifMatch}); !errors.Is(err, tc.want) {
 				t.Fatalf("DeleteObject(IfMatch %v, exists %v) = %v, want %v", tc.ifMatch, tc.exists, err, tc.want)
 			}
 			if tc.exists && tc.want != nil {
@@ -67,7 +67,7 @@ func TestConditionalDeleteUsesCurrentETag(t *testing.T) {
 	mustCreate(t, s, "bucket")
 	old := mustPut(t, s, "bucket", "key", "old")
 	mustPut(t, s, "bucket", "key", "replacement")
-	if err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: new(old.ETag)}); !errors.Is(err, ErrPreconditionFailed) {
+	if _, err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: new(old.ETag)}); !errors.Is(err, ErrPreconditionFailed) {
 		t.Fatalf("delete with stale ETag = %v, want ErrPreconditionFailed", err)
 	}
 	if got, _ := mustGet(t, s, "bucket", "key"); got != "replacement" {
@@ -87,7 +87,7 @@ func TestConditionalDeleteDuringOverwrite(t *testing.T) {
 	})
 	for range 16 {
 		wg.Go(func() {
-			err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: new(old.ETag)})
+			_, err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: new(old.ETag)})
 			if err != nil && !errors.Is(err, ErrNoSuchKey) && !errors.Is(err, ErrPreconditionFailed) {
 				t.Errorf("concurrent delete error = %v, want nil, ErrNoSuchKey, or ErrPreconditionFailed", err)
 			}
@@ -108,7 +108,7 @@ func TestConditionalDeleteHoldsKeyLock(t *testing.T) {
 	info := mustPut(t, s, "bucket", "key", "body")
 	fsys := &deleteLockFS{FS: s.fs, metadata: metaFile("bucket", "key"), lock: s.keyLock("bucket", "key")}
 	s.fs = fsys
-	if err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: new(info.ETag)}); err != nil {
+	if _, err := s.DeleteObject(t.Context(), "bucket", "key", DeleteOptions{IfMatch: new(info.ETag)}); err != nil {
 		t.Fatal(err)
 	}
 	if !fsys.readLocked || !fsys.removeLocked {

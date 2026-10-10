@@ -141,6 +141,7 @@ func scenarios() []scenario {
 		taggingScenario(),
 		notificationsScenario(),
 		notificationsSNSScenario(),
+		versioningScenario(),
 		sqsAuthErrorsScenario(),
 		sqsQueueBasicsScenario(),
 		sqsMessageAttributesScenario(),
