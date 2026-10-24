@@ -1,0 +1,156 @@
+{
+  "scenario": "sns-redrive-delivery-fifo-raw",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "02619c33feb1ae58",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}.fifo\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-source",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "d30a8abb6a9c7d50",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}-source.fifo\n"
+    },
+    {
+      "step": "source-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}-source.fifo\n"
+    },
+    {
+      "step": "subscribe",
+      "request": "POST sns Subscribe",
+      "fingerprint": "c14f4a3800afa354",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}.fifo:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-dead",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "b0dac7c931fd9512",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}-dead.fifo\n"
+    },
+    {
+      "step": "dead-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}-dead.fifo\n"
+    },
+    {
+      "step": "allow-topic",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "085d02d3dbeed752",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "set-redrive",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "387daedce6d68b33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-source",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "76475b9b237854e5",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}-source.fifo\n"
+    },
+    {
+      "step": "delete-source",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "publish",
+      "request": "POST sns Publish",
+      "fingerprint": "3f16ef0466eeb7ed",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    SequenceNumber: <volatile>\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-dead",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "bee9770cb5d7d277",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}-dead.fifo\n"
+    },
+    {
+      "step": "receive-dead",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "e4431dc4046df589",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: dedup\nMessages[0].Attributes.MessageGroupId: group\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: dead-letter-body\nMessages[0].MD5OfBody: 728ff34ecbb1ae403d9274f209dec883\nMessages[0].MD5OfMessageAttributes: ba09418b9a0c736cdc1cb41e7818d409\nMessages[0].MessageAttributes.binary.BinaryValue: YWJj\nMessages[0].MessageAttributes.binary.DataType: Binary\nMessages[0].MessageAttributes.color.DataType: String\nMessages[0].MessageAttributes.color.StringValue: blue\nMessages[0].MessageAttributes.number.DataType: Number\nMessages[0].MessageAttributes.number.StringValue: 3.5\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-message",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

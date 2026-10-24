@@ -34,6 +34,7 @@ type httpJob struct {
 	url, body string
 	header    http.Header
 	plan      deliveryPlan
+	dead      deadLetter
 	sub       string // subscription ARN, the throttle key; empty for a confirmation
 }
 
@@ -55,12 +56,14 @@ func newJob(endpoint, body, msgType, messageID, topicARN, subscriptionARN string
 	return httpJob{url: endpoint, body: body, header: h, plan: defaultPlan}
 }
 
-// enqueue hands a job to RunDeliveries without blocking. A full queue drops it.
-func (e *Engine) enqueue(j httpJob) {
+// enqueue hands a job to RunDeliveries without blocking. False means it is full.
+func (e *Engine) enqueue(j httpJob) bool {
 	select {
 	case e.jobs <- j:
+		return true
 	default:
 		clogTopic().Warn("http delivery queue full, dropping", "endpoint", redact(j.url), "message", j.header.Get("x-amz-sns-message-id"))
+		return false
 	}
 }
 
@@ -124,6 +127,7 @@ func (e *Engine) runJob(ctx context.Context, j httpJob) {
 			return
 		}
 		if !retry || attempt == len(j.plan.delays) {
+			e.redrive(ctx, j.header.Get("x-amz-sns-topic-arn"), j.dead)
 			clogTopic().Warn("http delivery failed", "endpoint", redact(j.url), "message", j.header.Get("x-amz-sns-message-id"), "attempts", attempt+1, "error", err)
 			return
 		}

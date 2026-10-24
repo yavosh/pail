@@ -261,6 +261,9 @@ func (e *Engine) checkSub(def subDef) error {
 	if err := checkProtocolAttrs(def.Protocol, def.Attributes); err != nil {
 		return err
 	}
+	if _, err := e.redriveTarget(&def); err != nil {
+		return err
+	}
 	return checkSubAttrs(def.Attributes)
 }
 

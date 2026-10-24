@@ -369,7 +369,7 @@ func TestSubscribe(t *testing.T) {
 	if again := mustSubscribe(t, e, arn, "q3", scoped); again != sc1 {
 		t.Errorf("Subscribe again with an empty scope = %q, want %q", again, sc1)
 	}
-	if err := e.SetSubscriptionAttribute(t.Context(), arn+":x", "Bogus", "x"); !errors.Is(err, ErrInvalidParameter) {
+	if err := e.SetSubscriptionAttribute(t.Context(), arn+":x", "Bogus", new("x")); !errors.Is(err, ErrInvalidParameter) {
 		t.Errorf("SetSubscriptionAttribute(missing, Bogus) error = %v, want %v", err, ErrInvalidParameter)
 	}
 	tests := []struct {
@@ -411,7 +411,7 @@ func TestSubscribe(t *testing.T) {
 	if got, err := e.SubscriptionAttributes(t.Context(), first); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("SubscriptionAttributes = %v, %v\nwant %v", got, err, want)
 	}
-	if err := e.SetSubscriptionAttribute(t.Context(), first, "RawMessageDelivery", "true"); err != nil {
+	if err := e.SetSubscriptionAttribute(t.Context(), first, "RawMessageDelivery", new("true")); err != nil {
 		t.Fatalf("SetSubscriptionAttribute error = %v", err)
 	}
 	if got, _ := e.SubscriptionAttributes(t.Context(), first); got[2] != (Attribute{"RawMessageDelivery", "true"}) {
@@ -419,7 +419,7 @@ func TestSubscribe(t *testing.T) {
 	}
 	// A set clones the stored map, so an earlier snapshot keeps its value.
 	before := e.subs[first].Attributes
-	if err := e.SetSubscriptionAttribute(t.Context(), first, "RawMessageDelivery", "false"); err != nil {
+	if err := e.SetSubscriptionAttribute(t.Context(), first, "RawMessageDelivery", new("false")); err != nil {
 		t.Fatal(err)
 	}
 	if before["RawMessageDelivery"] != "true" || e.subs[first].Attributes["RawMessageDelivery"] != "false" {
@@ -429,11 +429,11 @@ func TestSubscribe(t *testing.T) {
 		{"Bogus", "{}"}, {"Bogus", ""}, {"RawMessageDelivery", ""}, {"FilterPolicy", "{"},
 		{"FilterPolicy", `{"a":{"b":["x"]}}`}, {"FilterPolicyScope", "Everything"},
 	} {
-		if err := e.SetSubscriptionAttribute(t.Context(), first, c.name, c.value); !errors.Is(err, ErrInvalidParameter) {
+		if err := e.SetSubscriptionAttribute(t.Context(), first, c.name, new(c.value)); !errors.Is(err, ErrInvalidParameter) {
 			t.Errorf("SetSubscriptionAttribute(%s, %q) error = %v, want %v", c.name, c.value, err, ErrInvalidParameter)
 		}
 	}
-	if err := e.SetSubscriptionAttribute(t.Context(), arn+":x", "RawMessageDelivery", "true"); !errors.Is(err, ErrNotFound) {
+	if err := e.SetSubscriptionAttribute(t.Context(), arn+":x", "RawMessageDelivery", new("true")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("SetSubscriptionAttribute(missing) error = %v, want %v", err, ErrNotFound)
 	}
 
@@ -479,7 +479,7 @@ func TestSubscriptionFilterAttributes(t *testing.T) {
 	if _, ok := e.subs[sub].Attributes["FilterPolicyScope"]; ok {
 		t.Error(`FilterPolicyScope "" was stored, want it unset`)
 	}
-	set := func(name, value string) error { return e.SetSubscriptionAttribute(t.Context(), sub, name, value) }
+	set := func(name, value string) error { return e.SetSubscriptionAttribute(t.Context(), sub, name, new(value)) }
 	if err := set("FilterPolicy", `{"o":{"k":["x"]}}`); !errors.Is(err, ErrInvalidParameter) {
 		t.Errorf("nested policy in attribute scope error = %v, want %v", err, ErrInvalidParameter)
 	}

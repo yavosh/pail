@@ -48,8 +48,8 @@ func (e *Engine) checkEndpoint(topicARN, protocol, endpoint string) (string, err
 }
 
 // checkSubAttrs validates subscription attributes. pail supports
-// RawMessageDelivery, FilterPolicy, FilterPolicyScope, and DeliveryPolicy; the
-// filter policy is checked against its scope.
+// raw delivery, filtering, delivery policies, and dead-letter queues.
+// The filter policy is checked against its scope.
 func checkSubAttrs(attrs map[string]string) error {
 	for k, v := range attrs {
 		if err := checkSubAttr(k, v); err != nil {
@@ -64,6 +64,9 @@ func checkSubAttrs(attrs map[string]string) error {
 func checkSubAttr(k, v string) error {
 	switch k {
 	case attrFilter, attrScope:
+	case attrRedrive:
+		_, err := redriveARN(v)
+		return err
 	case attrRaw:
 		if v != "true" && v != "false" {
 			return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
@@ -136,6 +139,9 @@ func (e *Engine) addSub(in SubscribeInput) (subDef, string, error) {
 		return subDef{}, "", err
 	}
 	if err := checkSubAttrs(in.Attributes); err != nil {
+		return subDef{}, "", err
+	}
+	if _, err := e.redriveTarget(&subDef{TopicARN: in.TopicARN, Endpoint: in.Endpoint, Attributes: in.Attributes}); err != nil {
 		return subDef{}, "", err
 	}
 	version := topicAttrValue(t, in.TopicARN, "SignatureVersion")
@@ -359,6 +365,7 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		{attrFilter, policy},
 		{"TopicArn", s.TopicARN},
 		{"Endpoint", s.Endpoint},
+		{attrRedrive, s.Attributes[attrRedrive]},
 		{"EffectiveDeliveryPolicy", marshalPolicy(effectivePolicy(t, s))},
 		{attrDelivery, s.Attributes[attrDelivery]},
 		{attrScope, subAttrValue(s, attrScope)},
@@ -366,6 +373,9 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 		{"PendingConfirmation", strconv.FormatBool(s.Pending)},
 		{"ConfirmationWasAuthenticated", strconv.FormatBool(s.authenticated())},
 		{"SubscriptionArn", s.ARN},
+	}
+	if _, ok := s.Attributes[attrRedrive]; !ok {
+		out = slices.DeleteFunc(out, func(a Attribute) bool { return a.Key == attrRedrive })
 	}
 	if s.Protocol == protocolSQS {
 		// AWS lists EffectiveDeliveryPolicy for HTTP subscriptions (recorded in sns-http-subscriptions).
@@ -382,12 +392,19 @@ func (e *Engine) SubscriptionAttributes(ctx context.Context, arn string) ([]Attr
 }
 
 // SetSubscriptionAttribute sets one attribute of a subscription.
-func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value string) error {
+// A nil value clears RedrivePolicy; an explicit empty value is invalid.
+func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name string, value *string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := checkSubAttr(name, value); err != nil {
-		return err
+	v := ""
+	if value != nil {
+		v = *value
+	}
+	if name != attrRedrive || value != nil {
+		if err := checkSubAttr(name, v); err != nil {
+			return err
+		}
 	}
 	e.lock()
 	defer e.mu.Unlock()
@@ -395,7 +412,7 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 	if err != nil {
 		return err
 	}
-	if err := checkProtocolAttrs(s.Protocol, map[string]string{name: value}); err != nil {
+	if err := checkProtocolAttrs(s.Protocol, map[string]string{name: v}); err != nil {
 		return err
 	}
 	updated := *s
@@ -403,12 +420,15 @@ func (e *Engine) SetSubscriptionAttribute(ctx context.Context, arn, name, value 
 	if updated.Attributes == nil {
 		updated.Attributes = map[string]string{}
 	}
-	if unsetValue(name, value) {
+	if value == nil || unsetValue(name, v) {
 		delete(updated.Attributes, name)
 	} else {
-		updated.Attributes[name] = canonSubAttr(name, value)
+		updated.Attributes[name] = canonSubAttr(name, v)
 	}
 	if err := checkSubAttrs(updated.Attributes); err != nil {
+		return err
+	}
+	if _, err := e.redriveTarget(&updated); err != nil {
 		return err
 	}
 	if err := e.persistSub(&updated); err != nil {

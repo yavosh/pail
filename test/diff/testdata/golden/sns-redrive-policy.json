@@ -1,0 +1,412 @@
+{
+  "scenario": "sns-redrive-policy",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "6a33e4edc56aa74a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\n"
+    },
+    {
+      "step": "subscribe",
+      "request": "POST sns Subscribe",
+      "fingerprint": "5bd607f10326147c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-initial",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: arn:aws:sqs:us-east-1:{account}:{name}\n      entry\n        key: RedrivePolicy\n        value: {\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:{account}:{name}-missing\"}\n      entry\n        key: Protocol\n        value: sqs\n      entry\n        key: PendingConfirmation\n        value: false\n      entry\n        key: ConfirmationWasAuthenticated\n        value: true\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "invalid-empty",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "3f40e17f600e3084",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-object",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "324e2760d86b4607",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-null",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "bb3379fc3f40e6d1",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-array",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "4af4705dc4be271c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-malformed",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "f2883913b3721b5c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-number",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "19ed7ffc35fe3f55",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-unknown",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "9564a42b5da1938c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-extra",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "db7a83ab92e7b598",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-null-target",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "168d23f0c175ed99",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-empty-target",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "e11d5f779f07a9fa",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-bad-arn",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "14668becbf9bcedd",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-wrong-service",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "6d1d050b424b1e21",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-wrong-account",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "653efec6205b5c6d",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "invalid-wrong-region",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "3c7c2cf09f8e66f5",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-policy",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "387daedce6d68b33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-policy",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: arn:aws:sqs:us-east-1:{account}:{name}\n      entry\n        key: RedrivePolicy\n        value: {\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:{account}:{name}\"}\n      entry\n        key: Protocol\n        value: sqs\n      entry\n        key: PendingConfirmation\n        value: false\n      entry\n        key: ConfirmationWasAuthenticated\n        value: true\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-missing-target",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "dbcf698c5edec204",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-missing-target",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: arn:aws:sqs:us-east-1:{account}:{name}\n      entry\n        key: RedrivePolicy\n        value: {\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:{account}:{name}-missing\"}\n      entry\n        key: Protocol\n        value: sqs\n      entry\n        key: PendingConfirmation\n        value: false\n      entry\n        key: ConfirmationWasAuthenticated\n        value: true\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "set-fifo-on-standard",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "e6e2404b424bb737",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "clear-policy",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "88b57f7e75547007",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-cleared",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "726aad968ade8b41",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: arn:aws:sqs:us-east-1:{account}:{name}\n      entry\n        key: Protocol\n        value: sqs\n      entry\n        key: PendingConfirmation\n        value: false\n      entry\n        key: ConfirmationWasAuthenticated\n        value: true\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-fifo-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "02619c33feb1ae58",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}.fifo\n  ResponseMetadata\n"
+    },
+    {
+      "step": "subscribe-standard-to-fifo",
+      "request": "POST sns Subscribe",
+      "fingerprint": "acc96363bebb5ddb",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}.fifo:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "fifo-standard-endpoint-standard-dlq",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "387daedce6d68b33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "fifo-standard-endpoint-fifo-dlq",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "e6e2404b424bb737",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "create-fifo-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "96147c3e865e015f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "fifo-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}.fifo\n"
+    },
+    {
+      "step": "subscribe-fifo-to-fifo",
+      "request": "POST sns Subscribe",
+      "fingerprint": "acc96363bebb5ddb",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}.fifo:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "fifo-fifo-endpoint-fifo-dlq",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "387daedce6d68b33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetSubscriptionAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-standard-queue",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "65823d4862f1a4ec",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "standard-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\n"
+    },
+    {
+      "step": "fifo-fifo-endpoint-standard-dlq",
+      "request": "POST sns SetSubscriptionAttributes",
+      "fingerprint": "387daedce6d68b33",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    }
+  ]
+}
