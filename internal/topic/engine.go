@@ -292,7 +292,7 @@ func newUUID() string {
 
 func checkTopicName(name string) error {
 	if len(name) > 256 || !topicNameRE.MatchString(name) {
-		return fmt.Errorf("topic name %q must be 1 to 256 letters, digits, hyphens, or underscores: %w", name, ErrInvalidParameter)
+		return fmt.Errorf("topic name %q must be 1 to 256 letters, digits, hyphens, or underscores, with an optional .fifo suffix: %w", name, ErrInvalidParameter)
 	}
 	return nil
 }

@@ -233,8 +233,39 @@ func TestFIFOPersistence(t *testing.T) {
 	mustFIFOTopic(t, again, "orders.fifo", nil)
 	mustSubscribe(t, again, arn, "q.fifo", nil)
 	in.DeduplicationID = "fresh"
-	if _, err := again.Publish(t.Context(), in); err != nil {
+	if out, err := again.Publish(t.Context(), in); err != nil || out.SequenceNumber != "1" {
+		t.Fatalf("Publish after re-create = %+v, %v; want sequence number 1", out, err)
+	}
+}
+
+// cancelingQueues cancels the publish context during its first delivery.
+type cancelingQueues struct {
+	fakeQueues
+	cancel context.CancelFunc
+}
+
+func (q *cancelingQueues) Send(ctx context.Context, name string, in []queue.SendInput) ([]queue.SendResult, error) {
+	q.cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return q.fakeQueues.Send(ctx, name, in)
+}
+
+func TestFIFOPublishCompletesAfterCancel(t *testing.T) {
+	e, _ := newEngine(t)
+	arn := mustFIFOTopic(t, e, "orders.fifo", nil)
+	mustSubscribe(t, e, arn, "a.fifo", nil)
+	mustSubscribe(t, e, arn, "b.fifo", nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	q := &cancelingQueues{cancel: cancel}
+	e.queues = q
+	if _, err := e.Publish(ctx, fifoInput(arn, "body", "g", "d")); err != nil {
 		t.Fatal(err)
+	}
+	if len(q.sent) != 2 {
+		t.Errorf("deliveries after the caller canceled = %d, want 2, because a retry of the ID delivers nothing", len(q.sent))
 	}
 }
 

@@ -310,6 +310,7 @@ func TestTopicAttributes(t *testing.T) {
 		{"bad delivery policy", arn, "DeliveryPolicy", "x", ErrInvalidParameter},
 		{"long display name", arn, "DisplayName", strings.Repeat("d", 101), ErrInvalidParameter},
 		{"missing topic", arn + "x", "DisplayName", "x", ErrNotFound},
+		{"unknown attribute on a missing topic", arn + "x", "Bogus", "x", ErrInvalidParameter},
 		{"not an ARN", "x", "DisplayName", "x", ErrInvalidParameter},
 	}
 	for _, tt := range tests {

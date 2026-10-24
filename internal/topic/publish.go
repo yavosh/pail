@@ -75,8 +75,9 @@ type delivery struct {
 	plan                                    deliveryPlan // HTTP and HTTPS only
 }
 
-// Publish sends a message to every subscription of a topic and returns its
-// message ID. A failed delivery is logged and does not fail the publish.
+// Publish sends a message to every subscription of a topic and returns its IDs.
+// A FIFO duplicate returns the first publish's IDs without delivering again.
+// A failed delivery is logged and does not fail the publish.
 func (e *Engine) Publish(ctx context.Context, in PublishInput) (PublishOutput, error) {
 	if err := ctx.Err(); err != nil {
 		return PublishOutput{}, err
@@ -153,6 +154,8 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (PublishOutput, e
 	out := PublishOutput{MessageID: n.messageID, SequenceNumber: n.sequenceNumber}
 	if fifo != nil {
 		fifo.dedup[key] = dedupEntry{output: out, expires: time.Now().Add(dedupWindow)}
+		// A retry of this ID now delivers nothing, so finish the fanout even if the caller cancels.
+		ctx = context.WithoutCancel(ctx)
 	}
 	for _, d := range targets {
 		n.message, n.signature = d.message, signatures[d.message]

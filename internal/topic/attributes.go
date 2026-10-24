@@ -150,14 +150,14 @@ func (e *Engine) SetTopicAttribute(ctx context.Context, arn, name, value string)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	fifo := isFIFO(arn) // findTopic matches the whole name, so the ARN suffix gives the type
+	if err := checkTopicAttr(name, value, fifo); err != nil {
+		return err
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	t, err := e.findTopic(arn)
 	if err != nil {
-		return err
-	}
-	fifo := isFIFO(t.Name)
-	if err := checkTopicAttr(name, value, fifo); err != nil {
 		return err
 	}
 	if fifo && name == "FifoTopic" {

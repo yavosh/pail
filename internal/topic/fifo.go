@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"maps"
-	"math/big"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,7 +13,7 @@ const dedupWindow = 5 * time.Minute
 
 // fifoState is transient, like the messages in SQS. fifoPublish protects it.
 type fifoState struct {
-	sequence big.Int
+	sequence uint64
 	dedup    map[dedupKey]dedupEntry
 }
 
@@ -72,6 +72,6 @@ func (f *fifoState) duplicate(key dedupKey, now time.Time) (PublishOutput, bool)
 }
 
 func (f *fifoState) nextSequence() string {
-	f.sequence.Add(&f.sequence, big.NewInt(1))
-	return f.sequence.String()
+	f.sequence++
+	return strconv.FormatUint(f.sequence, 10)
 }
