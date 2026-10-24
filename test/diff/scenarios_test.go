@@ -46,6 +46,7 @@ type scenario struct {
 	name           string
 	steps          []step
 	queues, topics []string
+	check          func([]step, []response) error // relationships that normalization cannot preserve
 }
 
 func etagOf(body string) string {
@@ -153,6 +154,10 @@ func scenarios() []scenario {
 		sqsFairQueueScenario(),
 		snsAuthErrorsScenario(),
 		snsTopicBasicsScenario(),
+		snsFIFOAttributesScenario(),
+		snsFIFODeliveryScenario(),
+		snsFIFODedupScenario("Topic"),
+		snsFIFODedupScenario("MessageGroup"),
 		snsAttributesScenario(),
 		snsSQSDeliveryScenario(),
 		snsPublishBatchScenario(),

@@ -18,6 +18,7 @@ type notification struct {
 	messageID, topicARN, subject, message, timestamp string
 	signatureVersion, signature                      string
 	baseURL, subscriptionARN                         string
+	sequenceNumber                                   string
 	attrs                                            map[string]MessageAttribute
 }
 
@@ -49,14 +50,19 @@ func (n notification) envelope() string {
 	b.WriteString(`{"Type":"Notification"`)
 	field("MessageId", n.messageID)
 	field("TopicArn", n.topicARN)
+	if n.sequenceNumber != "" {
+		field("SequenceNumber", n.sequenceNumber)
+	}
 	if n.subject != "" {
 		field("Subject", n.subject)
 	}
 	field("Message", n.message)
 	field("Timestamp", n.timestamp)
-	field("SignatureVersion", n.signatureVersion)
-	field("Signature", n.signature)
-	field("SigningCertURL", n.baseURL+"/_pail/sns/signing-cert.pem")
+	if n.sequenceNumber == "" {
+		field("SignatureVersion", n.signatureVersion)
+		field("Signature", n.signature)
+		field("SigningCertURL", n.baseURL+"/_pail/sns/signing-cert.pem")
+	}
 	field("UnsubscribeURL", n.baseURL+"/?Action=Unsubscribe&SubscriptionArn="+n.subscriptionARN)
 	if len(n.attrs) > 0 {
 		b.WriteString(`,"MessageAttributes":{`)

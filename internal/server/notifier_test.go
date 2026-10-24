@@ -47,6 +47,9 @@ func TestNotifierExists(t *testing.T) {
 	if _, err := topics.CreateTopic(ctx, "t", nil, nil); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := topics.CreateTopic(ctx, "t.fifo", map[string]string{"FifoTopic": "true"}, nil); err != nil {
+		t.Fatal(err)
+	}
 	n := notifier{region: "us-east-1", queues: queues, topics: topics}
 	tests := []struct {
 		arn  string
@@ -55,6 +58,7 @@ func TestNotifierExists(t *testing.T) {
 		{"arn:aws:sqs:us-east-1:000000000000:q", true},
 		{"arn:aws:sns:us-east-1:000000000000:t", true},
 		{"arn:aws:sqs:us-east-1:000000000000:q.fifo", false},
+		{"arn:aws:sns:us-east-1:000000000000:t.fifo", false},
 		{"arn:aws:sqs:us-east-1:000000000000:missing", false},
 		{"arn:aws:sns:us-east-1:000000000000:missing", false},
 		{"arn:aws:sqs:eu-west-1:000000000000:q", false},

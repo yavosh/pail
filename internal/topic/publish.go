@@ -53,11 +53,18 @@ type PublishEntry struct {
 	DeduplicationID  string
 }
 
+// PublishOutput identifies an accepted message. SequenceNumber is empty for standard topics.
+type PublishOutput struct {
+	MessageID      string
+	SequenceNumber string
+}
+
 // PublishResult is the outcome of one PublishEntry.
 type PublishResult struct {
-	ID        string
-	MessageID string
-	Err       error
+	ID             string
+	MessageID      string
+	SequenceNumber string
+	Err            error
 }
 
 // delivery is one subscription that receives a message. queue is empty for
@@ -70,18 +77,38 @@ type delivery struct {
 
 // Publish sends a message to every subscription of a topic and returns its
 // message ID. A failed delivery is logged and does not fail the publish.
-func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
+func (e *Engine) Publish(ctx context.Context, in PublishInput) (PublishOutput, error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return PublishOutput{}, err
 	}
 	if err := validatePublish(in); err != nil {
-		return "", err
+		return PublishOutput{}, err
+	}
+	if isFIFO(in.TopicARN) {
+		select {
+		case e.fifoPublish <- struct{}{}:
+			defer func() { <-e.fifoPublish }()
+		case <-ctx.Done():
+			return PublishOutput{}, ctx.Err()
+		}
 	}
 	e.mu.Lock()
 	t, err := e.findTopic(in.TopicARN)
 	if err != nil {
 		e.mu.Unlock()
-		return "", err
+		return PublishOutput{}, err
+	}
+	key, err := prepareFIFO(t, &in)
+	if err != nil {
+		e.mu.Unlock()
+		return PublishOutput{}, err
+	}
+	fifo := t.fifo
+	if fifo != nil {
+		if out, ok := fifo.duplicate(key, time.Now()); ok {
+			e.mu.Unlock()
+			return out, nil
+		}
 	}
 	version := topicAttrValue(t, in.TopicARN, "SignatureVersion")
 	var targets []delivery
@@ -95,7 +122,7 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 		if !f.match(in.Attributes, message) {
 			continue
 		}
-		name, _ := e.checkEndpoint(s.Protocol, s.Endpoint) // checked when stored
+		name, _ := e.checkEndpoint(s.TopicARN, s.Protocol, s.Endpoint) // checked when stored
 		d := delivery{arn: s.ARN, protocol: s.Protocol, endpoint: s.Endpoint, queue: name, message: message, raw: s.rawDelivery()}
 		if s.Protocol != protocolSQS {
 			d.plan = effectivePolicy(t, s).plan()
@@ -109,16 +136,23 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 		timestamp:        time.Now().UTC().Format(timestampFormat),
 		signatureVersion: version, baseURL: in.BaseURL, attrs: in.Attributes,
 	}
+	if fifo != nil {
+		n.sequenceNumber = fifo.nextSequence()
+	}
 	// The signature covers the message, so sign once per distinct text.
 	signatures := map[string]string{}
 	for _, d := range targets {
-		if _, done := signatures[d.message]; done || d.raw {
+		if _, done := signatures[d.message]; done || d.raw || fifo != nil {
 			continue
 		}
 		n.message = d.message
 		if signatures[d.message], err = e.signString(version, n.stringToSign()); err != nil {
-			return "", err
+			return PublishOutput{}, err
 		}
+	}
+	out := PublishOutput{MessageID: n.messageID, SequenceNumber: n.sequenceNumber}
+	if fifo != nil {
+		fifo.dedup[key] = dedupEntry{output: out, expires: time.Now().Add(dedupWindow)}
 	}
 	for _, d := range targets {
 		n.message, n.signature = d.message, signatures[d.message]
@@ -134,15 +168,21 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (string, error) {
 			e.enqueue(j)
 			continue
 		}
-		// Forwarding the group ID to SQS is unverified.
 		send := queue.SendInput{Body: n.message, Attributes: rawAttributes(in.Attributes), GroupID: in.GroupID}
 		if !d.raw {
 			n.subscriptionARN = d.arn
 			send = queue.SendInput{Body: n.envelope(), GroupID: in.GroupID}
 		}
+		if fifo != nil {
+			if isFIFO(d.queue) {
+				send.DeduplicationID = in.DeduplicationID
+			} else {
+				send.GroupID = ""
+			}
+		}
 		e.deliver(ctx, in.TopicARN, d.queue, send)
 	}
-	return n.messageID, nil
+	return out, nil
 }
 
 // deliver sends one message to a queue and logs a failure.
@@ -156,25 +196,37 @@ func (e *Engine) deliver(ctx context.Context, topicARN, queueName string, in que
 	}
 }
 
-// PublishBatch publishes each entry like Publish. A bad entry fails alone;
-// an unknown topic fails the call. The API checks the batch-level rules.
+// PublishBatch publishes entries in order. FIFO validation fails the whole
+// batch before delivery; invalid standard-topic entries fail individually.
 func (e *Engine) PublishBatch(ctx context.Context, topicARN string, entries []PublishEntry, baseURL string) ([]PublishResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	e.mu.Lock()
-	_, err := e.findTopic(topicARN)
+	t, err := e.findTopic(topicARN)
+	if err == nil && isFIFO(t.Name) {
+		for _, en := range entries {
+			in := PublishInput{Message: en.Message, Subject: en.Subject, MessageStructure: en.MessageStructure,
+				Attributes: en.Attributes, GroupID: en.GroupID, DeduplicationID: en.DeduplicationID}
+			if err = validatePublish(in); err != nil {
+				break
+			}
+			if _, err = prepareFIFO(t, &in); err != nil {
+				break
+			}
+		}
+	}
 	e.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	out := make([]PublishResult, len(entries))
 	for i, en := range entries {
-		id, err := e.Publish(ctx, PublishInput{
+		published, err := e.Publish(ctx, PublishInput{
 			TopicARN: topicARN, Message: en.Message, Subject: en.Subject, MessageStructure: en.MessageStructure,
 			Attributes: en.Attributes, GroupID: en.GroupID, DeduplicationID: en.DeduplicationID, BaseURL: baseURL,
 		})
-		out[i] = PublishResult{ID: en.ID, MessageID: id, Err: err}
+		out[i] = PublishResult{ID: en.ID, MessageID: published.MessageID, SequenceNumber: published.SequenceNumber, Err: err}
 	}
 	return out, nil
 }
@@ -204,9 +256,6 @@ func validatePublish(in PublishInput) error {
 	switch {
 	case in.Message == "":
 		return invalid("empty message")
-	case in.DeduplicationID != "":
-		// Unverified. A standard topic does accept MessageGroupId (sns-errors).
-		return invalid("MessageDeduplicationId is for FIFO topics, which are not supported")
 	case in.GroupID != "" && (len(in.GroupID) > 128 || strings.ContainsFunc(in.GroupID, func(r rune) bool { return r < 0x21 || r > 0x7e })):
 		// SQS applies this rule when the group is forwarded; check it here so the publish fails (unverified on AWS).
 		return invalid("MessageGroupId must be 1 to 128 printable ASCII characters")

@@ -269,7 +269,7 @@ pail supports `PutBucketNotificationConfiguration` and `GetBucketNotificationCon
 - pail raises these events: `s3:ObjectCreated:*`, `Put`, `Post`, `Copy`, `CompleteMultipartUpload`, and `s3:ObjectRemoved:*`, `Delete`, `DeleteMarkerCreated`. `PutObject`, `POST Object`, `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, and each key that `DeleteObjects` removes raise an event after the write commits. `DeleteMarkerCreated` needs versioning.
 - Validation errors:
   - An unknown event, a bad filter rule name, a repeated filter rule, or a repeated `Id` returns `400 InvalidArgument`.
-  - A destination that doesn't exist in this pail, a FIFO queue, or a destination with the wrong service returns `400 InvalidArgument`. The ARN's region and account must be pail's.
+  - A destination that doesn't exist in this pail, a FIFO queue or topic, or a destination with the wrong service returns `400 InvalidArgument`. The ARN's region and account must be pail's.
   - Two configurations that share an event type and have overlapping prefixes and suffixes return `400 InvalidArgument`.
   - Malformed XML, or a queue configuration with a `Topic` element, returns `400 MalformedXML`.
 - `CloudFunctionConfiguration`, `LambdaFunctionConfiguration`, and `EventBridgeConfiguration` return `501 NotImplemented`. So do the AWS event types pail never raises: object restore, replication, lifecycle, intelligent tiering, tagging, and ACL events.

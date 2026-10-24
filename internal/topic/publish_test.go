@@ -92,7 +92,7 @@ func TestPublishValidation(t *testing.T) {
 			if !errors.Is(err, tt.want) {
 				t.Fatalf("Publish error = %v, want %v", err, tt.want)
 			}
-			if (err == nil) != uuidRE.MatchString(id) {
+			if (err == nil) != uuidRE.MatchString(id.MessageID) {
 				t.Errorf("Publish MessageId = %q with error %v, want a UUID only on success", id, err)
 			}
 		})
@@ -149,7 +149,7 @@ func TestPublishEnvelope(t *testing.T) {
 		if err := json.Unmarshal([]byte(body), &env); err != nil {
 			t.Fatalf("envelope %s is not JSON: %v", body, err)
 		}
-		if env["Message"] != in.Message || env["MessageId"] != id || env["TopicArn"] != arn || env["Subject"] != "greeting" || env["Type"] != "Notification" || env["SignatureVersion"] != "1" {
+		if env["Message"] != in.Message || env["MessageId"] != id.MessageID || env["TopicArn"] != arn || env["Subject"] != "greeting" || env["Type"] != "Notification" || env["SignatureVersion"] != "1" {
 			t.Errorf("%s envelope = %v", name, env)
 		}
 		if want := "http://localhost:9000/_pail/sns/signing-cert.pem"; env["SigningCertURL"] != want {

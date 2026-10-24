@@ -21,7 +21,10 @@ import (
 // checkEndpoint checks the protocol and endpoint of a subscription and returns
 // the queue name, which is empty for an HTTP or HTTPS endpoint. The queue need
 // not exist yet.
-func (e *Engine) checkEndpoint(protocol, endpoint string) (string, error) {
+func (e *Engine) checkEndpoint(topicARN, protocol, endpoint string) (string, error) {
+	if isFIFO(topicARN) && protocol != protocolSQS {
+		return "", invalid("FIFO topics support only SQS subscriptions")
+	}
 	if protocol == protocolHTTP || protocol == protocolHTTPS {
 		// The message text is unverified.
 		u, err := url.Parse(endpoint)
@@ -37,7 +40,7 @@ func (e *Engine) checkEndpoint(protocol, endpoint string) (string, error) {
 	if !ok || name == "" || strings.Contains(name, ":") {
 		return "", fmt.Errorf("endpoint %q is not an SQS queue ARN of this region and account: %w", endpoint, ErrInvalidParameter)
 	}
-	if strings.HasSuffix(name, ".fifo") {
+	if isFIFO(name) && !isFIFO(topicARN) {
 		// AWS rejects this pairing too; the message text is unverified.
 		return "", fmt.Errorf("endpoint %q: a FIFO queue cannot subscribe to a standard topic: %w", endpoint, ErrInvalidParameter)
 	}
@@ -126,7 +129,7 @@ func (e *Engine) addSub(in SubscribeInput) (subDef, string, error) {
 	if err != nil {
 		return subDef{}, "", err
 	}
-	if _, err := e.checkEndpoint(in.Protocol, in.Endpoint); err != nil {
+	if _, err := e.checkEndpoint(in.TopicARN, in.Protocol, in.Endpoint); err != nil {
 		return subDef{}, "", err
 	}
 	if err := checkProtocolAttrs(in.Protocol, in.Attributes); err != nil {

@@ -36,5 +36,5 @@ See [S3 versioning compatibility](s3-compatibility.md#versioning) for API behavi
 | `sns/topics/<sha256(name)>.json` | Topic attributes and tags. |
 | `sns/subscriptions/<uuid>.json` | Subscription metadata. The UUID comes from the subscription ARN. |
 
-Queue messages and pending HTTP deliveries live in memory.
+Queue messages and pending HTTP deliveries live in memory. SNS FIFO topic attributes and subscriptions persist in the same files as standard topics. FIFO deduplication records and sequence numbers live in memory and reset on restart.
 See [SQS and SNS compatibility](sqs-sns-compatibility.md) for persistence behavior.

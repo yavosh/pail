@@ -139,6 +139,7 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 func runScenario(t *testing.T, tg *target, sc scenario, bucket string, vars map[string]string) golden {
 	t.Helper()
 	g := golden{Scenario: sc.name}
+	var responses []response
 	prev := "no earlier step ran"
 	for _, st := range sc.steps {
 		expanded, missing := st.withVars(vars)
@@ -154,6 +155,14 @@ func runScenario(t *testing.T, tg *target, sc scenario, bucket string, vars map[
 		captureVersion(vars, st, resp.header)
 		prev = st.name + " answered " + failure(resp, nil)
 		g.Exchanges = append(g.Exchanges, tg.normalize(st, bucket, resp))
+		if sc.check != nil {
+			responses = append(responses, resp)
+		}
+	}
+	if sc.check != nil {
+		if err := sc.check(sc.steps, responses); err != nil {
+			t.Fatalf("scenario checks: %v", err)
+		}
 	}
 	return g
 }
@@ -189,6 +198,7 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 	}
 	bucket := newBucketName()
 	vars := tg.startVars(bucket)
+	var responses []response
 	for i, st := range sc.steps {
 		w := want.Exchanges[i]
 		if w.Step != st.name || w.Request != describe(st) || w.Fingerprint != fingerprint(st) {
@@ -203,6 +213,9 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 				msg += "\nearlier differences:\n" + strings.Join(unexpected, "\n")
 			}
 			t.Fatal(msg)
+		}
+		if sc.check != nil {
+			responses = append(responses, resp)
 		}
 		captureVars(vars, resp.body)
 		captureVersion(vars, st, resp.header)
@@ -221,6 +234,11 @@ func replayScenario(t *testing.T, tg *target, sc scenario, want golden, known, p
 				continue
 			}
 			unexpected = append(unexpected, fmt.Sprintf("%s: %s\n%s", full, w.Request, diffs[key]))
+		}
+	}
+	if sc.check != nil {
+		if err := sc.check(sc.steps, responses); err != nil {
+			unexpected = append(unexpected, "scenario checks: "+err.Error())
 		}
 	}
 	return unexpected, seen

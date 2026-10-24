@@ -55,11 +55,10 @@ func (n notifier) split(arn string) (service, name string, ok bool) {
 func (n notifier) Exists(ctx context.Context, arn string) bool {
 	service, name, ok := n.split(arn)
 	switch {
-	case !ok:
+	case !ok || strings.HasSuffix(name, ".fifo"):
 		return false
 	case service == "sqs":
-		// AWS refuses a FIFO queue, and a delivery without a group ID would fail.
-		return !strings.HasSuffix(name, ".fifo") && n.queues.Lookup(ctx, name) == nil
+		return n.queues.Lookup(ctx, name) == nil
 	}
 	_, err := n.topics.TopicAttributes(ctx, arn)
 	return err == nil

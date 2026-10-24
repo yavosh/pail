@@ -109,6 +109,20 @@ go test ./test/diff -record -run '^TestDiff/sqs-(fifo|dead-letter|fair-queue)$' 
 
 The recording identity also needs `sqs:ListDeadLetterSourceQueues`.
 
+The SNS FIFO scenarios are `sns-fifo-attributes`, `sns-fifo-delivery`,
+`sns-fifo-dedup-Topic`, and `sns-fifo-dedup-MessageGroup`.
+They cover topic settings, validation, ordered FIFO delivery, raw delivery,
+batch results, and deduplication observed through standard queues.
+Their AWS recordings replay against pail. The delivery scenario also checks
+duplicate identifiers, increasing sequence numbers, and envelope identifiers
+before normalization masks their values. Raw delivery uses a separate subscription,
+so AWS subscription-update propagation does not affect the recording.
+Credentials are loaded through direnv. A maintainer can record them with:
+
+```bash
+direnv exec . go test ./test/diff -record -run '^TestDiff/sns-fifo-' -v -count=1 -timeout=5m
+```
+
 The SNS scenarios are:
 
 - `sns-auth-errors`: `GetTopicAttributes` with no credentials, an unknown key, a bad signature, and a skewed clock.

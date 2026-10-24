@@ -195,7 +195,7 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 ### Topics and ARNs
 
 - A topic ARN is `arn:aws:sns:<region>:000000000000:<name>`. The region is the `--region` setting.
-- A topic name is 1 to 256 letters, digits, hyphens, or underscores. A name that ends in `.fifo` returns `InvalidParameter`, because pail has no FIFO topics.
+- A standard topic name is 1 to 256 letters, digits, hyphens, or underscores. FIFO names add a `.fifo` suffix within that limit. See [FIFO topics](#fifo-topics).
 - `CreateTopic` is idempotent. For a topic that exists, it returns the ARN. If a given attribute differs from the stored value, it returns `InvalidParameter`.
 - `DeleteTopic` removes the topic and its subscriptions. For a topic that does not exist, it succeeds.
 - A topic has at most 50 tags. More return `TagLimitExceeded`. The tag operations answer `ResourceNotFound` for an unknown topic. `ListTagsForResource` writes `Value` before `Key` in each member.
@@ -204,7 +204,7 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 
 ### Topic attributes
 
-`GetTopicAttributes` returns these entries in this order. The recordings `sns-topic-basics`, `sns-topic-attributes`, `sns-delivery-policy`, and `sns-edge-cases` verify the order and the default values. `DisplayName` set at creation and by `SetTopicAttributes` shows in the next read.
+`GetTopicAttributes` for a standard topic returns these entries in this order. The recordings `sns-topic-basics`, `sns-topic-attributes`, `sns-delivery-policy`, and `sns-edge-cases` verify the order and the default values. `DisplayName` set at creation and by `SetTopicAttributes` shows in the next read.
 
 | Attribute | Value |
 | --- | --- |
@@ -221,15 +221,46 @@ Every other action returns `InvalidAction` with the message `<Action> is not sup
 | `DeliveryPolicy` | Only when a client set it. See [Delivery policies](#delivery-policies). |
 | `SubscriptionsDeleted` | `0`. |
 
-`CreateTopic` accepts `FifoTopic` and `ContentBasedDeduplication` with the value `false` and ignores them. The value `true` returns `InvalidParameter`. `DisplayName` has at most 100 characters and no control characters (unverified). A tag key has 1 to 128 characters and a tag value has 0 to 256 characters (unverified).
+For standard topics, `CreateTopic` accepts `FifoTopic` and `ContentBasedDeduplication` with the value `false` and ignores them. The value `true` returns `InvalidParameter`. `DisplayName` has at most 100 characters and no control characters (unverified). A tag key has 1 to 128 characters and a tag value has 0 to 256 characters (unverified).
 
-A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JSON object that pail validates), `KmsMasterKeyId`, `SignatureVersion` (`1` or `2`), and `TracingConfig` (`PassThrough` or `Active`). Any other name returns `InvalidParameter`. An empty value unsets an attribute (unverified). pail stores `Policy` and `KmsMasterKeyId` and enforces neither. pail applies `DeliveryPolicy` to HTTP and HTTPS deliveries.
+A client can set `DisplayName`, `Policy` (a JSON object), `DeliveryPolicy` (a JSON object that pail validates), `KmsMasterKeyId`, `SignatureVersion` (`1` or `2`), and `TracingConfig` (`PassThrough` or `Active`). FIFO topics also accept the attributes in [FIFO topics](#fifo-topics). Any other name returns `InvalidParameter`. An empty value unsets a standard attribute (unverified). pail stores `Policy` and `KmsMasterKeyId` and enforces neither. pail applies `DeliveryPolicy` to HTTP and HTTPS deliveries.
+
+### FIFO topics
+
+The FIFO behavior below follows the AWS [Publish API](https://docs.aws.amazon.com/sns/latest/api/API_Publish.html)
+and [deduplication documentation](https://docs.aws.amazon.com/sns/latest/dg/fifo-message-dedup.html).
+The AWS recordings `sns-fifo-attributes`, `sns-fifo-delivery`, `sns-fifo-dedup-Topic`,
+and `sns-fifo-dedup-MessageGroup` verify creation, attributes, publish validation,
+batch rejection, ordered delivery, raw delivery, and both deduplication scopes.
+The delivery scenario also checks identifier equality and sequence ordering before normalization.
+Engine and SDK tests cover concurrency, restart behavior, filters, and deduplication expiry;
+those details and exact identifier-length boundaries remain unverified against live AWS.
+
+- Create a topic with a `.fifo` name and `FifoTopic=true`. Both are required. The topic type cannot change. Setting `FifoTopic=true` again succeeds without changing it.
+- `ContentBasedDeduplication` defaults to `false`. `FifoThroughputScope` defaults to `Topic` and also accepts `MessageGroup`. The response omits `FifoThroughputScope` until it is explicitly set.
+- FIFO attribute responses place `FifoTopic` before `DisplayName`, then `ContentBasedDeduplication` and any explicit `FifoThroughputScope` before `SubscriptionsDeleted`.
+- `SetTopicAttributes` accepts `TracingConfig` on FIFO topics. pail stores it but does not trace deliveries.
+- After setting `FifoThroughputScope=MessageGroup`, it cannot return to `Topic`, following the [AWS high-throughput rules](https://docs.aws.amazon.com/sns/latest/dg/fifo-high-throughput.html).
+- FIFO subscriptions accept SQS FIFO and standard queues. HTTP and HTTPS subscriptions return `InvalidParameter`.
+- Each publish requires `MessageGroupId`. It also requires `MessageDeduplicationId` unless content-based deduplication is enabled.
+- Both identifiers accept 1 to 128 printable ASCII characters, excluding spaces.
+- Content-based deduplication uses the SHA-256 hash of the message body. Attributes do not affect the hash. An explicit ID overrides it.
+- A duplicate within five minutes returns the original message ID and sequence number without delivering again. Duplicates do not extend the interval.
+- `Topic` deduplicates across all message groups. `MessageGroup` deduplicates within each group.
+- Deduplication applies before subscription filtering. A filtered message still consumes its deduplication ID.
+- FIFO queue deliveries retain the group and deduplication IDs. Standard queue deliveries omit both IDs.
+- Delivery preserves publication order within each group. `PublishBatch` processes entries in order. An empty message or invalid FIFO identifiers reject the whole batch before delivery.
+- `Publish` and successful `PublishBatch` entries return `SequenceNumber` before `MessageId`. Envelopes include the same sequence number; raw message bodies do not.
+- FIFO envelopes omit `SignatureVersion`, `Signature`, and `SigningCertURL`, as on AWS.
+- pail uses an increasing decimal sequence counter per topic. AWS uses nonconsecutive 128-bit sequence numbers per group.
+- Topic definitions and subscriptions persist. Deduplication and sequence state reset on restart.
+- S3 event notifications cannot target FIFO topics.
 
 ### Subscriptions
 
 - pail supports the protocols `sqs`, `http`, and `https`. Any other protocol returns `InvalidParameter` with the message `protocol is not supported`.
 - An `sqs` endpoint must be the ARN of an SQS queue in the same region and account, `arn:aws:sqs:<region>:000000000000:<name>`. The queue need not exist when you subscribe. A delivery to a queue that does not exist is logged and dropped.
-- An endpoint that names a FIFO queue returns `InvalidParameter`, because pail has no FIFO topics (verified for a FIFO queue endpoint on a standard topic).
+- A standard topic rejects a FIFO queue endpoint with `InvalidParameter`. FIFO topics accept both FIFO and standard SQS queues.
 - An `http` or `https` endpoint must be a URL whose scheme equals the protocol, with a host and no user info. A scheme that differs from the protocol and an endpoint that is not a URL return `InvalidParameter`. AWS also refuses an endpoint on an internal address, such as `127.0.0.1`, with `AuthorizationError`. pail accepts it, because local testing needs it.
 - pail confirms an SQS subscription at once. A subscription ARN is the topic ARN, a colon, and a lowercase UUID.
 - An HTTP or HTTPS subscription is pending until its endpoint confirms it. See [Delivery to HTTP and HTTPS](#delivery-to-http-and-https). While it is pending, `Subscribe` returns the `SubscriptionArn` `pending confirmation`, unless `ReturnSubscriptionArn` is `true`. Then it returns the real ARN.
@@ -306,14 +337,14 @@ The `sns-filter-policies` and `sns-filter-edge-cases` recordings verify the rule
 - `Subject` is at most 100 printable ASCII characters, with no line breaks.
 - `MessageStructure` is empty or `json`. With `json`, the message is a JSON object of string values with a `default` key. pail delivers the value under the protocol name of the subscription (`sqs`, `http`, or `https`) when it exists, and `default` otherwise. The `sqs` key is verified. The `http` and `https` keys are unverified.
 - A message has at most 10 attributes. Names follow the SQS rules. The types are `String`, `String.Array` (the value is a JSON array), `Number`, and `Binary`, with an optional custom label such as `String.json`.
-- A standard topic accepts `MessageGroupId`. pail forwards it as the `MessageGroupId` of the SQS message. `MessageDeduplicationId` returns `InvalidParameter`. Both are verified.
+- A standard topic accepts `MessageGroupId`. pail forwards it as the `MessageGroupId` of the SQS message. `MessageDeduplicationId` on a standard topic returns `InvalidParameter`. Both are verified.
 - A missing `Message` parameter returns `ValidationError`. A long `Subject` and a bad `MessageStructure` return `InvalidParameter`. An empty `Message` returns `InvalidParameter` too: verified for a `PublishBatch` entry, unverified for `Publish`. A `MessageGroupId` must be 1 to 128 printable ASCII characters (unverified). The other rules above return `InvalidParameter` too. A message attribute with a data type other than `String`, `String.Array`, `Number`, or `Binary` returns `ParameterValueInvalid` (verified). The other attribute errors (name, value, and count) return `InvalidParameter`; AWS may use `ParameterValueInvalid` for some of them (unverified).
 - `Publish` returns after pail sends to every subscribed queue, so a receive right after it sees the message. A missing queue or a failed send is logged and does not fail the publish.
-- `PublishBatch` takes 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique. The entries total at most 262,144 bytes. A request that breaks these rules fails as a whole with `ValidationError` (no entries), `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong`. An invalid entry fails alone and appears in `Failed` with `Code`, `Message`, `SenderFault`, and `Id`, in this order (the `Message` position is unverified). The result always has `Failed` first, empty when nothing failed, then `Successful`. A `Successful` member is `MessageId` then `Id`. pail writes an empty `Successful` when every entry failed. A failed entry's `Message` text is not compared with AWS.
+- `PublishBatch` takes 1 to 10 entries. Each `Id` is 1 to 80 letters, digits, hyphens, or underscores, and is unique. The entries total at most 262,144 bytes. A request that breaks these rules fails as a whole with `ValidationError` (no entries), `TooManyEntriesInBatchRequest`, `InvalidBatchEntryId`, `BatchEntryIdsNotDistinct`, or `BatchRequestTooLong`. For standard topics, an invalid entry fails alone and appears in `Failed` with `Code`, `Message`, `SenderFault`, and `Id`, in this order (the `Message` position is unverified). The result always has `Failed` first, empty when nothing failed, then `Successful`. A `Successful` member is `MessageId` then `Id`. FIFO members prepend `SequenceNumber`. Invalid FIFO identifiers and empty messages reject the entire batch before delivery. pail writes an empty `Successful` when every entry failed. A failed entry's `Message` text is not compared with AWS.
 
 ### Delivery to SQS
 
-By default, the queue receives a JSON envelope as the message body. The keys are in this order:
+By default, the queue receives a JSON envelope as the message body. FIFO envelopes also include `SequenceNumber` and omit the three signature fields. Standard envelopes have these keys in order:
 
 1. `Type`: `Notification`.
 2. `MessageId`: the ID that `Publish` returned.
@@ -401,7 +432,7 @@ An S3 bucket can send object events to an SQS queue or an SNS topic in the same 
 ### Differences from AWS
 
 - pail delivers to SQS queues and to HTTP and HTTPS endpoints. Filter policies support the operators in [Filter policies](#filter-policies) only.
-- pail has no FIFO topics, SMS, email, Lambda, or mobile push.
+- pail has no SMS, email, Lambda, or mobile push. FIFO topics have no message archiving, replay, or throughput quotas. Their deduplication and sequence state reset on restart.
 - pail does not enforce topic policies, queue policies, IAM, or KMS.
 - pail serves one account.
 - An SQS delivery is synchronous and has no retries. AWS delivers in the background with retries. HTTP and HTTPS deliveries run in the background, with the retries above.
