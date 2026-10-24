@@ -31,6 +31,7 @@ var (
 	errInternalFailure      = apiError{http.StatusInternalServerError, "com.amazon.coral.service#InternalFailure", "InternalFailure"}
 
 	errQueueNameExists          = apiError{http.StatusBadRequest, "com.amazonaws.sqs#QueueNameExists", "QueueAlreadyExists"}
+	errOverLimit                = apiError{http.StatusBadRequest, "com.amazonaws.sqs#OverLimit", "OverLimit"}
 	errInvalidAttributeName     = apiError{http.StatusBadRequest, "com.amazonaws.sqs#InvalidAttributeName", "InvalidAttributeName"}
 	errInvalidAttributeValue    = apiError{http.StatusBadRequest, "com.amazonaws.sqs#InvalidAttributeValue", "InvalidAttributeValue"}
 	errInvalidParameterValue    = apiError{http.StatusBadRequest, "com.amazon.coral.service#InvalidParameterValueException", "InvalidParameterValue"}
@@ -69,6 +70,7 @@ type mapping struct {
 var mappings = []mapping{
 	{queue.ErrQueueDoesNotExist, errQueueDoesNotExist, ""},
 	{queue.ErrQueueNameExists, errQueueNameExists, ""},
+	{queue.ErrOverLimit, errOverLimit, ""},
 	{queue.ErrInvalidAttributeName, errInvalidAttributeName, ""},
 	{queue.ErrInvalidAttributeValue, errInvalidAttributeValue, ""},
 	{queue.ErrInvalidParameterValue, errInvalidParameterValue, "InvalidParameterValue"},

@@ -56,6 +56,7 @@ type ReceiveInput struct {
 	Max               int
 	VisibilityTimeout *int
 	WaitTimeSeconds   *int
+	AttemptID         *string
 }
 
 // Message is a received message. It holds copies, never engine state.
@@ -93,6 +94,7 @@ type message struct {
 	lastReceived  time.Time
 	receives      int
 	seq           uint32 // sequence of the newest receipt handle
+	visibilityRev uint64 // explicit visibility changes invalidate receive attempts
 	group         string
 	dedupID       string
 	sequence      string // FIFO sequence number
@@ -373,6 +375,10 @@ func (e *Engine) Receive(ctx context.Context, name string, in ReceiveInput) ([]M
 	var deadline time.Time
 	for {
 		e.mu.Lock()
+		if err := ctx.Err(); err != nil {
+			e.mu.Unlock()
+			return nil, err
+		}
 		q, err := e.find(name)
 		if err != nil {
 			e.mu.Unlock()
@@ -391,14 +397,38 @@ func (e *Engine) Receive(ctx context.Context, name string, in ReceiveInput) ([]M
 		if in.VisibilityTimeout != nil {
 			timeout = *in.VisibilityTimeout
 		}
+		attemptID := in.AttemptID
+		if !q.fifo() {
+			attemptID = nil
+		}
+		if attemptID != nil {
+			if !validID(*attemptID) {
+				e.mu.Unlock()
+				return nil, fmt.Errorf("receive request attempt id must be 1 to 128 printable ASCII characters: %w", ErrInvalidParameterValue)
+			}
+			if attempt, ok := q.attempts[*attemptID]; ok {
+				got, err := e.retryReceive(q, attempt, now, limit, timeout)
+				e.mu.Unlock()
+				return got, err
+			}
+			if len(q.attempts) >= maxReceiveAttempts {
+				e.mu.Unlock()
+				return nil, fmt.Errorf("queue has %d active receive attempts: %w", maxReceiveAttempts, ErrOverLimit)
+			}
+		}
 		got := e.take(q, now, limit, timeout)
+		if len(got) > 0 || !now.Before(deadline) {
+			if attemptID != nil {
+				e.rememberReceive(q, *attemptID, got, now, limit, timeout)
+				q.notify()
+			}
+			e.mu.Unlock()
+			return got, nil
+		}
 		wake := q.wake
 		next := q.nextVisible(now)
 		e.mu.Unlock()
 
-		if len(got) > 0 || !now.Before(deadline) {
-			return got, nil
-		}
 		d := deadline.Sub(now)
 		if !next.IsZero() {
 			d = min(d, next.Sub(now))
@@ -450,21 +480,7 @@ func (e *Engine) take(q *queue, now time.Time, limit, timeout int) []Message {
 		m.lastReceived = now
 		m.seq++
 		m.visibleAt = now.Add(time.Duration(timeout) * time.Second)
-		got = append(got, Message{
-			ID:                  idString(m.id),
-			ReceiptHandle:       e.newHandle(q.def.Name, m.id, m.seq),
-			Body:                m.body,
-			MD5OfBody:           MD5OfBody(m.body),
-			Attributes:          cloneAttrs(m.attrs),
-			SystemAttributes:    cloneAttrs(m.sysAttrs),
-			SentAt:              m.sentAt,
-			FirstReceivedAt:     m.firstReceived,
-			ReceiveCount:        m.receives,
-			GroupID:             m.group,
-			DeduplicationID:     m.dedupID,
-			SequenceNumber:      m.sequence,
-			DeadLetterSourceARN: m.dlqSource,
-		})
+		got = append(got, e.receivedMessage(q, m))
 	}
 	if len(moved) > 0 {
 		e.moveToDeadLetter(q, dlq, moved, now)
@@ -605,6 +621,7 @@ func (e *Engine) ChangeVisibility(ctx context.Context, name string, changes []Vi
 			continue
 		}
 		m.visibleAt = visibleAt
+		m.visibilityRev++
 		q.notify() // waiting receives size their timers from visibleAt
 	}
 	return errs, nil

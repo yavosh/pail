@@ -18,4 +18,5 @@ var (
 	ErrMessageNotAvailable    = errors.New("message is not available")
 	ErrPurgeInProgress        = errors.New("purge queue in progress")
 	ErrTooManyTags            = errors.New("too many tags")
+	ErrOverLimit              = errors.New("queue limit exceeded")
 )

@@ -1,0 +1,138 @@
+{
+  "scenario": "sqs-receive-retries",
+  "exchanges": [
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "0de746e880e639f7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "send-one",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "80f60fef83f059c6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "MD5OfMessageBody: f97c5d29941bfb1b2fdab0874906ab82\nMessageId: {uuid}\nSequenceNumber: <volatile>\n"
+    },
+    {
+      "step": "send-two",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "9cb81d4e10a6246d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "MD5OfMessageBody: b8a9f715dbb64fd5c56e7783c6820a61\nMessageId: {uuid}\nSequenceNumber: <volatile>\n"
+    },
+    {
+      "step": "receive-first",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "c06322aec5f46d4e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: 7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: one\nMessages[0].MD5OfBody: f97c5d29941bfb1b2fdab0874906ab82\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\nMessages[1].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[1].Attributes.ApproximateReceiveCount: 1\nMessages[1].Attributes.MessageDeduplicationId: 3fc4ccfe745870e2c0d99f71f30ff0656c8dedd41cc1d7d3d376b0dbe685e2f3\nMessages[1].Attributes.MessageGroupId: g\nMessages[1].Attributes.SenderId: <volatile>\nMessages[1].Attributes.SentTimestamp: <volatile>\nMessages[1].Attributes.SequenceNumber: <volatile>\nMessages[1].Body: two\nMessages[1].MD5OfBody: b8a9f715dbb64fd5c56e7783c6820a61\nMessages[1].MessageId: {uuid}\nMessages[1].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-retry",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "c06322aec5f46d4e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: 7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: one\nMessages[0].MD5OfBody: f97c5d29941bfb1b2fdab0874906ab82\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\nMessages[1].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[1].Attributes.ApproximateReceiveCount: 1\nMessages[1].Attributes.MessageDeduplicationId: 3fc4ccfe745870e2c0d99f71f30ff0656c8dedd41cc1d7d3d376b0dbe685e2f3\nMessages[1].Attributes.MessageGroupId: g\nMessages[1].Attributes.SenderId: <volatile>\nMessages[1].Attributes.SentTimestamp: <volatile>\nMessages[1].Attributes.SequenceNumber: <volatile>\nMessages[1].Body: two\nMessages[1].MD5OfBody: b8a9f715dbb64fd5c56e7783c6820a61\nMessages[1].MessageId: {uuid}\nMessages[1].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-changed-wait",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "3eea22e6ad687fc8",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: 7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: one\nMessages[0].MD5OfBody: f97c5d29941bfb1b2fdab0874906ab82\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\nMessages[1].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[1].Attributes.ApproximateReceiveCount: 1\nMessages[1].Attributes.MessageDeduplicationId: 3fc4ccfe745870e2c0d99f71f30ff0656c8dedd41cc1d7d3d376b0dbe685e2f3\nMessages[1].Attributes.MessageGroupId: g\nMessages[1].Attributes.SenderId: <volatile>\nMessages[1].Attributes.SentTimestamp: <volatile>\nMessages[1].Attributes.SequenceNumber: <volatile>\nMessages[1].Body: two\nMessages[1].MD5OfBody: b8a9f715dbb64fd5c56e7783c6820a61\nMessages[1].MessageId: {uuid}\nMessages[1].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-changed-max",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "9d7f68159e17e9f7",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "receive-changed-visibility",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "c8f4a9562cc2a885",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "receive-distinct-token",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "f6af360635bf04b6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "delete-one",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "receive-after-delete",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "229636015a6b7a08",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}
