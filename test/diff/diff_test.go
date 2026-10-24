@@ -295,13 +295,20 @@ func awsTarget(t *testing.T) *target {
 // the virtual-hosted host name says.
 func pailTarget(t *testing.T) *target {
 	t.Helper()
+	return pailTargetTLS(t, false)
+}
+
+// pailTargetTLS controls verification of SNS callback certificates only.
+func pailTargetTLS(t *testing.T, skipSNSVerify bool) *target {
+	t.Helper()
 	cfg := config.Config{
-		Addr:            "127.0.0.1:0",
-		DataDir:         t.TempDir(),
-		AccessKeyID:     "AKIAPAILDIFFTEST0000",
-		SecretAccessKey: "pail-diff-secret",
-		Region:          region,
-		Domain:          "localhost",
+		Addr:             "127.0.0.1:0",
+		DataDir:          t.TempDir(),
+		AccessKeyID:      "AKIAPAILDIFFTEST0000",
+		SecretAccessKey:  "pail-diff-secret",
+		Region:           region,
+		Domain:           "localhost",
+		SNSTLSSkipVerify: skipSNSVerify,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	srv := server.New(cfg)

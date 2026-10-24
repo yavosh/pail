@@ -280,8 +280,8 @@ func TestHTTPDeliveryContentType(t *testing.T) {
 				if len(posts) != 1 || posts[0].header.Get("Content-Type") != tt.want {
 					t.Errorf("notification posts = %v, want one with Content-Type %q", posts, tt.want)
 				}
-				if got := ep.got()[0].header.Get("Content-Type"); got != "text/plain; charset=UTF-8" {
-					t.Errorf("confirmation Content-Type = %q, want the default", got)
+				if got := ep.got()[0].header.Get("Content-Type"); got != tt.want {
+					t.Errorf("confirmation Content-Type = %q, want %q", got, tt.want)
 				}
 			})
 		})
@@ -454,6 +454,9 @@ func TestUnsubscribeConfirmation(t *testing.T) {
 				p := posts[0]
 				if got := p.header.Get("X-Amz-Sns-Message-Type"); got != "UnsubscribeConfirmation" {
 					t.Errorf("message type header = %q, want UnsubscribeConfirmation", got)
+				}
+				if got := p.header.Get("X-Amz-Sns-Subscription-Arn"); got != sub {
+					t.Errorf("subscription ARN header = %q, want %q", got, sub)
 				}
 				wantKeys := []string{"Type", "MessageId", "Token", "TopicArn", "Message", "SubscribeURL", "Timestamp", "SignatureVersion", "Signature", "SigningCertURL"}
 				if keys := topKeys(t, p.body); !reflect.DeepEqual(keys, wantKeys) {

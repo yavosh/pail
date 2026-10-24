@@ -127,6 +127,7 @@ A topic ARN is `arn:aws:sns:<region>:000000000000:<name>`. To receive messages, 
 SNS FIFO topics use `.fifo` names and `FifoTopic=true`. They deliver ordered messages to SQS FIFO queues and also support standard queues. Publishes require `MessageGroupId` and either `MessageDeduplicationId` or content-based deduplication.
 
 A subscription `RedrivePolicy` sends failed deliveries to an SQS dead-letter queue.
+Live AWS callback recordings cover HTTPS delivery, signatures, filtering, retries, and unsubscribe behavior. See the [differential suite](test/diff/README.md).
 
 Filter policies limit what a subscription receives. A `DeliveryPolicy` sets the retries, rate, and content type of HTTP and HTTPS deliveries. See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 

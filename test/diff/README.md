@@ -69,7 +69,7 @@ go test ./test/diff -record -run '^TestDiff/(sqs|sns)-' -v
 The recording identity needs these actions, scoped to `pail-diff-*` resources where IAM allows it:
 
 - SQS: `sqs:CreateQueue`, `sqs:GetQueueUrl`, `sqs:GetQueueAttributes`, `sqs:SetQueueAttributes`, `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:ChangeMessageVisibility`, `sqs:PurgeQueue`, `sqs:TagQueue`, `sqs:UntagQueue`, `sqs:ListQueueTags`, `sqs:ListQueues`, and `sqs:DeleteQueue`.
-- SNS: `sns:CreateTopic`, `sns:DeleteTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:Subscribe`, `sns:Unsubscribe`, `sns:ListSubscriptionsByTopic`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`, `sns:Publish`, `sns:TagResource`, `sns:UntagResource`, and `sns:ListTagsForResource`.
+- SNS: `sns:CreateTopic`, `sns:DeleteTopic`, `sns:GetTopicAttributes`, `sns:SetTopicAttributes`, `sns:Subscribe`, `sns:ConfirmSubscription`, `sns:Unsubscribe`, `sns:ListSubscriptionsByTopic`, `sns:GetSubscriptionAttributes`, `sns:SetSubscriptionAttributes`, `sns:Publish`, `sns:TagResource`, `sns:UntagResource`, and `sns:ListTagsForResource`.
 
 A recording makes a few dozen SQS and SNS requests, well inside the free tier.
 
@@ -149,6 +149,57 @@ Record the four newer scenarios with:
 ```bash
 go test ./test/diff -record -run '^TestDiff/sns-(topic-attributes|sqs-delivery|publish-batch|errors)$' -v
 ```
+
+## Live SNS HTTPS callbacks
+
+`TestSNSHTTPDelivery` receives callbacks through a dedicated HTTPS endpoint.
+Its `sns-http-live-*` fixtures cover signatures 1 and 2, envelopes, headers,
+raw messages, typed attributes, subjects, HTTPS JSON selection, and filtering.
+They also cover unsigned confirmation, unsubscribe and restoration, authenticated
+unsubscribe, HTTP errors, redirects, retry exhaustion, and recovery.
+
+Local replay creates a loopback HTTPS receiver and never uses the public URL:
+
+```bash
+go test ./test/diff -run '^TestSNSHTTPDelivery$' -v
+```
+
+Recording requires a public HTTPS URL that forwards requests to a local listener.
+For example, start a temporary tunnel in another terminal:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:18786
+```
+
+Pass its HTTPS URL to the recording command:
+
+```bash
+direnv exec . go test ./test/diff -record -run '^TestSNSHTTPDelivery$' \
+  -sns-http-public-url=https://YOUR-TEMPORARY-HOST \
+  -sns-http-listen=127.0.0.1:18786 -v -count=1 -timeout=15m
+```
+
+The listener accepts callbacks only on random test paths. It exposes no control API.
+It limits request bodies, headers, callback storage, and request durations.
+Stop the temporary tunnel after recording. The test closes its listener and deletes
+only the temporary `pail-diff-*` topics and queues it created.
+
+The suite verifies signatures and identifier relationships before normalization.
+Certificate and action links must name the expected target. Certificate requests
+never follow redirects. Tokens remain in memory and are masked before recording.
+Subscription attributes are compared by key and value, independent of XML entry order.
+
+Retry timings are logged for diagnosis, not stored as exact golden values.
+Callback waits are bounded. Dead-letter polling allows two minutes for AWS delivery.
+Filter exclusion uses an accepted barrier message and a five-second observation window.
+Permanent errors and redirects use a five-second quiet window; this is a bounded
+observation, not proof that AWS can never deliver a duplicate later.
+
+Retry exhaustion cases verify dead-letter payloads. Permanent HTTP error redrive
+arrival remains unverified against AWS; local redrive tests cover pail's behavior.
+Live transport uses HTTPS. Existing local tests cover the shared HTTP delivery path.
+Nonlinear backoff, throttling rates, and the default long retry schedule remain outside
+this comparison.
 
 ## What is compared
 

@@ -133,6 +133,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
 - AWS recording credentials are loaded by direnv. Agent shells must load that environment explicitly; do not inspect `.envrc` or print credentials. Record SNS FIFO fixtures with `direnv exec . go test ./test/diff -record -run '^TestDiff/sns-fifo-' -v -count=1 -timeout=5m`.
 - A value that must differ between AWS and pail, such as an HTTP endpoint, is a per-target variable in the harness. AWS refuses internal endpoints, and pail must never post to a public one in tests.
+- `TestSNSHTTPDelivery` records real HTTPS callbacks with explicit public-URL and loopback-listener flags. Local replay ignores those flags and uses a loopback TLS receiver. Verify signatures, trusted links, and identifier relationships before normalization. Never record confirmation tokens or raw signatures.
 - Fix a difference in pail, or list it in `test/diff/testdata/known-diffs.txt` with a reason and an issue link.
 - A feature PR removes its steps from `test/diff/testdata/pending.txt`. The PR is done when they pass.
 

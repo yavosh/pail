@@ -94,7 +94,13 @@ func (e *Engine) sendSigned(sub subDef, c confirmation) {
 		return
 	}
 	c.signature = sig
-	e.enqueue(newJob(sub.Endpoint, c.envelope(), c.typ(), c.messageID, sub.TopicARN, "", false))
+	job := newJob(sub.Endpoint, c.envelope(), c.typ(), c.messageID, sub.TopicARN, c.unsubscribe, false)
+	e.lock()
+	if topic, err := e.findTopic(sub.TopicARN); err == nil {
+		job.header.Set("Content-Type", effectivePolicy(topic, &sub).RequestPolicy.HeaderContentType)
+	}
+	e.mu.Unlock()
+	e.enqueue(job)
 }
 
 // RunDeliveries posts queued jobs with deliveryWorkers workers until ctx is
