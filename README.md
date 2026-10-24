@@ -10,7 +10,7 @@ pail isn't a production object store. For what it doesn't do, see [Limitations](
 
 Install pail in one of these ways:
 
-- **Go.** Requires Go 1.27 or later.
+- **Go.** Requires Go 1.27.3 or later.
 
   ```bash
   go install github.com/yavosh/pail/cmd/pail@latest
