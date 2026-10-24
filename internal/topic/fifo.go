@@ -40,7 +40,7 @@ func validMessageID(id string) bool {
 }
 
 // prepareFIFO validates the topic-dependent fields and derives the deduplication key.
-// The caller holds mu and, for FIFO topics, fifoPublish.
+// The caller holds mu.
 func prepareFIFO(t *topicDef, in *PublishInput) (dedupKey, error) {
 	if !isFIFO(t.Name) {
 		if in.DeduplicationID != "" {

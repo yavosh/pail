@@ -175,9 +175,11 @@ func checkFIFODelivery(steps []step, responses []response) error {
 		Successful []identifiers `xml:"PublishBatchResult>Successful>member"`
 		Failed     []struct{}    `xml:"PublishBatchResult>Failed>member"`
 	}
-	if r := byName["publish-batch"]; r.status != http.StatusOK {
+	r := byName["publish-batch"]
+	if r.status != http.StatusOK {
 		return fmt.Errorf("publish-batch status = %d, want 200", r.status)
-	} else if err := xml.Unmarshal(r.body, &batch); err != nil {
+	}
+	if err := xml.Unmarshal(r.body, &batch); err != nil {
 		return fmt.Errorf("decode publish-batch: %w", err)
 	}
 	if len(batch.Successful) != 2 || len(batch.Failed) != 0 {
