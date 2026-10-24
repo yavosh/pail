@@ -1,0 +1,130 @@
+{
+  "scenario": "sqs-receive-retry-validation",
+  "exchanges": [
+    {
+      "step": "create-standard",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "standard-token",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "316ac46c62633fd5",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "standard-invalid-token",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a8ee2c2e2a59940f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "standard-empty-token",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "f38887992f7c9936",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "create-fifo",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "96147c3e865e015f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "fifo-token-empty",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "f38887992f7c9936",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "fifo-token-space",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a8ee2c2e2a59940f",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "fifo-token-unicode",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "eac80deb4b71d2fc",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "fifo-token-too-long",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "d08c49c5c5a9c593",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "fifo-token-max-length",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "09c7b8d8cdba9b5b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "fifo-token-punctuation",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a9ce9694a6179253",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    }
+  ]
+}

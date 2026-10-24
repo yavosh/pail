@@ -107,6 +107,8 @@ aws --endpoint-url http://127.0.0.1:9000 sqs create-queue --queue-name demo
 
 pail supports FIFO queues (names that end in `.fifo`, with `FifoQueue=true`) and dead-letter queues (`RedrivePolicy` and `RedriveAllowPolicy`). See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
+FIFO consumers can retry `ReceiveMessage` with `ReceiveRequestAttemptId` to retrieve the same unmodified messages within five minutes.
+
 Queue URLs use account `000000000000` and the host of the request that returned them, for example `http://127.0.0.1:9000/000000000000/demo`. A queue URL works with any host name that reaches pail.
 
 ### SNS

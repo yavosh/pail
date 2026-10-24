@@ -66,6 +66,7 @@ type queue struct {
 	wake      chan struct{}
 	nextSeq   uint64                // last FIFO sequence number issued
 	dedup     map[string]dedupEntry // FIFO sends in the deduplication window
+	attempts  map[string]receiveAttempt
 }
 
 func (q *queue) fifo() bool { return isFIFOName(q.def.Name) }
@@ -516,12 +517,14 @@ func (e *Engine) Purge(ctx context.Context, name string) error {
 		return fmt.Errorf("queue %s: %w", name, ErrPurgeInProgress)
 	}
 	q.messages = nil
+	q.attempts = nil
 	q.lastPurge = now
 	return nil
 }
 
 // prune drops messages past the retention period.
 func (q *queue) prune(now time.Time) {
+	maps.DeleteFunc(q.attempts, func(_ string, a receiveAttempt) bool { return !now.Before(a.expires) })
 	retention := time.Duration(q.intAttr("MessageRetentionPeriod")) * time.Second
 	q.messages = slices.DeleteFunc(q.messages, func(m *message) bool {
 		return !now.Before(m.sentAt.Add(retention))

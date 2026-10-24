@@ -109,6 +109,11 @@ go test ./test/diff -record -run '^TestDiff/sqs-(fifo|dead-letter|fair-queue)$' 
 
 The recording identity also needs `sqs:ListDeadLetterSourceQueues`.
 
+The `sqs-receive-retries`, `sqs-receive-retry-empty`, and `sqs-receive-retry-validation` scenarios cover FIFO receive attempts.
+They verify repeated tokens, changed parameters, empty selections, purge, message modifications, and validation on both queue types.
+The retry scenario checks message identities and receive counts before normalization.
+Record them with `direnv exec . go test ./test/diff -record -run '^TestDiff/sqs-receive-retr' -v -count=1`.
+
 The SNS FIFO scenarios are `sns-fifo-attributes`, `sns-fifo-delivery`,
 `sns-fifo-dedup-Topic`, and `sns-fifo-dedup-MessageGroup`.
 They cover topic settings, validation, ordered FIFO delivery, raw delivery,

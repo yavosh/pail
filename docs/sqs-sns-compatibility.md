@@ -55,7 +55,7 @@ Every other operation returns `UnsupportedOperation`. That includes `AddPermissi
 
 ### Persistence
 
-Queue definitions, which are attributes and tags, persist in the data directory. Messages live in memory. A restart keeps the queues and loses their messages.
+Queue definitions, which are attributes and tags, persist in the data directory. Messages and receive retry records live in memory. A restart keeps the queues and loses their messages and retry records.
 
 See [Storage layout](storage.md#sqs-and-sns-definitions) for queue, topic, and subscription files.
 
@@ -113,8 +113,25 @@ AWS recordings in `sqs-fifo` verify these rules, except those marked unverified.
 - Deduplication: a send with the same ID within 5 minutes of the first send is not enqueued again. It returns the first message's `MessageId`, checksums, and `SequenceNumber`. The window starts at the first send, and a duplicate does not extend it. The exact 5-minute boundary is unverified. `PurgeQueue` does not reset deduplication (unverified). With `DeduplicationScope` `messageGroup`, the same ID in another group is not a duplicate (unverified). The content ID is the SHA-256 hash of the body, in hexadecimal.
 - `SequenceNumber` is a per-queue counter, written in 20 digits (the format is unverified). It increases with each enqueued message. `SendMessage` and `SendMessageBatch` return it. A restart resets it, because messages do not persist.
 - Group locking: while a message of a group is in flight, `ReceiveMessage` returns no other message of that group. A message that is delayed or hidden also blocks the later messages of its group. Messages that one call receives can include several of the same group, as on AWS. When a visibility timeout ends, the first message of the group comes back first.
-- `ReceiveRequestAttemptId` is accepted and ignored. A retry with the same ID does not return the same messages again.
+- `ReceiveRequestAttemptId` retries an unmodified receive. See [Receive retries](#receive-retries).
 - `MessageGroupId`, `MessageDeduplicationId`, and `SequenceNumber` are returned as system attributes when requested.
+
+### Receive retries
+
+FIFO queues support `ReceiveRequestAttemptId`. The `sqs-receive-retr*` AWS recordings verify validation, repeated tokens, parameter changes, and message modifications.
+
+- An explicit ID must contain 1 to 128 printable ASCII characters, excluding spaces. Invalid IDs return `InvalidParameterValue`.
+- Standard queues ignore the parameter, including an empty or invalid ID. Omitting it keeps normal receive behavior.
+- A completed receive remembers its selected messages, including an empty selection, within a five-minute window from request start.
+- Repeating the ID returns the original messages without increasing `ApproximateReceiveCount`. It resets their visibility timeout.
+- The effective `MaxNumberOfMessages` and `VisibilityTimeout` must match. Explicit defaults match omitted defaults. `WaitTimeSeconds` can change.
+- Deletion, retention expiry, another receive, a visibility change, or visibility expiry invalidates a populated selection. Retrying it returns `InvalidParameterValue`.
+- An empty selection becomes invalid when its original visibility timeout expires, measured from receive completion. Empty retries do not extend this deadline. A zero timeout makes an empty selection immediately invalid.
+- A successful purge clears all attempt records. Queue deletion and restart also discard them.
+- Retries do not extend the five-minute window. AWS probes verify long-poll timing; exact boundaries and concurrency have local deterministic tests.
+- A canceled long poll creates no retry record.
+- pail reuses its receipt handles on retries. AWS recordings returned different opaque strings; consumers must use the returned handles.
+- pail allows 10,000 active records per queue. At capacity, a new ID returns `400 OverLimit`; existing attempts still work. This bound is specific to pail. Records store identifiers rather than message bodies.
 
 ### Dead-letter queues
 
@@ -164,7 +181,7 @@ A failed batch entry uses the code `InvalidParameterValue`, `MissingParameter`, 
 - pail does not enforce IAM, KMS, or queue policies. It stores `Policy` and returns it.
 - pail serves one account. `SenderId` is the access key ID, where AWS returns the caller's IAM unique ID.
 - `QueueOwnerAWSAccountId` in `GetQueueUrl` is ignored.
-- `ReceiveRequestAttemptId` is ignored.
+- FIFO receive attempts have a pail-specific limit of 10,000 active records per queue. Their state resets on restart.
 - A message that is sent to a standard queue is delivered in send order. AWS gives no ordering guarantee.
 - pail doesn't support the SQS query protocol.
 - Dead-letter queues move a message when a receive finds it past `maxReceiveCount`. AWS moves it in the background.

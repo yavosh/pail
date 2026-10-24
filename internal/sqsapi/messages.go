@@ -128,7 +128,7 @@ type receiveMessageRequest struct {
 	MaxNumberOfMessages         *int
 	VisibilityTimeout           *int
 	WaitTimeSeconds             *int
-	// ReceiveRequestAttemptId only retries a FIFO receive. pail ignores it.
+	ReceiveRequestAttemptID     *string `json:"ReceiveRequestAttemptId"`
 }
 
 type receivedMessage struct {
@@ -158,6 +158,7 @@ func (h *handler) receiveMessage(r *http.Request, in receiveMessageRequest) (any
 		Max:               limit,
 		VisibilityTimeout: in.VisibilityTimeout,
 		WaitTimeSeconds:   in.WaitTimeSeconds,
+		AttemptID:         in.ReceiveRequestAttemptID,
 	})
 	if err != nil {
 		return nil, err
