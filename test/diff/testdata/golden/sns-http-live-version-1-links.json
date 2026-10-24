@@ -1,0 +1,238 @@
+{
+  "scenario": "sns-http-live-version-1-links",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "d2997993a326e729",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-dead-letter",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "abdd12bec04eda2e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}\n"
+    },
+    {
+      "step": "dead-letter-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "20706b8580d950df",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}\n"
+    },
+    {
+      "step": "allow-topic",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "927bb43e48b417d7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "subscribe",
+      "request": "POST sns Subscribe",
+      "fingerprint": "c8473a79fd6aec8e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "confirmation",
+      "request": "POST callback",
+      "fingerprint": "e5c6f68bb87d6959",
+      "status": 204,
+      "headers": {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "User-Agent": "Amazon Simple Notification Service Agent",
+        "X-Amz-Sns-Message-Id": "{uuid}",
+        "X-Amz-Sns-Message-Type": "SubscriptionConfirmation",
+        "X-Amz-Sns-Topic-Arn": "<target>"
+      },
+      "body": "Body.Message: You have chosen to subscribe to the topic <target>.\nTo confirm the subscription, visit the SubscribeURL included in this message.\nBody.MessageId: {uuid}\nBody.Signature: <volatile>\nBody.SignatureVersion: 1\nBody.SigningCertURL: <volatile>\nBody.SubscribeURL: <volatile>\nBody.Timestamp: <volatile>\nBody.Token: <volatile>\nBody.TopicArn: <target>\nBody.Type: SubscriptionConfirmation\n"
+    },
+    {
+      "step": "confirm-unsigned",
+      "request": "GET sns ConfirmSubscription",
+      "fingerprint": "eae70a55b86695c6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ConfirmSubscriptionResponse\n  ConfirmSubscriptionResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "confirmed-identity",
+      "request": "compare subscription identities",
+      "fingerprint": "32706abf2fa8eea3",
+      "status": 200,
+      "body": "true"
+    },
+    {
+      "step": "get-subscription",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "a327bdff3d54adf2",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetSubscriptionAttributesResponse\n  GetSubscriptionAttributesResult\n    Attributes\n      entry\n        key: SubscriptionPrincipal\n        value: <volatile>\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: RawMessageDelivery\n        value: false\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}\n      entry\n        key: Endpoint\n        value: <target>\n      entry\n        key: RedrivePolicy\n        value: {\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:{account}:{name}\"}\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"healthyRetryPolicy\":{\"minDelayTarget\":1,\"maxDelayTarget\":1,\"numRetries\":2,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":2,\"backoffFunction\":\"linear\"},\"sicklyRetryPolicy\":null,\"throttlePolicy\":null,\"requestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"},\"guaranteed\":false}\n      entry\n        key: DeliveryPolicy\n        value: {\"healthyRetryPolicy\":{\"minDelayTarget\":1,\"maxDelayTarget\":1,\"numRetries\":2,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":2,\"backoffFunction\":\"linear\"},\"sicklyRetryPolicy\":null,\"throttlePolicy\":null,\"requestPolicy\":null,\"guaranteed\":false}\n      entry\n        key: Protocol\n        value: https\n      entry\n        key: PendingConfirmation\n        value: false\n      entry\n        key: ConfirmationWasAuthenticated\n        value: false\n      entry\n        key: SubscriptionArn\n        value: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish",
+      "request": "POST sns Publish",
+      "fingerprint": "ad217615170c88e7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "notification-1",
+      "request": "POST callback",
+      "fingerprint": "e5c6f68bb87d6959",
+      "status": 204,
+      "headers": {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "User-Agent": "Amazon Simple Notification Service Agent",
+        "X-Amz-Sns-Message-Id": "{uuid}",
+        "X-Amz-Sns-Message-Type": "Notification",
+        "X-Amz-Sns-Subscription-Arn": "<target>:{uuid}",
+        "X-Amz-Sns-Topic-Arn": "<target>"
+      },
+      "body": "Body.Message: line one\n\"quoted\" <body>&\nBody.MessageAttributes.binary.Type: Binary\nBody.MessageAttributes.binary.Value: YWJj\nBody.MessageAttributes.kind.Type: String\nBody.MessageAttributes.kind.Value: accept\nBody.MessageAttributes.number.Type: Number\nBody.MessageAttributes.number.Value: 3.5\nBody.MessageId: {uuid}\nBody.Signature: <volatile>\nBody.SignatureVersion: 1\nBody.SigningCertURL: <volatile>\nBody.Subject: callback subject\nBody.Timestamp: <volatile>\nBody.TopicArn: <target>\nBody.Type: Notification\nBody.UnsubscribeURL: <volatile>\n"
+    },
+    {
+      "step": "receive-no-dead-letter",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "d6a4b4dd50b48b5c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "unsubscribe-unsigned",
+      "request": "GET sns Unsubscribe",
+      "fingerprint": "fb03edf06ae9814f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "UnsubscribeResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "unsubscribe-confirmation",
+      "request": "POST callback",
+      "fingerprint": "e5c6f68bb87d6959",
+      "status": 204,
+      "headers": {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "User-Agent": "Amazon Simple Notification Service Agent",
+        "X-Amz-Sns-Message-Id": "{uuid}",
+        "X-Amz-Sns-Message-Type": "UnsubscribeConfirmation",
+        "X-Amz-Sns-Subscription-Arn": "<target>:{uuid}",
+        "X-Amz-Sns-Topic-Arn": "<target>"
+      },
+      "body": "Body.Message: You have chosen to deactivate subscription <target>:{uuid}.\nTo cancel this operation and restore the subscription, visit the SubscribeURL included in this message.\nBody.MessageId: {uuid}\nBody.Signature: <volatile>\nBody.SignatureVersion: 1\nBody.SigningCertURL: <volatile>\nBody.SubscribeURL: <volatile>\nBody.Timestamp: <volatile>\nBody.Token: <volatile>\nBody.TopicArn: <target>\nBody.Type: UnsubscribeConfirmation\n"
+    },
+    {
+      "step": "restore-unsigned",
+      "request": "GET sns ConfirmSubscription",
+      "fingerprint": "eae70a55b86695c6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ConfirmSubscriptionResponse\n  ConfirmSubscriptionResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "restored-identity",
+      "request": "compare subscription identities",
+      "fingerprint": "792a10e4e97d9fc9",
+      "status": 200,
+      "body": "true"
+    },
+    {
+      "step": "publish-restored",
+      "request": "POST sns Publish",
+      "fingerprint": "ad217615170c88e7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "notification-restored",
+      "request": "POST callback",
+      "fingerprint": "e5c6f68bb87d6959",
+      "status": 204,
+      "headers": {
+        "Content-Type": "text/plain; charset=UTF-8",
+        "User-Agent": "Amazon Simple Notification Service Agent",
+        "X-Amz-Sns-Message-Id": "{uuid}",
+        "X-Amz-Sns-Message-Type": "Notification",
+        "X-Amz-Sns-Subscription-Arn": "<target>:{uuid}",
+        "X-Amz-Sns-Topic-Arn": "<target>"
+      },
+      "body": "Body.Message: line one\n\"quoted\" <body>&\nBody.MessageAttributes.binary.Type: Binary\nBody.MessageAttributes.binary.Value: YWJj\nBody.MessageAttributes.kind.Type: String\nBody.MessageAttributes.kind.Value: accept\nBody.MessageAttributes.number.Type: Number\nBody.MessageAttributes.number.Value: 3.5\nBody.MessageId: {uuid}\nBody.Signature: <volatile>\nBody.SignatureVersion: 1\nBody.SigningCertURL: <volatile>\nBody.Subject: callback subject\nBody.Timestamp: <volatile>\nBody.TopicArn: <target>\nBody.Type: Notification\nBody.UnsubscribeURL: <volatile>\n"
+    },
+    {
+      "step": "unsubscribe-signed",
+      "request": "POST sns Unsubscribe",
+      "fingerprint": "b9a4b7511085f33c",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "UnsubscribeResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-removed-subscription",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "a327bdff3d54adf2",
+      "status": 404,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: NotFound\n"
+    },
+    {
+      "step": "quiet",
+      "request": "observe callbacks",
+      "fingerprint": "4d281c2758c87638",
+      "status": 200,
+      "body": "no additional callbacks"
+    }
+  ]
+}

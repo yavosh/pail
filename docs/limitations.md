@@ -15,4 +15,5 @@ pail isn't a production object store:
 - SNS delivers to SQS queues and to HTTP and HTTPS endpoints. It supports subscription filter policies on message attributes and on the message body. FIFO topics deliver only to SQS queues. It has no SMS, email, Lambda, or mobile push.
 - SNS subscription dead-letter policies persist, but pending deliveries and dead-letter messages do not. SQS delivery failures redrive immediately; pail does not reproduce AWS’s extended SQS retry schedule.
 - SNS FIFO deduplication and sequence numbers reset on restart. Message archiving, replay, and throughput quotas are unsupported.
+- Live SNS callback coverage uses HTTPS and a short custom retry policy. Default and nonlinear retry timing, throttling, and permanent HTTP-error dead-letter arrival remain unverified against AWS.
 - SNS signs standard-topic notifications with pail's own certificate, which pail serves at `/_pail/sns/signing-cert.pem`. A verifier that requires an `amazonaws.com` host rejects it.
