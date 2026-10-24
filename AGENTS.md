@@ -141,7 +141,7 @@ When CI is green, review the diff adversarially across correctness, simplicity, 
 ## Pre-push checklist
 
 ```bash
-# Needs Go 1.27.3 and golangci-lint >= 2.13.1; older lint builds refuse a go1.27 module.
+# Needs Go 1.27.3 and golangci-lint >= 2.15.0 for compatible Go export data support.
 go fix -stringsbuilder=false ./...   # the one modernizer .golangci.yml rejects
 goimports -w .
 golangci-lint run ./...
