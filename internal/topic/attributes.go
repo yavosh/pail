@@ -24,16 +24,25 @@ func defaultPolicy(arn string) string {
 // topicAttrNames are the attributes a client can set.
 var topicAttrNames = []string{"DisplayName", "Policy", "DeliveryPolicy", "KmsMasterKeyId", "SignatureVersion", "TracingConfig"}
 
-// noopAttr reports whether an attribute turns off a FIFO feature that pail never
-// has. pail accepts it and stores nothing.
+// noopAttr reports whether an attribute disables a FIFO feature on a standard topic.
 func noopAttr(name, value string) bool {
 	return (name == "FifoTopic" || name == "ContentBasedDeduplication") && value == "false"
 }
 
 // checkTopicAttr validates one attribute. An empty value means unset.
-func checkTopicAttr(name, value string) error {
-	if noopAttr(name, value) {
+func checkTopicAttr(name, value string, fifo bool) error {
+	if !fifo && noopAttr(name, value) {
 		return nil
+	}
+	if fifo && (name == "FifoTopic" || name == "ContentBasedDeduplication" || name == "FifoThroughputScope") {
+		if name == "FifoThroughputScope" {
+			if value == "Topic" || value == "MessageGroup" {
+				return nil
+			}
+		} else if value == "true" || value == "false" {
+			return nil
+		}
+		return invalid("topic attribute %s has an invalid value", name)
 	}
 	if !slices.Contains(topicAttrNames, name) {
 		return fmt.Errorf("topic attribute %q is not supported: %w", name, ErrInvalidParameter)
@@ -65,6 +74,16 @@ func checkTopicAttr(name, value string) error {
 func topicAttrValue(t *topicDef, arn, k string) string {
 	if v, ok := t.Attributes[k]; ok {
 		return v
+	}
+	if isFIFO(t.Name) {
+		switch k {
+		case "FifoTopic":
+			return "true"
+		case "ContentBasedDeduplication":
+			return "false"
+		case "FifoThroughputScope":
+			return "Topic"
+		}
 	}
 	if k == "Policy" {
 		return defaultPolicy(arn)
@@ -113,8 +132,15 @@ func (e *Engine) TopicAttributes(ctx context.Context, arn string) ([]Attribute, 
 	addIfSet("TracingConfig")
 	add("EffectiveDeliveryPolicy", effectiveTopicPolicy(t))
 	add("SubscriptionsConfirmed", fmt.Sprint(confirmed))
+	if isFIFO(t.Name) {
+		add("FifoTopic", "true")
+	}
 	add("DisplayName", t.Attributes["DisplayName"])
 	addIfSet(attrDelivery)
+	if isFIFO(t.Name) {
+		add("ContentBasedDeduplication", topicAttrValue(t, arn, "ContentBasedDeduplication"))
+		addIfSet("FifoThroughputScope")
+	}
 	add("SubscriptionsDeleted", "0")
 	return out, nil
 }
@@ -124,7 +150,8 @@ func (e *Engine) SetTopicAttribute(ctx context.Context, arn, name, value string)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := checkTopicAttr(name, value); err != nil {
+	fifo := isFIFO(arn) // findTopic matches the whole name, so the ARN suffix gives the type
+	if err := checkTopicAttr(name, value, fifo); err != nil {
 		return err
 	}
 	e.mu.Lock()
@@ -133,7 +160,16 @@ func (e *Engine) SetTopicAttribute(ctx context.Context, arn, name, value string)
 	if err != nil {
 		return err
 	}
-	if noopAttr(name, value) {
+	if fifo && name == "FifoTopic" {
+		if value == "true" {
+			return nil
+		}
+		return invalid("FifoTopic cannot be changed")
+	}
+	if fifo && name == "FifoThroughputScope" && value == "Topic" && t.Attributes[name] == "MessageGroup" {
+		return invalid("FifoThroughputScope cannot revert to Topic")
+	}
+	if !fifo && noopAttr(name, value) {
 		return nil
 	}
 	updated := *t

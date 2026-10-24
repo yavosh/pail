@@ -1,0 +1,392 @@
+{
+  "scenario": "sns-fifo-delivery",
+  "exchanges": [
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "02619c33feb1ae58",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}.fifo\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "96147c3e865e015f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "get-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}.fifo\n"
+    },
+    {
+      "step": "allow-topic",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "085d02d3dbeed752",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "subscribe",
+      "request": "POST sns Subscribe",
+      "fingerprint": "acc96363bebb5ddb",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}.fifo:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-first",
+      "request": "POST sns Publish",
+      "fingerprint": "f250d3e8a1b330d5",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    SequenceNumber: <volatile>\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-duplicate",
+      "request": "POST sns Publish",
+      "fingerprint": "b16aad30dfd1487b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    SequenceNumber: <volatile>\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-second",
+      "request": "POST sns Publish",
+      "fingerprint": "41e0c876d3277697",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    SequenceNumber: <volatile>\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "receive-first",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "71e69cbc4ec7c28b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: one\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body.Message: one\nMessages[0].Body.MessageId: {uuid}\nMessages[0].Body.SequenceNumber: <volatile>\nMessages[0].Body.Timestamp: <volatile>\nMessages[0].Body.TopicArn: arn:aws:sns:us-east-1:{account}:{name}.fifo\nMessages[0].Body.Type: Notification\nMessages[0].Body.UnsubscribeURL: <volatile>\nMessages[0].MD5OfBody: <volatile>\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "receive-blocked-group",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a97f0d99038a4c7f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "delete-first",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "receive-second",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "71e69cbc4ec7c28b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: two\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body.Message: two\nMessages[0].Body.MessageId: {uuid}\nMessages[0].Body.SequenceNumber: <volatile>\nMessages[0].Body.Timestamp: <volatile>\nMessages[0].Body.TopicArn: arn:aws:sns:us-east-1:{account}:{name}.fifo\nMessages[0].Body.Type: Notification\nMessages[0].Body.UnsubscribeURL: <volatile>\nMessages[0].MD5OfBody: <volatile>\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-second",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "create-raw-queue",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "c990faca6615cd0b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}-raw.fifo\n"
+    },
+    {
+      "step": "get-raw-queue-arn",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "e32e0a9427eea210",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.QueueArn: arn:aws:sqs:us-east-1:{account}:{name}-raw.fifo\n"
+    },
+    {
+      "step": "allow-raw-topic",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "085d02d3dbeed752",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "subscribe-raw",
+      "request": "POST sns Subscribe",
+      "fingerprint": "c14f4a3800afa354",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SubscribeResponse\n  SubscribeResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}.fifo:{uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-raw",
+      "request": "POST sns Publish",
+      "fingerprint": "45b04cebd6241fb8",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishResponse\n  PublishResult\n    SequenceNumber: <volatile>\n    MessageId: {uuid}\n  ResponseMetadata\n"
+    },
+    {
+      "step": "receive-raw",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "71e69cbc4ec7c28b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: raw\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: raw\nMessages[0].MD5OfBody: bdd166af3a63f7be696dd17a218a6ffb\nMessages[0].MD5OfMessageAttributes: da1b33cc3cbfe8b1630921e78e6b9880\nMessages[0].MessageAttributes.color.DataType: String\nMessages[0].MessageAttributes.color.StringValue: blue\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-raw",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "publish-batch-missing-group",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "9ed29a478dc0d562",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "receive-after-invalid-batch",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a97f0d99038a4c7f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "publish-batch-empty-message",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "bc613b56ead7d9b0",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "publish-batch-missing-dedup",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "621e2cb261306475",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "publish-batch-invalid-dedup",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "b5d19c610a4f62ae",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "receive-after-empty-batch",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a97f0d99038a4c7f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "publish-batch",
+      "request": "POST sns PublishBatch",
+      "fingerprint": "77bc4576f37d3218",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "PublishBatchResponse\n  PublishBatchResult\n    Failed: \n    Successful\n      member\n        SequenceNumber: <volatile>\n        MessageId: {uuid}\n        Id: a\n      member\n        SequenceNumber: <volatile>\n        MessageId: {uuid}\n        Id: b\n  ResponseMetadata\n"
+    },
+    {
+      "step": "receive-batch-first",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "71e69cbc4ec7c28b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: batch-one\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: batch-one\nMessages[0].MD5OfBody: 33bd8c0b4b876162143129f74b105489\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-batch-first",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "receive-batch-second",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "71e69cbc4ec7c28b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: batch-two\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: batch-two\nMessages[0].MD5OfBody: d7279a74b444473c84ba91ff54ea4b03\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
+    },
+    {
+      "step": "delete-batch-second",
+      "request": "POST sqs AmazonSQS.DeleteMessage",
+      "fingerprint": "b0ae17a024466099",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "receive-empty",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "a97f0d99038a4c7f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "delete-topic",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "delete-raw-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "get-envelope-queue",
+      "request": "POST sqs AmazonSQS.GetQueueUrl",
+      "fingerprint": "f60f5f07a18e5bf7",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

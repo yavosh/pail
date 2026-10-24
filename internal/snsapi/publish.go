@@ -41,7 +41,7 @@ func (h *handler) publish(r *http.Request, p params) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id, err := h.topics.Publish(r.Context(), topic.PublishInput{
+	out, err := h.topics.Publish(r.Context(), topic.PublishInput{
 		TopicARN:         arn,
 		Message:          p.get("Message"),
 		Subject:          p.get("Subject"),
@@ -55,7 +55,10 @@ func (h *handler) publish(r *http.Request, p params) (string, error) {
 		return "", err
 	}
 	var x xmlBuf
-	x.elem("MessageId", id)
+	if out.SequenceNumber != "" {
+		x.elem("SequenceNumber", out.SequenceNumber)
+	}
+	x.elem("MessageId", out.MessageID)
 	return x.String(), nil
 }
 
@@ -128,6 +131,9 @@ func (h *handler) publishBatch(r *http.Request, p params) (string, error) {
 	for _, res := range results {
 		if res.Err == nil {
 			ok.open("member")
+			if res.SequenceNumber != "" {
+				ok.elem("SequenceNumber", res.SequenceNumber)
+			}
 			ok.elem("MessageId", res.MessageID)
 			ok.elem("Id", res.ID)
 			ok.close("member")

@@ -560,8 +560,7 @@ func cleanupQueue(t *testing.T, tg *target, name string) {
 }
 
 // cleanupTopic deletes an SNS topic by its captured ARN. Without one, it falls
-// back to CreateTopic, which is idempotent and returns the ARN, so scenarios
-// must create topics without attributes or tags. It logs instead of failing.
+// back to idempotent CreateTopic with the topic type. It logs instead of failing.
 func cleanupTopic(t *testing.T, tg *target, name, capturedARN string) {
 	t.Helper()
 	if !strings.HasPrefix(name, "pail-diff-") {
@@ -573,7 +572,11 @@ func cleanupTopic(t *testing.T, tg *target, name, capturedARN string) {
 	}
 	arn := capturedARN
 	if !strings.HasSuffix(arn, ":"+name) {
-		resp, err := sns("Action=CreateTopic&Name=" + url.QueryEscape(name))
+		form := "Action=CreateTopic&Name=" + url.QueryEscape(name)
+		if strings.HasSuffix(name, ".fifo") {
+			form += "&Attributes.entry.1.key=FifoTopic&Attributes.entry.1.value=true"
+		}
+		resp, err := sns(form)
 		if err != nil || resp.status != http.StatusOK {
 			t.Logf("cleanup: create topic %s: %s", name, failure(resp, err))
 			return

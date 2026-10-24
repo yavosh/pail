@@ -34,7 +34,7 @@ type Topics interface {
 	ListSubscriptionsByTopic(ctx context.Context, topicARN, next string) ([]topic.Subscription, string, error)
 	SubscriptionAttributes(ctx context.Context, arn string) ([]topic.Attribute, error)
 	SetSubscriptionAttribute(ctx context.Context, arn, name, value string) error
-	Publish(ctx context.Context, in topic.PublishInput) (string, error)
+	Publish(ctx context.Context, in topic.PublishInput) (topic.PublishOutput, error)
 	PublishBatch(ctx context.Context, topicARN string, entries []topic.PublishEntry, baseURL string) ([]topic.PublishResult, error)
 	TagResource(ctx context.Context, arn string, tags map[string]string) error
 	UntagResource(ctx context.Context, arn string, keys []string) error

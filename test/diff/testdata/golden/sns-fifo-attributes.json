@@ -1,0 +1,258 @@
+{
+  "scenario": "sns-fifo-attributes",
+  "exchanges": [
+    {
+      "step": "create-missing-fifo-attribute",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "ef234c0ab7a9c79f",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "create-fifo-on-standard-name",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "93624d7fd638f48f",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "create-topic",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "02619c33feb1ae58",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}.fifo\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-default-attributes",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "8590881ac066dd33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetTopicAttributesResponse\n  GetTopicAttributesResult\n    Attributes\n      entry\n        key: Policy\n        value: {\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:{account}:{name}.fifo\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"{account}\"}}}]}\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: SubscriptionsPending\n        value: 0\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}.fifo\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"disableSubscriptionOverrides\":false,\"defaultRequestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"}}}\n      entry\n        key: SubscriptionsConfirmed\n        value: 0\n      entry\n        key: FifoTopic\n        value: true\n      entry\n        key: DisplayName\n        value: \n      entry\n        key: ContentBasedDeduplication\n        value: false\n      entry\n        key: SubscriptionsDeleted\n        value: 0\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-again",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "02619c33feb1ae58",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CreateTopicResponse\n  CreateTopicResult\n    TopicArn: arn:aws:sns:us-east-1:{account}:{name}.fifo\n  ResponseMetadata\n"
+    },
+    {
+      "step": "create-conflicting-dedup",
+      "request": "POST sns CreateTopic",
+      "fingerprint": "034599915a443938",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "change-type-false",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "fdfa76473a84383b",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "change-type-true",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "e07228d8be8fc4d9",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "bad-dedup",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "f7a71656fe89094c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "empty-dedup",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "ce83e30ae5935b83",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "enable-dedup",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "10cc847763999565",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "bad-scope",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "7b6cce3453608003",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "enable-group-scope",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "7be2f776689836a4",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "revert-scope",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "273a78da4cac34d5",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "set-tracing",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "83122e42d186f016",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-updated-attributes",
+      "request": "POST sns GetTopicAttributes",
+      "fingerprint": "8590881ac066dd33",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "GetTopicAttributesResponse\n  GetTopicAttributesResult\n    Attributes\n      entry\n        key: Policy\n        value: {\"Version\":\"2008-10-17\",\"Id\":\"__default_policy_ID\",\"Statement\":[{\"Sid\":\"__default_statement_ID\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"*\"},\"Action\":[\"SNS:GetTopicAttributes\",\"SNS:SetTopicAttributes\",\"SNS:AddPermission\",\"SNS:RemovePermission\",\"SNS:DeleteTopic\",\"SNS:Subscribe\",\"SNS:ListSubscriptionsByTopic\",\"SNS:Publish\"],\"Resource\":\"arn:aws:sns:us-east-1:{account}:{name}.fifo\",\"Condition\":{\"StringEquals\":{\"AWS:SourceOwner\":\"{account}\"}}}]}\n      entry\n        key: Owner\n        value: {account}\n      entry\n        key: SubscriptionsPending\n        value: 0\n      entry\n        key: TopicArn\n        value: arn:aws:sns:us-east-1:{account}:{name}.fifo\n      entry\n        key: TracingConfig\n        value: Active\n      entry\n        key: EffectiveDeliveryPolicy\n        value: {\"http\":{\"defaultHealthyRetryPolicy\":{\"minDelayTarget\":20,\"maxDelayTarget\":20,\"numRetries\":3,\"numMaxDelayRetries\":0,\"numNoDelayRetries\":0,\"numMinDelayRetries\":0,\"backoffFunction\":\"linear\"},\"disableSubscriptionOverrides\":false,\"defaultRequestPolicy\":{\"headerContentType\":\"text/plain; charset=UTF-8\"}}}\n      entry\n        key: SubscriptionsConfirmed\n        value: 0\n      entry\n        key: FifoTopic\n        value: true\n      entry\n        key: DisplayName\n        value: \n      entry\n        key: ContentBasedDeduplication\n        value: true\n      entry\n        key: FifoThroughputScope\n        value: MessageGroup\n      entry\n        key: SubscriptionsDeleted\n        value: 0\n  ResponseMetadata\n"
+    },
+    {
+      "step": "subscribe-https",
+      "request": "POST sns Subscribe",
+      "fingerprint": "1fc34bed3c6a1c14",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "publish-missing-group",
+      "request": "POST sns Publish",
+      "fingerprint": "e0b98189c4e6f92d",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "publish-bad-group",
+      "request": "POST sns Publish",
+      "fingerprint": "da351d41e1df6514",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "publish-bad-dedup",
+      "request": "POST sns Publish",
+      "fingerprint": "30fb77224e036941",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "disable-dedup",
+      "request": "POST sns SetTopicAttributes",
+      "fingerprint": "7973f0ee7f28466a",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "SetTopicAttributesResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "publish-missing-dedup",
+      "request": "POST sns Publish",
+      "fingerprint": "7debc2b54a6ef67c",
+      "status": 400,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
+    },
+    {
+      "step": "delete-topic",
+      "request": "POST sns DeleteTopic",
+      "fingerprint": "c1cbca6279725a1d",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
+    }
+  ]
+}

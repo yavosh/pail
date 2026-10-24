@@ -444,7 +444,7 @@ func TestHTTPNotificationDelivery(t *testing.T) {
 		cert, _ := e.CertPEM(t.Context())
 		for _, p := range posts {
 			if p.header.Get("User-Agent") != "Amazon Simple Notification Service Agent" || p.header.Get("Content-Type") != "text/plain; charset=UTF-8" ||
-				p.header.Get("X-Amz-Sns-Message-Type") != "Notification" || p.header.Get("X-Amz-Sns-Message-Id") != id || p.header.Get("X-Amz-Sns-Topic-Arn") != arn {
+				p.header.Get("X-Amz-Sns-Message-Type") != "Notification" || p.header.Get("X-Amz-Sns-Message-Id") != id.MessageID || p.header.Get("X-Amz-Sns-Topic-Arn") != arn {
 				t.Errorf("notification headers = %v, want Notification for message %s on %s", p.header, id, arn)
 			}
 			switch sub := p.header.Get("X-Amz-Sns-Subscription-Arn"); sub {
@@ -457,7 +457,7 @@ func TestHTTPNotificationDelivery(t *testing.T) {
 				if err := json.Unmarshal([]byte(p.body), &env); err != nil {
 					t.Fatal(err)
 				}
-				if env["MessageId"] != id || env["UnsubscribeURL"] != testBase+"/?Action=Unsubscribe&SubscriptionArn="+sub || env["MessageAttributes"] == nil {
+				if env["MessageId"] != id.MessageID || env["UnsubscribeURL"] != testBase+"/?Action=Unsubscribe&SubscriptionArn="+sub || env["MessageAttributes"] == nil {
 					t.Errorf("envelope = %s, want message %s and the UnsubscribeURL of %s", p.body, id, sub)
 				}
 			case subs[rawHook]:

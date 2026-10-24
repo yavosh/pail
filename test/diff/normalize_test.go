@@ -76,6 +76,7 @@ var volatileElements = map[string]bool{
 	"LastModified": true, "Location": true, // Location is a URL on the server's own host
 	"ContinuationToken": true, "NextContinuationToken": true,
 	"NextUploadIdMarker": true, "UploadId": true, "UploadIdMarker": true,
+	"SequenceNumber": true, // SNS FIFO publish responses
 }
 
 // volatileJSONKeys change on every run; the last path segment decides.
@@ -88,7 +89,7 @@ var volatileJSONKeys = map[string]bool{
 // envelopeVolatileKeys change on every run in an SNS envelope that an SQS
 // message carries as its Body. MessageId, TopicArn, and the other keys stay compared.
 var envelopeVolatileKeys = map[string]bool{
-	"Signature": true, "SigningCertURL": true, "Timestamp": true, "UnsubscribeURL": true, "SubscribeURL": true, "Token": true,
+	"Signature": true, "SigningCertURL": true, "Timestamp": true, "UnsubscribeURL": true, "SubscribeURL": true, "Token": true, "SequenceNumber": true,
 }
 
 // droppedJSONKeys hold text that differs between servers, such as the Message of a

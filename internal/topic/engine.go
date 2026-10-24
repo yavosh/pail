@@ -41,7 +41,7 @@ const (
 	topicARNStart = "arn:aws:sns:"
 )
 
-var topicNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,256}$`)
+var topicNameRE = regexp.MustCompile(`^[A-Za-z0-9_-]+(?:\.fifo)?$`)
 
 // Queues is the queue engine that receives deliveries. *queue.Engine implements it.
 type Queues interface {
@@ -59,6 +59,9 @@ type Engine struct {
 	sign   *signer              // nil until first needed
 	client *http.Client         // posts to HTTP and HTTPS endpoints
 	jobs   chan httpJob         // deliveries that RunDeliveries sends
+
+	fifoPublish chan struct{} // orders FIFO publishes through SQS delivery, independently of mu
+
 	// restores holds subscriptions removed by an unsigned Unsubscribe, by
 	// UnsubscribeConfirmation token. A restart loses them.
 	restores map[string]restore
@@ -73,6 +76,7 @@ type topicDef struct {
 	Attributes map[string]string `json:"attributes,omitempty"`
 	Tags       map[string]string `json:"tags,omitempty"`
 	Created    int64             `json:"created"`
+	fifo       *fifoState
 }
 
 // subDef is the persisted part of a subscription.
@@ -127,6 +131,7 @@ func Open(ctx context.Context, fsys vfs.FS, region string, queues Queues, opts .
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	e.jobs = make(chan httpJob, jobQueueSize)
+	e.fifoPublish = make(chan struct{}, 1)
 	for _, opt := range opts {
 		opt(e)
 	}
@@ -189,6 +194,9 @@ func (e *Engine) loadTopics() error {
 		if file != topicFile(def.Name) {
 			return fmt.Errorf("topic file %s: name %q does not match the file name", ent.Name(), def.Name)
 		}
+		if isFIFO(def.Name) {
+			def.fifo = newFIFOState()
+		}
 		e.topics[def.Name] = &def
 	}
 	return nil
@@ -199,11 +207,11 @@ func checkTopic(def topicDef) error {
 		return err
 	}
 	for k, v := range def.Attributes {
-		if err := checkTopicAttr(k, v); err != nil {
+		if err := checkTopicAttr(k, v, isFIFO(def.Name)); err != nil {
 			return err
 		}
 	}
-	return nil
+	return checkFIFOType(def.Name, def.Attributes)
 }
 
 func (e *Engine) loadSubs() error {
@@ -244,7 +252,7 @@ func (e *Engine) checkSub(def subDef) error {
 	if id, ok := strings.CutPrefix(def.ARN, def.TopicARN+":"); !ok || !uuidRE.MatchString(id) {
 		return fmt.Errorf("ARN %q does not extend topic ARN %q with a UUID", def.ARN, def.TopicARN)
 	}
-	if _, err := e.checkEndpoint(def.Protocol, def.Endpoint); err != nil {
+	if _, err := e.checkEndpoint(def.TopicARN, def.Protocol, def.Endpoint); err != nil {
 		return err
 	}
 	if def.Pending && def.Token == "" {
@@ -283,11 +291,8 @@ func newUUID() string {
 }
 
 func checkTopicName(name string) error {
-	if strings.HasSuffix(name, ".fifo") {
-		return fmt.Errorf("topic name %q: FIFO topics are not supported: %w", name, ErrInvalidParameter)
-	}
-	if !topicNameRE.MatchString(name) {
-		return fmt.Errorf("topic name %q must be 1 to 256 letters, digits, hyphens, or underscores: %w", name, ErrInvalidParameter)
+	if len(name) > 256 || !topicNameRE.MatchString(name) {
+		return fmt.Errorf("topic name %q must be 1 to 256 letters, digits, hyphens, or underscores, with an optional .fifo suffix: %w", name, ErrInvalidParameter)
 	}
 	return nil
 }
@@ -346,8 +351,11 @@ func (e *Engine) CreateTopic(ctx context.Context, name string, attrs, tags map[s
 	if err := checkTopicName(name); err != nil {
 		return "", err
 	}
+	if err := checkFIFOType(name, attrs); err != nil {
+		return "", err
+	}
 	for k, v := range attrs {
-		if err := checkTopicAttr(k, v); err != nil {
+		if err := checkTopicAttr(k, v, isFIFO(name)); err != nil {
 			return "", err
 		}
 	}
@@ -355,7 +363,9 @@ func (e *Engine) CreateTopic(ctx context.Context, name string, attrs, tags map[s
 		return "", err
 	}
 	attrs = maps.Clone(attrs)
-	maps.DeleteFunc(attrs, noopAttr)
+	if !isFIFO(name) {
+		maps.DeleteFunc(attrs, noopAttr)
+	}
 	for k, v := range attrs {
 		attrs[k] = canonTopicAttr(k, v)
 	}
@@ -364,7 +374,7 @@ func (e *Engine) CreateTopic(ctx context.Context, name string, attrs, tags map[s
 	defer e.mu.Unlock()
 	if t, ok := e.topics[name]; ok {
 		for _, k := range slices.Sorted(maps.Keys(attrs)) {
-			if topicAttrValue(t, arn, k) != cmp.Or(attrs[k], topicAttrValue(&topicDef{}, arn, k)) {
+			if topicAttrValue(t, arn, k) != cmp.Or(attrs[k], topicAttrValue(&topicDef{Name: name}, arn, k)) {
 				// The message text is unverified.
 				return "", fmt.Errorf("topic %s already exists with different attributes: %w", name, ErrInvalidParameter)
 			}
@@ -375,6 +385,9 @@ func (e *Engine) CreateTopic(ctx context.Context, name string, attrs, tags map[s
 		return "", fmt.Errorf("%d tags: %w", len(tags), ErrTagLimitExceeded)
 	}
 	def := &topicDef{Name: name, Attributes: maps.Clone(attrs), Tags: maps.Clone(tags), Created: time.Now().Unix()}
+	if isFIFO(name) {
+		def.fifo = newFIFOState()
+	}
 	maps.DeleteFunc(def.Attributes, func(_, v string) bool { return v == "" })
 	if err := e.persistTopic(def); err != nil {
 		return "", err

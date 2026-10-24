@@ -122,6 +122,8 @@ A topic ARN is `arn:aws:sns:<region>:000000000000:<name>`. To receive messages, 
 - A queue, with protocol `sqs` and the queue's ARN. pail confirms the subscription at once and doesn't check the queue policy.
 - A URL, with protocol `http` or `https`. pail posts a `SubscriptionConfirmation` to the URL, and the endpoint confirms through its `SubscribeURL`. pail then posts notifications in the background, with retries.
 
+SNS FIFO topics use `.fifo` names and `FifoTopic=true`. They deliver ordered messages to SQS FIFO queues and also support standard queues. Publishes require `MessageGroupId` and either `MessageDeduplicationId` or content-based deduplication.
+
 Filter policies limit what a subscription receives. A `DeliveryPolicy` sets the retries, rate, and content type of HTTP and HTTPS deliveries. See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
 ### Browser form uploads
