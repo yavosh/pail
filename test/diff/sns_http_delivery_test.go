@@ -108,6 +108,7 @@ func (r *snsHTTPRun) exercise(route *snsCallbackRoute) {
 		}
 	}
 	r.sns("subscribe", subscribe, 200)
+	pendingSubscription := r.vars["subscriptionArn"]
 	confirmation := nextSNSCallback(t, route)
 	env := verifySNSCallback(t, r.tg, confirmation, r.vars["topicArn"], "", r.cfg.version)
 	if snsString(env, "Type") != "SubscriptionConfirmation" || snsString(env, "Token") == "" {
@@ -118,6 +119,13 @@ func (r *snsHTTPRun) exercise(route *snsCallbackRoute) {
 		r.sns("confirm-authenticated", url.Values{"Action": {"ConfirmSubscription"}, "TopicArn": {r.vars["topicArn"]}, "Token": {snsString(env, "Token")}, "AuthenticateOnUnsubscribe": {"true"}}, 200)
 	} else {
 		r.link("confirm-unsigned", snsString(env, "SubscribeURL"), "ConfirmSubscription", 200)
+	}
+	if pendingSubscription == "" || pendingSubscription != r.vars["subscriptionArn"] {
+		t.Fatal("confirmation changed the subscription ARN returned by Subscribe")
+	}
+	if r.cfg.name == "version-1-links" || r.cfg.authenticated {
+		st := step{name: "confirmed-identity", body: "compare pending and confirmed subscription ARN"}
+		r.golden.Exchanges = append(r.golden.Exchanges, exchange{Step: st.name, Request: "compare subscription identities", Fingerprint: fingerprint(st), Status: 200, Body: "true"})
 	}
 	r.sns("get-subscription", url.Values{"Action": {"GetSubscriptionAttributes"}, "SubscriptionArn": {r.vars["subscriptionArn"]}}, 200)
 	messageID, message := r.publish("publish", "accept")
@@ -183,6 +191,10 @@ func (r *snsHTTPRun) exercise(route *snsCallbackRoute) {
 		}
 	}
 	r.sns("unsubscribe-signed", url.Values{"Action": {"Unsubscribe"}, "SubscriptionArn": {r.vars["subscriptionArn"]}}, 200)
+	if r.cfg.name == "version-1-links" || r.cfg.authenticated {
+		r.sns("get-removed-subscription", url.Values{"Action": {"GetSubscriptionAttributes"}, "SubscriptionArn": {r.vars["subscriptionArn"]}}, 404)
+		r.quiet(route, 5*time.Second)
+	}
 }
 
 func (r *snsHTTPRun) publish(name, kind string) (string, string) {

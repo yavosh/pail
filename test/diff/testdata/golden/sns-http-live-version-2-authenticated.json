@@ -81,6 +81,13 @@
       "body": "ConfirmSubscriptionResponse\n  ConfirmSubscriptionResult\n    SubscriptionArn: arn:aws:sns:us-east-1:{account}:{name}:{uuid}\n  ResponseMetadata\n"
     },
     {
+      "step": "confirmed-identity",
+      "request": "compare subscription identities",
+      "fingerprint": "32706abf2fa8eea3",
+      "status": 200,
+      "body": "true"
+    },
+    {
       "step": "get-subscription",
       "request": "POST sns GetSubscriptionAttributes",
       "fingerprint": "a327bdff3d54adf2",
@@ -149,6 +156,24 @@
         "X-Amzn-Requestid": "<present>"
       },
       "body": "UnsubscribeResponse\n  ResponseMetadata\n"
+    },
+    {
+      "step": "get-removed-subscription",
+      "request": "POST sns GetSubscriptionAttributes",
+      "fingerprint": "a327bdff3d54adf2",
+      "status": 404,
+      "headers": {
+        "Content-Type": "text/xml",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "ErrorResponse\n  Type: Sender\n  Code: NotFound\n"
+    },
+    {
+      "step": "quiet",
+      "request": "observe callbacks",
+      "fingerprint": "4d281c2758c87638",
+      "status": 200,
+      "body": "no additional callbacks"
     }
   ]
 }

@@ -58,7 +58,7 @@ Live callbacks use HTTPS; existing local tests cover the shared HTTP delivery pa
 
 ## Recorded evidence
 
-Eleven AWS callback scenarios recorded 149 exchanges. Signatures and identifier
+Eleven AWS callback scenarios recorded 155 exchanges. Signatures and identifier
 relationships passed before normalization. Restoration preserved the subscription ARN.
 AWS retained String, Number, and Binary attributes with HTTPS JSON selection.
 The recordings exposed a missing subscription ARN header on pail's unsubscribe
@@ -75,3 +75,8 @@ arrival behavior. Bounded nonarrival does not prove AWS never redrives.
 
 The temporary receivers and tunnels were stopped after recording. The downloaded
 tunnel client was removed. Local replay needs no public service or AWS credentials.
+
+Review found two missing lifecycle assertions. Both confirmation paths now check
+that Subscribe and ConfirmSubscription return the same ARN. Both unsubscribe
+paths check that signed removal returns NotFound on a subsequent attribute read
+and produces no callbacks during a five-second observation window.
