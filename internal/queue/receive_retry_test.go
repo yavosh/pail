@@ -167,6 +167,51 @@ func TestReceiveAttemptEmptyAndPurge(t *testing.T) {
 	}
 }
 
+func TestReceiveAttemptEmptyVisibility(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		visibility int
+		wait       int
+	}{
+		{"zero", 0, 0}, {"short poll", 2, 0}, {"long poll", 2, 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				e := newEngine(t)
+				mustCreate(t, e, "q.fifo", fifoAttrs)
+				in := ReceiveInput{AttemptID: new("empty"), VisibilityTimeout: new(tt.visibility), WaitTimeSeconds: new(tt.wait)}
+				started := time.Now()
+				if got := receive(t, e, "q.fifo", in); len(got) != 0 {
+					t.Fatalf("first Receive = %+v, want empty", got)
+				}
+				in.WaitTimeSeconds = new(0)
+				if tt.visibility > 0 {
+					if got := receive(t, e, "q.fifo", in); len(got) != 0 {
+						t.Fatalf("retry after completion = %+v, want empty", got)
+					}
+					time.Sleep(time.Second)
+					if got := receive(t, e, "q.fifo", in); len(got) != 0 {
+						t.Fatalf("retry before deadline = %+v, want empty", got)
+					}
+					time.Sleep(time.Second)
+				}
+				sendOne(t, e, "q.fifo", fifoMsg("new", "g"))
+				if _, err := e.Receive(t.Context(), "q.fifo", in); !errors.Is(err, ErrInvalidParameterValue) {
+					t.Errorf("retry at original visibility deadline error = %v, want invalid parameter", err)
+				}
+				time.Sleep(time.Until(started.Add(dedupWindow - time.Nanosecond)))
+				if _, err := e.Receive(t.Context(), "q.fifo", in); !errors.Is(err, ErrInvalidParameterValue) {
+					t.Errorf("retry before five-minute expiry error = %v, want invalid parameter", err)
+				}
+				time.Sleep(time.Nanosecond)
+				if got := receive(t, e, "q.fifo", in); len(got) != 1 || got[0].Body != "new" || got[0].ReceiveCount != 1 {
+					t.Errorf("retry at five-minute expiry = %+v, want new message with count 1", got)
+				}
+			})
+		})
+	}
+}
+
 func TestReceiveAttemptChangedSelection(t *testing.T) {
 	for _, change := range []string{"delete", "visibility zero", "visibility unchanged", "retention", "another receive"} {
 		t.Run(change, func(t *testing.T) {
@@ -313,7 +358,9 @@ func TestReceiveAttemptCapacity(t *testing.T) {
 		q := e.queues["q.fifo"]
 		q.attempts = map[string]receiveAttempt{}
 		for i := range maxReceiveAttempts {
-			q.attempts[fmt.Sprint(i)] = receiveAttempt{expires: time.Now().Add(dedupWindow), limit: 1, timeout: 30}
+			q.attempts[fmt.Sprint(i)] = receiveAttempt{
+				expires: time.Now().Add(dedupWindow), validUntil: time.Now().Add(30 * time.Second), limit: 1, timeout: 30,
+			}
 		}
 		if got := receive(t, e, "q.fifo", ReceiveInput{AttemptID: new("0")}); len(got) != 0 {
 			t.Fatalf("existing attempt at capacity = %+v, want cached empty result", got)

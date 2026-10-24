@@ -9,10 +9,11 @@ import (
 const maxReceiveAttempts = 10000
 
 type receiveAttempt struct {
-	expires time.Time
-	limit   int
-	timeout int
-	refs    []receiveRef
+	expires    time.Time
+	validUntil time.Time
+	limit      int
+	timeout    int
+	refs       []receiveRef
 }
 
 // A reference keeps no message body alive after deletion or retention expiry.
@@ -22,8 +23,11 @@ type receiveRef struct {
 	visibilityRev uint64
 }
 
-func (e *Engine) rememberReceive(q *queue, id string, got []Message, now time.Time, limit, timeout int) {
-	a := receiveAttempt{expires: now.Add(dedupWindow), limit: limit, timeout: timeout}
+func (e *Engine) rememberReceive(q *queue, id string, got []Message, start, now time.Time, limit, timeout int) {
+	a := receiveAttempt{
+		expires: start.Add(dedupWindow), validUntil: now.Add(time.Duration(timeout) * time.Second),
+		limit: limit, timeout: timeout,
+	}
 	for _, received := range got {
 		id, seq, _ := e.parseHandle(q.def.Name, received.ReceiptHandle)
 		index := slices.IndexFunc(q.messages, func(m *message) bool { return m.id == id })
@@ -40,6 +44,10 @@ func (e *Engine) rememberReceive(q *queue, id string, got []Message, now time.Ti
 func (e *Engine) retryReceive(q *queue, a receiveAttempt, now time.Time, limit, timeout int) ([]Message, error) {
 	invalid := fmt.Errorf("receive request attempt id is no longer valid for this request: %w", ErrInvalidParameterValue)
 	if a.limit != limit || a.timeout != timeout {
+		return nil, invalid
+	}
+	// Empty selections keep their original visibility deadline across retries.
+	if len(a.refs) == 0 && !now.Before(a.validUntil) {
 		return nil, invalid
 	}
 	var selected []*message

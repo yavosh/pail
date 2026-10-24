@@ -419,7 +419,7 @@ func (e *Engine) Receive(ctx context.Context, name string, in ReceiveInput) ([]M
 		got := e.take(q, now, limit, timeout)
 		if len(got) > 0 || !now.Before(deadline) {
 			if attemptID != nil {
-				e.rememberReceive(q, *attemptID, got, now, limit, timeout)
+				e.rememberReceive(q, *attemptID, got, start, now, limit, timeout)
 				q.notify()
 			}
 			e.mu.Unlock()

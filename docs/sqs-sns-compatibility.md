@@ -122,12 +122,13 @@ FIFO queues support `ReceiveRequestAttemptId`. The `sqs-receive-retr*` AWS recor
 
 - An explicit ID must contain 1 to 128 printable ASCII characters, excluding spaces. Invalid IDs return `InvalidParameterValue`.
 - Standard queues ignore the parameter, including an empty or invalid ID. Omitting it keeps normal receive behavior.
-- A completed receive remembers its selected messages for five minutes, including an empty selection.
+- A completed receive remembers its selected messages, including an empty selection, within a five-minute window from request start.
 - Repeating the ID returns the original messages without increasing `ApproximateReceiveCount`. It resets their visibility timeout.
 - The effective `MaxNumberOfMessages` and `VisibilityTimeout` must match. Explicit defaults match omitted defaults. `WaitTimeSeconds` can change.
 - Deletion, retention expiry, another receive, a visibility change, or visibility expiry invalidates a populated selection. Retrying it returns `InvalidParameterValue`.
+- An empty selection becomes invalid when its original visibility timeout expires, measured from receive completion. Empty retries do not extend this deadline. A zero timeout makes an empty selection immediately invalid.
 - A successful purge clears all attempt records. Queue deletion and restart also discard them.
-- The five-minute window starts with the completed receive. Retries do not extend it. Boundary and concurrency behavior have local deterministic tests.
+- Retries do not extend the five-minute window. AWS probes verify long-poll timing; exact boundaries and concurrency have local deterministic tests.
 - A canceled long poll creates no retry record.
 - pail reuses its receipt handles on retries. AWS recordings returned different opaque strings; consumers must use the returned handles.
 - pail allows 10,000 active records per queue. At capacity, a new ID returns `400 OverLimit`; existing attempts still work. This bound is specific to pail. Records store identifiers rather than message bodies.

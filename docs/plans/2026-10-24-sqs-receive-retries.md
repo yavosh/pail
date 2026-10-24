@@ -12,7 +12,7 @@ The API currently drops it, so a retry cannot retrieve its invisible messages.
 3. Add queue-owned, transient retry records under the existing engine mutex.
    Reuse the original selection without increasing receive counts, reset
    visibility, and reject modified selections or incompatible parameters.
-   Expire records after five minutes without extending the window on retries.
+   Expire records five minutes after request start without extending the window on retries.
 4. Store message references and validity metadata instead of copying bodies.
    Limit each queue to 10,000 live attempt records. Reject new attempts with
    `OverLimit` at capacity; never evict a valid retry record early.
@@ -38,6 +38,11 @@ message or changing its visibility invalidates the attempt.
 An expired visibility timeout invalidates a populated attempt too. Explicit
 default parameters match omitted defaults. A successful purge clears attempts,
 including cached empty results.
+Empty selections become invalid at their original visibility deadline, measured
+from receive completion. Retrying an empty selection does not extend it.
+AWS probes verified zero visibility, long-poll completion, and repeated retries.
+A five-minute AWS probe verified that token expiry starts with the request,
+while empty-selection visibility starts with its completion.
 AWS returned different opaque receipt strings on identical retries; verify
 their usability rather than assuming their bytes must match.
 

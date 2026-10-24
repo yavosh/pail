@@ -68,6 +68,17 @@
       "body": "Messages[0].Attributes.ApproximateFirstReceiveTimestamp: <volatile>\nMessages[0].Attributes.ApproximateReceiveCount: 1\nMessages[0].Attributes.MessageDeduplicationId: 7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed\nMessages[0].Attributes.MessageGroupId: g\nMessages[0].Attributes.SenderId: <volatile>\nMessages[0].Attributes.SentTimestamp: <volatile>\nMessages[0].Attributes.SequenceNumber: <volatile>\nMessages[0].Body: one\nMessages[0].MD5OfBody: f97c5d29941bfb1b2fdab0874906ab82\nMessages[0].MessageId: {uuid}\nMessages[0].ReceiptHandle: <volatile>\n"
     },
     {
+      "step": "receive-in-flight",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "404a812da8328a4e",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
       "step": "change-visibility",
       "request": "POST sqs AmazonSQS.ChangeMessageVisibility",
       "fingerprint": "07189f8813c7f567",
@@ -120,6 +131,29 @@
         "X-Amzn-Requestid": "<present>"
       },
       "body": "{}\n"
+    },
+    {
+      "step": "receive-empty-zero-visibility",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "747638205527c9e6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "{}\n"
+    },
+    {
+      "step": "receive-empty-zero-visibility-retry",
+      "request": "POST sqs AmazonSQS.ReceiveMessage",
+      "fingerprint": "747638205527c9e6",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
     },
     {
       "step": "delete-queue",

@@ -36,11 +36,14 @@ func sqsReceiveRetryEmptyScenario() scenario {
 		sqsStep("receive-empty-retry", "ReceiveMessage", receive),
 		sqsStep("receive-distinct-token", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"new","WaitTimeSeconds":5,"MessageSystemAttributeNames":["All"]}`),
 		sqsStep("receive-explicit-defaults", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"new","MaxNumberOfMessages":1,"VisibilityTimeout":30,"MessageSystemAttributeNames":["All"]}`),
+		sqsStep("receive-in-flight", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"in-flight","WaitTimeSeconds":1}`),
 		sqsStep("change-visibility", "ChangeMessageVisibility", `{`+queue+`,"ReceiptHandle":"{receiptHandle}","VisibilityTimeout":0}`),
 		sqsStep("receive-after-change", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"new","WaitTimeSeconds":0}`),
 		sqsStep("receive-after-change-new-token", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"after-change","WaitTimeSeconds":5,"MessageSystemAttributeNames":["All"]}`),
 		sqsStep("purge", "PurgeQueue", `{`+queue+`}`),
 		sqsStep("receive-after-purge", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"after-change","WaitTimeSeconds":0}`),
+		sqsStep("receive-empty-zero-visibility", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"zero","VisibilityTimeout":0,"WaitTimeSeconds":0}`),
+		sqsStep("receive-empty-zero-visibility-retry", "ReceiveMessage", `{`+queue+`,"ReceiveRequestAttemptId":"zero","VisibilityTimeout":0,"WaitTimeSeconds":0}`),
 		sqsStep("delete-queue", "DeleteQueue", `{`+queue+`}`),
 	}}
 }
