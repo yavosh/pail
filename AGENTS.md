@@ -31,7 +31,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 ## Go conventions
 
-- Go 1.27. Use `log/slog` for logging, never `log.Printf`. Log through the package's `clog*` helper, never a package-level `slog.Info`: every line carries a `component` naming its subsystem, and `forbidigo` enforces it. The helper lives in the package's `component.go`, for example `func clogServer() *slog.Logger { return slog.With("component", "server") }`.
+- Go 1.27.3 or later. Use `log/slog` for logging, never `log.Printf`. Log through the package's `clog*` helper, never a package-level `slog.Info`: every line carries a `component` naming its subsystem, and `forbidigo` enforces it. The helper lives in the package's `component.go`, for example `func clogServer() *slog.Logger { return slog.With("component", "server") }`.
 - Prefer the standard library. Put all packages under `internal/`.
 - Wrap errors with `fmt.Errorf("context: %w", err)`. Error strings are lowercase with no trailing punctuation. Add sentinel errors only when a caller needs `errors.Is`.
 - Pass `context.Context` as the first parameter.
@@ -141,7 +141,7 @@ When CI is green, review the diff adversarially across correctness, simplicity, 
 ## Pre-push checklist
 
 ```bash
-# Needs Go 1.27 and golangci-lint >= 2.13.1; older lint builds refuse a go1.27 module.
+# Needs Go 1.27.3 and golangci-lint >= 2.13.1; older lint builds refuse a go1.27 module.
 go fix -stringsbuilder=false ./...   # the one modernizer .golangci.yml rejects
 goimports -w .
 golangci-lint run ./...
