@@ -313,7 +313,7 @@ func TestEffectiveSubscriptionPolicy(t *testing.T) {
 	if got := get("DeliveryPolicy"); got != "<absent>" {
 		t.Errorf("DeliveryPolicy = %s, want it absent", got)
 	}
-	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", goldenSubIn); err != nil {
+	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", new(goldenSubIn)); err != nil {
 		t.Fatal(err)
 	}
 	for _, key := range []string{"EffectiveDeliveryPolicy", "DeliveryPolicy"} {
@@ -326,7 +326,7 @@ func TestEffectiveSubscriptionPolicy(t *testing.T) {
 		t.Errorf("attribute order near EffectiveDeliveryPolicy = %v, want DeliveryPolicy then Protocol", attrs[i:i+3])
 	}
 	// A partial subscription policy keeps the topic's other sections.
-	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", `{"requestPolicy":{"headerContentType":"text/plain"}}`); err != nil {
+	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", new(`{"requestPolicy":{"headerContentType":"text/plain"}}`)); err != nil {
 		t.Fatal(err)
 	}
 	want := strings.Replace(fromTopic, `"application/json"`, `"text/plain"`, 1)
@@ -340,7 +340,7 @@ func TestEffectiveSubscriptionPolicy(t *testing.T) {
 	if got := get("EffectiveDeliveryPolicy"); got != fromTopic {
 		t.Errorf("EffectiveDeliveryPolicy with overrides disabled = %s, want %s", got, fromTopic)
 	}
-	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", ""); err != nil {
+	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", new("")); err != nil {
 		t.Fatal(err)
 	}
 	if got := get("DeliveryPolicy"); got != "<absent>" {
@@ -352,7 +352,7 @@ func TestDeliveryPolicyOnSQSSubscription(t *testing.T) {
 	e, _ := newEngine(t)
 	arn := mustTopic(t, e, "sqspolicy")
 	sub := mustSubscribe(t, e, arn, "q1", nil)
-	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", goldenSubIn); !errors.Is(err, ErrInvalidParameter) {
+	if err := e.SetSubscriptionAttribute(t.Context(), sub, "DeliveryPolicy", new(goldenSubIn)); !errors.Is(err, ErrInvalidParameter) {
 		t.Errorf("SetSubscriptionAttribute(sqs, DeliveryPolicy) error = %v, want %v", err, ErrInvalidParameter)
 	}
 	_, _, err := e.Subscribe(t.Context(), SubscribeInput{TopicARN: arn, Protocol: "sqs", Endpoint: queueARN("q2"), Attributes: map[string]string{"DeliveryPolicy": goldenSubIn}})

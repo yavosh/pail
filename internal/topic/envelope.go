@@ -136,7 +136,7 @@ func rawAttributes(attrs map[string]MessageAttribute) map[string]queue.MessageAt
 	}
 	out := make(map[string]queue.MessageAttribute, len(attrs))
 	for name, a := range attrs {
-		out[name] = queue.MessageAttribute{DataType: a.DataType, StringValue: a.StringValue, BinaryValue: a.BinaryValue}
+		out[name] = queue.MessageAttribute{DataType: a.DataType, StringValue: a.StringValue, BinaryValue: slices.Clone(a.BinaryValue)}
 	}
 	return out
 }

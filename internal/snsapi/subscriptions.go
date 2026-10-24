@@ -127,5 +127,9 @@ func (h *handler) setSubscriptionAttributes(r *http.Request, p params) (string, 
 	if err != nil {
 		return "", err
 	}
-	return "", h.topics.SetSubscriptionAttribute(r.Context(), arn, name, p.get("AttributeValue"))
+	var value *string
+	if p.has("AttributeValue") {
+		value = new(p.get("AttributeValue"))
+	}
+	return "", h.topics.SetSubscriptionAttribute(r.Context(), arn, name, value)
 }

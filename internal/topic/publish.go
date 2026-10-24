@@ -70,9 +70,9 @@ type PublishResult struct {
 // delivery is one subscription that receives a message. queue is empty for
 // an HTTP or HTTPS endpoint.
 type delivery struct {
-	arn, protocol, endpoint, queue, message string
-	raw                                     bool
-	plan                                    deliveryPlan // HTTP and HTTPS only
+	arn, protocol, endpoint, queue, message, deadQueue string
+	raw                                                bool
+	plan                                               deliveryPlan // HTTP and HTTPS only
 }
 
 // Publish sends a message to every subscription of a topic and returns its IDs.
@@ -125,6 +125,7 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (PublishOutput, e
 		}
 		name, _ := e.checkEndpoint(s.TopicARN, s.Protocol, s.Endpoint) // checked when stored
 		d := delivery{arn: s.ARN, protocol: s.Protocol, endpoint: s.Endpoint, queue: name, message: message, raw: s.rawDelivery()}
+		d.deadQueue, _ = e.redriveTarget(s) // checked when stored
 		if s.Protocol != protocolSQS {
 			d.plan = effectivePolicy(t, s).plan()
 		}
@@ -159,22 +160,26 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (PublishOutput, e
 	}
 	for _, d := range targets {
 		n.message, n.signature = d.message, signatures[d.message]
-		if d.protocol != protocolSQS {
-			body := n.message
-			if !d.raw {
-				n.subscriptionARN = d.arn
-				body = n.envelope()
-			}
-			j := newJob(d.endpoint, body, "Notification", n.messageID, in.TopicARN, d.arn, d.raw)
-			j.plan, j.sub = d.plan, d.arn
-			j.header.Set("Content-Type", d.plan.contentType)
-			e.enqueue(j)
-			continue
-		}
 		send := queue.SendInput{Body: n.message, Attributes: rawAttributes(in.Attributes), GroupID: in.GroupID}
 		if !d.raw {
 			n.subscriptionARN = d.arn
 			send = queue.SendInput{Body: n.envelope(), GroupID: in.GroupID}
+		}
+		dead := deadLetter{queue: d.deadQueue, input: send}
+		if isFIFO(d.deadQueue) {
+			dead.input.DeduplicationID = in.DeduplicationID
+		} else if fifo != nil {
+			dead.input.GroupID = ""
+		}
+		if d.protocol != protocolSQS {
+			j := newJob(d.endpoint, send.Body, "Notification", n.messageID, in.TopicARN, d.arn, d.raw)
+			j.plan, j.sub = d.plan, d.arn
+			j.header.Set("Content-Type", d.plan.contentType)
+			j.dead = dead
+			if !e.enqueue(j) {
+				e.redrive(ctx, in.TopicARN, dead)
+			}
+			continue
 		}
 		if fifo != nil {
 			if isFIFO(d.queue) {
@@ -183,20 +188,12 @@ func (e *Engine) Publish(ctx context.Context, in PublishInput) (PublishOutput, e
 				send.GroupID = ""
 			}
 		}
-		e.deliver(ctx, in.TopicARN, d.queue, send)
+		if err := e.deliver(ctx, d.queue, send); err != nil {
+			clogTopic().Warn("delivery failed", "topic", in.TopicARN, "queue", d.queue, "error", err)
+			e.redrive(ctx, in.TopicARN, dead)
+		}
 	}
 	return out, nil
-}
-
-// deliver sends one message to a queue and logs a failure.
-func (e *Engine) deliver(ctx context.Context, topicARN, queueName string, in queue.SendInput) {
-	res, err := e.queues.Send(ctx, queueName, []queue.SendInput{in})
-	if err == nil && len(res) == 1 {
-		err = res[0].Err
-	}
-	if err != nil {
-		clogTopic().Warn("delivery failed", "topic", topicARN, "queue", queueName, "error", err)
-	}
 }
 
 // PublishBatch publishes entries in order. FIFO validation fails the whole

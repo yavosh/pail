@@ -264,6 +264,7 @@ pail supports `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguratio
 pail supports `PutBucketNotificationConfiguration` and `GetBucketNotificationConfiguration`. It delivers object events to SQS queues and SNS topics in the same pail.
 
 SQS destinations are standard queues, so [FIFO receive retries](sqs-sns-compatibility.md#receive-retries) do not apply to these notifications.
+SNS destinations also support [subscription dead-letter queues](sqs-sns-compatibility.md#subscription-dead-letter-queues) when delivery to a subscriber fails.
 
 - A configuration is a list of `QueueConfiguration` and `TopicConfiguration` elements. Each has an optional `Id`, a destination ARN, one or more `Event` values, and an optional `Filter` with `prefix` and `suffix` rules. pail generates a missing `Id`.
 - `GetBucketNotificationConfiguration` returns an empty `NotificationConfiguration` when the bucket has none. It returns the topic configurations first, then the queue configurations. Filter rule names come back as `Prefix` and `Suffix`, as on AWS.
