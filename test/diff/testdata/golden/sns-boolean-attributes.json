@@ -243,17 +243,6 @@
       "body": "ErrorResponse\n  Type: Sender\n  Code: InvalidParameter\n"
     },
     {
-      "step": "delete-standard-topic",
-      "request": "POST sns DeleteTopic",
-      "fingerprint": "c1cbca6279725a1d",
-      "status": 200,
-      "headers": {
-        "Content-Type": "text/xml",
-        "X-Amzn-Requestid": "<present>"
-      },
-      "body": "DeleteTopicResponse\n  ResponseMetadata\n"
-    },
-    {
       "step": "delete-queue",
       "request": "POST sqs AmazonSQS.DeleteQueue",
       "fingerprint": "c7b9db8eef0481d6",

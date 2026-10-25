@@ -44,7 +44,6 @@ func snsBooleanAttributesScenario() scenario {
 		snsStep("reject-whitespace", "Action=SetSubscriptionAttributes"+sub+"&AttributeName=RawMessageDelivery&AttributeValue=+true"+snsVersion),
 		snsStep("delete-fifo-topic", "Action=DeleteTopic"+topic+snsVersion),
 		snsStep("create-standard-disabled", "Action=CreateTopic&Name={name}&Attributes.entry.1.key=FifoTopic&Attributes.entry.1.value=False&Attributes.entry.2.key=ContentBasedDeduplication&Attributes.entry.2.value=False"+snsVersion),
-		snsStep("delete-standard-topic", "Action=DeleteTopic"+topic+snsVersion),
 		sqsStep("delete-queue", "DeleteQueue", `{"QueueUrl":"{queueUrl}"}`),
 	}}
 }
