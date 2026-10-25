@@ -18,7 +18,10 @@ type attrSpec struct {
 	fifoOnly bool
 }
 
-func isBool(v string) bool { return v == "true" || v == "false" }
+func isBool(v string) bool {
+	v = strings.ToLower(v)
+	return v == "true" || v == "false"
+}
 
 // attrSpecs is the one table of settable attributes.
 var attrSpecs = map[string]attrSpec{
@@ -27,14 +30,14 @@ var attrSpecs = map[string]attrSpec{
 	"MessageRetentionPeriod":        {"345600", intRange(60, 1209600), canonInt, false},
 	"ReceiveMessageWaitTimeSeconds": {"0", intRange(0, 20), canonInt, false},
 	"VisibilityTimeout":             {"30", intRange(0, 43200), canonInt, false},
-	"SqsManagedSseEnabled":          {"true", isBool, nil, false},
+	"SqsManagedSseEnabled":          {"true", isBool, strings.ToLower, false},
 	"KmsMasterKeyId":                {"", func(v string) bool { return v != "" }, nil, false},
 	"KmsDataKeyReusePeriodSeconds":  {"", intRange(60, 86400), canonInt, false},
 	"Policy":                        {"", isJSONObject, nil, false},
 	"RedrivePolicy":                 {"", validRedrivePolicy, canonRedrivePolicy, false},
 	"RedriveAllowPolicy":            {"", validRedriveAllowPolicy, canonRedriveAllowPolicy, false},
-	"FifoQueue":                     {"", func(v string) bool { return v == "true" }, nil, true},
-	"ContentBasedDeduplication":     {"false", isBool, nil, true},
+	"FifoQueue":                     {"", func(v string) bool { return strings.EqualFold(v, "true") }, strings.ToLower, true},
+	"ContentBasedDeduplication":     {"false", isBool, strings.ToLower, true},
 	"DeduplicationScope":            {"queue", func(v string) bool { return v == "queue" || v == "messageGroup" }, nil, true},
 	"FifoThroughputLimit":           {"perQueue", func(v string) bool { return v == "perQueue" || v == "perMessageGroupId" }, nil, true},
 }

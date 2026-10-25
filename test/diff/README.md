@@ -54,6 +54,13 @@ Re-record it with `go test ./test/diff -record -run '^TestDiff/conditional-delet
 
 The `sqs-*` and `sns-*` scenarios cover the SQS JSON protocol and the SNS query protocol.
 
+The boolean attribute scenarios cover capitalized values, lowercase storage, repeated creates, deduplication, and raw delivery.
+Their AWS golden files still need maintainer recording:
+
+```bash
+direnv exec . go test ./test/diff -record -run '^TestDiff/(sqs|sns)-boolean-attributes$' -v -count=1 -timeout=5m
+```
+
 - A step sets `service` (`sqs` or `sns`) and, for SQS, `target` (the `X-Amz-Target` value). The suite signs it for that service without `x-amz-content-sha256` and POSTs it to `/`.
 - `{name}` in a query, header, or body is the scenario's random `pail-diff-` name. The variables `{uploadId}`, `{queueUrl}`, `{queueArn}`, `{receiptHandle}`, `{messageId}`, `{topicArn}`, and `{subscriptionArn}` hold the latest value that a response returned. A response without a value keeps the earlier one. `{subscriptionArn}` ignores `pending confirmation` and `PendingConfirmation`.
 - `{httpEndpoint}` differs by target. Against AWS it is a public URL that the maintainer owns, because AWS refuses internal endpoints. Against pail it is `https://127.0.0.1:1/pail`, so pail's confirmation posts never leave the machine. Responses mask either value as `{httpEndpoint}`.

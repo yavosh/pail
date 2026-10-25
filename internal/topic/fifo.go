@@ -29,7 +29,7 @@ func newFIFOState() *fifoState { return &fifoState{dedup: map[dedupKey]dedupEntr
 func isFIFO(name string) bool { return strings.HasSuffix(name, ".fifo") }
 
 func checkFIFOType(name string, attrs map[string]string) error {
-	if isFIFO(name) != (attrs["FifoTopic"] == "true") {
+	if isFIFO(name) != strings.EqualFold(attrs["FifoTopic"], "true") {
 		return invalid("a .fifo name requires FifoTopic true, and FifoTopic true requires a .fifo name")
 	}
 	return nil

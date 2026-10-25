@@ -282,6 +282,9 @@ func effectiveTopicPolicy(t *topicDef) string {
 
 // canonTopicAttr returns the stored form of a checked topic attribute value.
 func canonTopicAttr(name, value string) string {
+	if name == "FifoTopic" || name == "ContentBasedDeduplication" {
+		return strings.ToLower(value)
+	}
 	if name != attrDelivery || value == "" {
 		return value
 	}
@@ -291,6 +294,9 @@ func canonTopicAttr(name, value string) string {
 
 // canonSubAttr is canonTopicAttr for a subscription attribute.
 func canonSubAttr(name, value string) string {
+	if name == attrRaw {
+		return strings.ToLower(value)
+	}
 	if name != attrDelivery || value == "" {
 		return value
 	}

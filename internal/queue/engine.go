@@ -218,9 +218,9 @@ func checkFifoAttribute(name string, attrs map[string]string) error {
 	switch {
 	case ok && !isBool(v):
 		return fmt.Errorf("attribute FifoQueue value %q: %w", v, ErrInvalidAttributeValue)
-	case isFIFOName(name) && v != "true":
+	case isFIFOName(name) && !strings.EqualFold(v, "true"):
 		return fmt.Errorf("queue %q ends in .fifo, so FifoQueue must be true: %w", name, ErrInvalidParameterValue)
-	case !isFIFOName(name) && v == "true":
+	case !isFIFOName(name) && strings.EqualFold(v, "true"):
 		return fmt.Errorf("FifoQueue true needs a queue name that ends in .fifo: %w", ErrInvalidParameterValue)
 	}
 	return nil

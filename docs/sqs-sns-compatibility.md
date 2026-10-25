@@ -43,6 +43,7 @@ Every other operation returns `UnsupportedOperation`. That includes `AddPermissi
 | `SqsManagedSseEnabled` | `true` | `true` or `false` |
 
 - FIFO queues add `ContentBasedDeduplication`, `DeduplicationScope`, and `FifoThroughputLimit`. See [FIFO queues](#fifo-queues). `RedrivePolicy` and `RedriveAllowPolicy` are described in [Dead-letter queues](#dead-letter-queues).
+- Boolean attributes accept `true` and `false` without case sensitivity and store lowercase values. This covers SQS `FifoQueue`, `ContentBasedDeduplication`, and `SqsManagedSseEnabled`, plus SNS `FifoTopic`, `ContentBasedDeduplication`, and `RawMessageDelivery`. Empty strings, numbers, and surrounding whitespace are rejected. AWS casing behavior remains unverified.
 - pail also accepts `KmsMasterKeyId`, `KmsDataKeyReusePeriodSeconds`, and `Policy`. It stores them and enforces none of them.
 - A queue has at most 50 tags.
 - A message has at most 10 message attributes. A message body uses the SQS character set, and it can't be empty.

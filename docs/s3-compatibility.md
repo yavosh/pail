@@ -2,6 +2,8 @@
 
 This page describes how pail implements the S3 operations it supports, and where it differs from AWS. For setup and a summary, see the [README](../README.md).
 
+For queue and topic attributes, see [SQS and SNS compatibility](sqs-sns-compatibility.md#defaults-and-limits).
+
 ## Requests
 
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
