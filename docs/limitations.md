@@ -12,7 +12,7 @@ pail isn't a production object store:
 - SQS messages live in memory and are lost when pail restarts. Queue definitions persist.
 - SQS FIFO queues don't model high-throughput quotas. Receive retry state is limited to 10,000 active attempts per queue and resets on restart. Dead-letter queues move a message on the next receive, not in the background.
 - SQS uses the AWS JSON protocol only, which current SDKs and the AWS CLI send. It doesn't support the legacy query protocol.
-- SQS and SNS boolean attributes accept capitalized and mixed-case values. AWS casing behavior awaits differential recording.
+- Standard SNS topics reject capitalized disabled FIFO attributes; use lowercase `false`.
 - SNS delivers to SQS queues and to HTTP and HTTPS endpoints. It supports subscription filter policies on message attributes and on the message body. FIFO topics deliver only to SQS queues. It has no SMS, email, Lambda, or mobile push.
 - SNS subscription dead-letter policies persist, but pending deliveries and dead-letter messages do not. SQS delivery failures redrive immediately; pail does not reproduce AWS’s extended SQS retry schedule.
 - SNS FIFO deduplication and sequence numbers reset on restart. Message archiving, replay, and throughput quotas are unsupported.

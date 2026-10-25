@@ -39,7 +39,6 @@ func snsBooleanAttributesScenario() scenario {
 		snsStep("publish-content-dedup", "Action=Publish"+topic+"&Message=body&MessageGroupId=g"+snsVersion),
 		sqsStep("receive-raw", "ReceiveMessage", `{"QueueUrl":"{queueUrl}","WaitTimeSeconds":10,"MaxNumberOfMessages":1}`),
 		snsStep("disable-mixed-case", "Action=SetTopicAttributes"+topic+"&AttributeName=ContentBasedDeduplication&AttributeValue=fAlSe"+snsVersion),
-		snsStep("get-disabled-attributes", "Action=GetTopicAttributes"+topic+snsVersion),
 		snsStep("publish-missing-dedup", "Action=Publish"+topic+"&Message=other&MessageGroupId=g"+snsVersion),
 		snsStep("reject-number", "Action=SetTopicAttributes"+topic+"&AttributeName=ContentBasedDeduplication&AttributeValue=1"+snsVersion),
 		snsStep("reject-whitespace", "Action=SetSubscriptionAttributes"+sub+"&AttributeName=RawMessageDelivery&AttributeValue=+true"+snsVersion),

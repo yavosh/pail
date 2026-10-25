@@ -107,7 +107,7 @@ aws --endpoint-url http://127.0.0.1:9000 sqs create-queue --queue-name demo
 
 pail supports FIFO queues (names that end in `.fifo`, with `FifoQueue=true`) and dead-letter queues (`RedrivePolicy` and `RedriveAllowPolicy`). See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
-Boolean SQS and SNS attributes accept `True` and `False`, including values sent by MassTransit, and return lowercase values.
+Boolean attributes accept `True` and `False` on SQS queues, SNS FIFO topics, and SNS subscriptions. Responses use lowercase values.
 
 FIFO consumers can retry `ReceiveMessage` with `ReceiveRequestAttemptId` to retrieve the same unmodified messages within five minutes.
 

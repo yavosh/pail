@@ -55,7 +55,7 @@ Re-record it with `go test ./test/diff -record -run '^TestDiff/conditional-delet
 The `sqs-*` and `sns-*` scenarios cover the SQS JSON protocol and the SNS query protocol.
 
 The boolean attribute scenarios cover capitalized values, lowercase storage, repeated creates, deduplication, and raw delivery.
-Their AWS golden files still need maintainer recording:
+Their AWS golden files verify these behaviors. Re-record them with:
 
 ```bash
 direnv exec . go test ./test/diff -record -run '^TestDiff/(sqs|sns)-boolean-attributes$' -v -count=1 -timeout=5m

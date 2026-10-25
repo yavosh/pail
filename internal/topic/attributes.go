@@ -26,7 +26,7 @@ var topicAttrNames = []string{"DisplayName", "Policy", "DeliveryPolicy", "KmsMas
 
 // noopAttr reports whether an attribute disables a FIFO feature on a standard topic.
 func noopAttr(name, value string) bool {
-	return (name == "FifoTopic" || name == "ContentBasedDeduplication") && strings.ToLower(value) == "false"
+	return (name == "FifoTopic" || name == "ContentBasedDeduplication") && value == "false"
 }
 
 // checkTopicAttr validates one attribute. An empty value means unset.

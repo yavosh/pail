@@ -1,0 +1,137 @@
+{
+  "scenario": "sqs-boolean-attributes",
+  "exchanges": [
+    {
+      "step": "create-capitalized",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "743d004fcea5a27f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "get-created-attributes",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "5d372e44556f3fce",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.ContentBasedDeduplication: false\nAttributes.FifoQueue: true\nAttributes.SqsManagedSseEnabled: false\n"
+    },
+    {
+      "step": "create-lowercase-again",
+      "request": "POST sqs AmazonSQS.CreateQueue",
+      "fingerprint": "681bde72fcdf7cb1",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "QueueUrl: {endpoint}/{account}/{name}.fifo\n"
+    },
+    {
+      "step": "enable-capitalized",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "63e904aa0b3a24ba",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "get-enabled-attributes",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "1a755966053e3a0b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.ContentBasedDeduplication: true\nAttributes.SqsManagedSseEnabled: true\n"
+    },
+    {
+      "step": "send-content-dedup",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "ddaf149be1fbb598",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "MD5OfMessageBody: 841a2d689ad86bd1611447453c22c6fc\nMessageId: {uuid}\nSequenceNumber: <volatile>\n"
+    },
+    {
+      "step": "disable-mixed-case",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "d1188417dd05d85f",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "get-disabled-attributes",
+      "request": "POST sqs AmazonSQS.GetQueueAttributes",
+      "fingerprint": "1a755966053e3a0b",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Attributes.ContentBasedDeduplication: false\nAttributes.SqsManagedSseEnabled: false\n"
+    },
+    {
+      "step": "send-missing-dedup",
+      "request": "POST sqs AmazonSQS.SendMessage",
+      "fingerprint": "bc7d6cfdad4d4bb9",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidParameterValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazon.coral.service#InvalidParameterValueException\n"
+    },
+    {
+      "step": "reject-number",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "252d7f4eff2ed744",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidAttributeValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#InvalidAttributeValue\n"
+    },
+    {
+      "step": "reject-whitespace",
+      "request": "POST sqs AmazonSQS.SetQueueAttributes",
+      "fingerprint": "9e81280d270de1cd",
+      "status": 400,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Query-Error": "InvalidAttributeValue;Sender",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: com.amazonaws.sqs#InvalidAttributeValue\n"
+    },
+    {
+      "step": "delete-queue",
+      "request": "POST sqs AmazonSQS.DeleteQueue",
+      "fingerprint": "c7b9db8eef0481d6",
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    }
+  ]
+}

@@ -166,8 +166,12 @@ func TestSNSBooleanAttributeCasing(t *testing.T) {
 				}
 			}
 			_, err = sc.CreateTopic(ctx, &sns.CreateTopicInput{Name: aws.String("standard"), Attributes: map[string]string{"FifoTopic": tt.no, "ContentBasedDeduplication": tt.no}})
+			if got := errorCode(err); got != "InvalidParameter" {
+				t.Errorf("CreateTopic with disabled FIFO attributes %q error = %q, want InvalidParameter", tt.no, got)
+			}
+			_, err = sc.CreateTopic(ctx, &sns.CreateTopicInput{Name: aws.String("standard"), Attributes: map[string]string{"FifoTopic": "false", "ContentBasedDeduplication": "false"}})
 			if err != nil {
-				t.Fatalf("CreateTopic with disabled FIFO attributes %q: %v", tt.no, err)
+				t.Fatalf("CreateTopic with lowercase disabled FIFO attributes: %v", err)
 			}
 		})
 	}
