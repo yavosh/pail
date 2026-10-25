@@ -68,7 +68,7 @@ func checkSubAttr(k, v string) error {
 		_, err := redriveARN(v)
 		return err
 	case attrRaw:
-		if v != "true" && v != "false" {
+		if v = strings.ToLower(v); v != "true" && v != "false" {
 			return fmt.Errorf("subscription attribute %s must be true or false: %w", k, ErrInvalidParameter)
 		}
 	case attrDelivery:

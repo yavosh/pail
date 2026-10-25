@@ -39,7 +39,7 @@ func checkTopicAttr(name, value string, fifo bool) error {
 			if value == "Topic" || value == "MessageGroup" {
 				return nil
 			}
-		} else if value == "true" || value == "false" {
+		} else if v := strings.ToLower(value); v == "true" || v == "false" {
 			return nil
 		}
 		return invalid("topic attribute %s has an invalid value", name)
@@ -161,7 +161,7 @@ func (e *Engine) SetTopicAttribute(ctx context.Context, arn, name, value string)
 		return err
 	}
 	if fifo && name == "FifoTopic" {
-		if value == "true" {
+		if strings.EqualFold(value, "true") {
 			return nil
 		}
 		return invalid("FifoTopic cannot be changed")
