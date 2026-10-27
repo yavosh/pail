@@ -1,0 +1,326 @@
+{
+  "scenario": "kms-symmetric",
+  "exchanges": [
+    {
+      "step": "create-key",
+      "request": "POST kms TrentService.CreateKey",
+      "fingerprint": "6f1ddd6e55179734",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "KeyMetadata.AWSAccountId: {account}\nKeyMetadata.Arn: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMetadata.CreationDate: <volatile>\nKeyMetadata.CurrentKeyMaterialId: <volatile>\nKeyMetadata.CustomerMasterKeySpec: SYMMETRIC_DEFAULT\nKeyMetadata.Description: pail differential key\nKeyMetadata.Enabled: true\nKeyMetadata.EncryptionAlgorithms[0]: SYMMETRIC_DEFAULT\nKeyMetadata.KeyId: {uuid}\nKeyMetadata.KeyManager: CUSTOMER\nKeyMetadata.KeySpec: SYMMETRIC_DEFAULT\nKeyMetadata.KeyState: Enabled\nKeyMetadata.KeyUsage: ENCRYPT_DECRYPT\nKeyMetadata.MultiRegion: false\nKeyMetadata.Origin: AWS_KMS\n"
+    },
+    {
+      "step": "create-alias",
+      "request": "POST kms TrentService.CreateAlias",
+      "fingerprint": "1f6387fd0418f90d",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "describe-alias",
+      "request": "POST kms TrentService.DescribeKey",
+      "fingerprint": "6aba2c10ff22417b",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "KeyMetadata.AWSAccountId: {account}\nKeyMetadata.Arn: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMetadata.CreationDate: <volatile>\nKeyMetadata.CurrentKeyMaterialId: <volatile>\nKeyMetadata.CustomerMasterKeySpec: SYMMETRIC_DEFAULT\nKeyMetadata.Description: pail differential key\nKeyMetadata.Enabled: true\nKeyMetadata.EncryptionAlgorithms[0]: SYMMETRIC_DEFAULT\nKeyMetadata.KeyId: {uuid}\nKeyMetadata.KeyManager: CUSTOMER\nKeyMetadata.KeySpec: SYMMETRIC_DEFAULT\nKeyMetadata.KeyState: Enabled\nKeyMetadata.KeyUsage: ENCRYPT_DECRYPT\nKeyMetadata.MultiRegion: false\nKeyMetadata.Origin: AWS_KMS\n"
+    },
+    {
+      "step": "list-aliases",
+      "request": "POST kms TrentService.ListAliases",
+      "fingerprint": "b954f20c71b2b302",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "AliasCount: 1\nAliases[0].AliasArn: arn:aws:kms:us-east-1:{account}:alias/{name}\nAliases[0].AliasName: alias/{name}\nAliases[0].CreationDate: <volatile>\nAliases[0].LastUpdatedDate: <volatile>\nAliases[0].TargetKeyId: {uuid}\nTruncated: false\n"
+    },
+    {
+      "step": "list-tags",
+      "request": "POST kms TrentService.ListResourceTags",
+      "fingerprint": "f74df751e93e4dc3",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "Tags[0].TagKey: purpose\nTags[0].TagValue: test\nTruncated: false\n"
+    },
+    {
+      "step": "encrypt",
+      "request": "POST kms TrentService.Encrypt",
+      "fingerprint": "38cd471ac5c16c74",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CiphertextBlob: <volatile>\nEncryptionAlgorithm: SYMMETRIC_DEFAULT\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\n"
+    },
+    {
+      "step": "decrypt",
+      "request": "POST kms TrentService.Decrypt",
+      "fingerprint": "fd708b4df00d3bab",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "EncryptionAlgorithm: SYMMETRIC_DEFAULT\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMaterialId: <volatile>\nKeyOrigin: AWS_KMS\nPlaintext: <volatile>\n"
+    },
+    {
+      "step": "decrypt-wrong-context",
+      "request": "POST kms TrentService.Decrypt",
+      "fingerprint": "ccf2582d8859449c",
+      "status": 400,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: InvalidCiphertextException\n"
+    },
+    {
+      "step": "disable",
+      "request": "POST kms TrentService.DisableKey",
+      "fingerprint": "e2ec8812296961e0",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "encrypt-disabled",
+      "request": "POST kms TrentService.Encrypt",
+      "fingerprint": "7b238de7f43d2f3b",
+      "status": 400,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: DisabledException\n"
+    },
+    {
+      "step": "enable",
+      "request": "POST kms TrentService.EnableKey",
+      "fingerprint": "f8662a598ac036e6",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "create-destination",
+      "request": "POST kms TrentService.CreateKey",
+      "fingerprint": "dde24838bcf6d181",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "KeyMetadata.AWSAccountId: {account}\nKeyMetadata.Arn: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMetadata.CreationDate: <volatile>\nKeyMetadata.CurrentKeyMaterialId: <volatile>\nKeyMetadata.CustomerMasterKeySpec: SYMMETRIC_DEFAULT\nKeyMetadata.Description: \nKeyMetadata.Enabled: true\nKeyMetadata.EncryptionAlgorithms[0]: SYMMETRIC_DEFAULT\nKeyMetadata.KeyId: {uuid}\nKeyMetadata.KeyManager: CUSTOMER\nKeyMetadata.KeySpec: SYMMETRIC_DEFAULT\nKeyMetadata.KeyState: Enabled\nKeyMetadata.KeyUsage: ENCRYPT_DECRYPT\nKeyMetadata.MultiRegion: false\nKeyMetadata.Origin: AWS_KMS\n"
+    },
+    {
+      "step": "reencrypt",
+      "request": "POST kms TrentService.ReEncrypt",
+      "fingerprint": "b0c362442fbc2149",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CiphertextBlob: <volatile>\nDestinationEncryptionAlgorithm: SYMMETRIC_DEFAULT\nDestinationKeyMaterialId: <volatile>\nDestinationKeyOrigin: AWS_KMS\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nSourceEncryptionAlgorithm: SYMMETRIC_DEFAULT\nSourceKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nSourceKeyMaterialId: <volatile>\nSourceKeyOrigin: AWS_KMS\n"
+    },
+    {
+      "step": "decrypt-reencrypted",
+      "request": "POST kms TrentService.Decrypt",
+      "fingerprint": "c853bd2c345a99ae",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "EncryptionAlgorithm: SYMMETRIC_DEFAULT\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMaterialId: <volatile>\nKeyOrigin: AWS_KMS\nPlaintext: <volatile>\n"
+    },
+    {
+      "step": "data-key",
+      "request": "POST kms TrentService.GenerateDataKey",
+      "fingerprint": "d9665b21f5aaf5d5",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CiphertextBlob: <volatile>\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMaterialId: <volatile>\nKeyOrigin: AWS_KMS\nPlaintext: <volatile>\n"
+    },
+    {
+      "step": "decrypt-data-key",
+      "request": "POST kms TrentService.Decrypt",
+      "fingerprint": "12a8756a0b51e343",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "EncryptionAlgorithm: SYMMETRIC_DEFAULT\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMaterialId: <volatile>\nKeyOrigin: AWS_KMS\nPlaintext: <volatile>\n"
+    },
+    {
+      "step": "wrapped-data-key",
+      "request": "POST kms TrentService.GenerateDataKeyWithoutPlaintext",
+      "fingerprint": "05aba66b3a3c6883",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "CiphertextBlob: <volatile>\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMaterialId: <volatile>\nKeyOrigin: AWS_KMS\n"
+    },
+    {
+      "step": "decrypt-wrapped-data-key",
+      "request": "POST kms TrentService.Decrypt",
+      "fingerprint": "12a8756a0b51e343",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "EncryptionAlgorithm: SYMMETRIC_DEFAULT\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyMaterialId: <volatile>\nKeyOrigin: AWS_KMS\nPlaintext: <volatile>\n"
+    },
+    {
+      "step": "schedule-deletion",
+      "request": "POST kms TrentService.ScheduleKeyDeletion",
+      "fingerprint": "65b106c311e3a9c9",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeletionDate: <volatile>\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyState: PendingDeletion\nPendingWindowInDays: 7\n"
+    },
+    {
+      "step": "encrypt-pending",
+      "request": "POST kms TrentService.Encrypt",
+      "fingerprint": "7b238de7f43d2f3b",
+      "status": 400,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: KMSInvalidStateException\n"
+    },
+    {
+      "step": "cancel-deletion",
+      "request": "POST kms TrentService.CancelKeyDeletion",
+      "fingerprint": "f372890f26be685c",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "KeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\n"
+    },
+    {
+      "step": "encrypt-after-cancel",
+      "request": "POST kms TrentService.Encrypt",
+      "fingerprint": "7b238de7f43d2f3b",
+      "status": 400,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "__type: DisabledException\n"
+    },
+    {
+      "step": "delete-alias",
+      "request": "POST kms TrentService.DeleteAlias",
+      "fingerprint": "bd755e6a6786106b",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      }
+    },
+    {
+      "step": "schedule-source",
+      "request": "POST kms TrentService.ScheduleKeyDeletion",
+      "fingerprint": "bfc9ac578008eb54",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeletionDate: <volatile>\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyState: PendingDeletion\nPendingWindowInDays: 7\n"
+    },
+    {
+      "step": "schedule-destination",
+      "request": "POST kms TrentService.ScheduleKeyDeletion",
+      "fingerprint": "65b106c311e3a9c9",
+      "status": 200,
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, private",
+        "Content-Type": "application/x-amz-json-1.1",
+        "Expires": "0",
+        "X-Amzn-Requestid": "<present>"
+      },
+      "body": "DeletionDate: <volatile>\nKeyId: arn:aws:kms:us-east-1:{account}:key/{uuid}\nKeyState: PendingDeletion\nPendingWindowInDays: 7\n"
+    }
+  ]
+}

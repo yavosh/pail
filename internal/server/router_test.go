@@ -14,13 +14,16 @@ func TestRouter(t *testing.T) {
 	named := func(name string) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(name)) })
 	}
-	rt := &router{s3: named("s3"), sqs: named("sqs"), sns: named("sns")}
+	rt := &router{s3: named("s3"), sqs: named("sqs"), sns: named("sns"), kms: named("kms")}
 
 	tests := []struct {
 		name, method, target, authorization, amzTarget, want string
 	}{
 		{"sqs scope", "", "/", fmt.Sprintf(auth, "sqs"), "", "sqs"},
 		{"sns scope", "", "/", fmt.Sprintf(auth, "sns"), "", "sns"},
+		{"kms scope", "", "/", fmt.Sprintf(auth, "kms"), "", "kms"},
+		{"unsigned kms target", "", "/", "", "TrentService.CreateKey", "kms"},
+		{"s3 scope with kms target", "", "/", fmt.Sprintf(auth, "s3"), "TrentService.CreateKey", "s3"},
 		{"s3 scope", "", "/b/k", fmt.Sprintf(auth, "s3"), "", "s3"},
 		{"other scope", "", "/", fmt.Sprintf(auth, "sts"), "", "s3"},
 		{"unsigned sqs target", "", "/", "", "AmazonSQS.ListQueues", "sqs"},

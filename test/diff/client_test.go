@@ -103,7 +103,7 @@ func initiatedUploadID(body []byte) string {
 }
 
 // variables are the placeholders a step can use, besides "{name}".
-var variables = []string{"uploadId", "queueUrl", "queueArn", "receiptHandle", "messageId", "topicArn", "subscriptionArn", "httpEndpoint", "versionId", "previousVersionId"}
+var variables = []string{"uploadId", "queueUrl", "queueArn", "receiptHandle", "messageId", "topicArn", "subscriptionArn", "httpEndpoint", "versionId", "previousVersionId", "keyId", "previousKeyId", "kmsCiphertext"}
 
 // captureVersion keeps the version ID that a write returned in {versionId},
 // and the one before it in {previousVersionId}. Reads repeat old IDs, so only
@@ -126,9 +126,13 @@ func captureVars(vars map[string]string, body []byte) {
 		vars["uploadId"] = id
 	}
 	var j struct {
-		QueueURL   string `json:"QueueUrl"`
-		MessageID  string `json:"MessageId"`
-		Attributes struct {
+		KeyMetadata struct {
+			KeyID string `json:"KeyId"`
+		}
+		CiphertextBlob string
+		QueueURL       string `json:"QueueUrl"`
+		MessageID      string `json:"MessageId"`
+		Attributes     struct {
 			QueueArn string
 		}
 		Messages []struct {
@@ -143,6 +147,11 @@ func captureVars(vars map[string]string, body []byte) {
 			}
 		}
 		set("queueUrl", j.QueueURL)
+		if j.KeyMetadata.KeyID != "" && j.KeyMetadata.KeyID != vars["keyId"] {
+			vars["previousKeyId"] = vars["keyId"]
+			vars["keyId"] = j.KeyMetadata.KeyID
+		}
+		set("kmsCiphertext", j.CiphertextBlob)
 		set("queueArn", j.Attributes.QueueArn)
 		set("messageId", j.MessageID)
 		if len(j.Messages) > 0 {
@@ -280,7 +289,7 @@ func (tg *target) signHeader(ctx context.Context, auth authMode, req *http.Reque
 	return creds, sg.SignHTTP(ctx, creds, req, payloadHash, service, tg.region, signTime)
 }
 
-// doService sends one SQS or SNS step. These services take no
+// doService sends one SQS, SNS, or KMS step. These services take no
 // x-amz-content-sha256 and no bucket.
 func (tg *target) doService(ctx context.Context, st step) (response, error) {
 	switch {
@@ -297,8 +306,11 @@ func (tg *target) doService(ctx context.Context, st step) (response, error) {
 	if err != nil {
 		return response{}, err
 	}
-	if st.service == "sqs" {
+	if st.service == "sqs" || st.service == "kms" {
 		req.Header.Set("Content-Type", "application/x-amz-json-1.0")
+		if st.service == "kms" {
+			req.Header.Set("Content-Type", "application/x-amz-json-1.1")
+		}
 		req.Header.Set("X-Amz-Target", st.target)
 	} else {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")

@@ -33,8 +33,8 @@ type step struct {
 	chunk       int    // chunk size; 0 means 8 KiB
 	trailer     string // a trailing header line, such as "x-amz-checksum-crc32:<value>"
 	badChunkSig bool   // corrupt the first chunk signature
-	service     string // "" is S3; "sqs" or "sns" signs for and addresses that service
-	target      string // X-Amz-Target of an SQS step, such as "AmazonSQS.CreateQueue"
+	service     string // "" is S3; "sqs", "sns", or "kms" signs for that service
+	target      string // X-Amz-Target of an SQS or KMS step
 	// compare names response headers to compare besides comparedHeaders.
 	compare []string
 }
@@ -77,7 +77,7 @@ func md5Base64(body string) string {
 func (st step) withVars(vars map[string]string) (step, []string) {
 	escape := func(v string) string { return v }
 	switch st.service {
-	case "sqs":
+	case "sqs", "kms":
 		escape = func(v string) string {
 			b, _ := json.Marshal(v)
 			return string(b[1 : len(b)-1])
@@ -143,6 +143,7 @@ func scenarios() []scenario {
 		notificationsScenario(),
 		notificationsSNSScenario(),
 		versioningScenario(),
+		kmsSymmetricScenario(),
 		sqsAuthErrorsScenario(),
 		sqsQueueBasicsScenario(),
 		sqsBooleanAttributesScenario(),

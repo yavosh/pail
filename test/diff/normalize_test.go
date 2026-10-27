@@ -174,14 +174,18 @@ func normalize(st step, bucket string, r response) exchange {
 	return ex
 }
 
-// normalizeService normalizes an SQS or SNS response. The scenario name, the
+// normalizeService normalizes an SQS, SNS, or KMS response. The scenario name, the
 // endpoint, UUIDs, and account IDs become placeholders.
 func normalizeService(st step, name string, r response) exchange {
 	ex := exchange{Step: st.name, Request: describe(st), Fingerprint: fingerprint(st), Status: r.status, Headers: map[string]string{}}
 	var body string
 	var err error
-	if st.service == "sqs" {
-		body, _, err = canonicalJSON(string(r.body))
+	if st.service == "sqs" || st.service == "kms" {
+		input := r.body
+		if st.service == "kms" {
+			input = maskKMSResponse(input)
+		}
+		body, _, err = canonicalJSON(string(input))
 		if err != nil {
 			body = "unparsable JSON: " + err.Error()
 		}

@@ -1,4 +1,4 @@
-// Package diff checks pail against AWS S3, SQS, and SNS as a black box. Record
+// Package diff checks pail against AWS S3, SQS, SNS, and KMS as a black box. Record
 // mode writes golden files from AWS; replay mode, the default, sends the same
 // requests to an in-process pail and compares. See README.md here.
 package diff
@@ -26,7 +26,7 @@ import (
 	"github.com/yavosh/pail/internal/server"
 )
 
-var record = flag.Bool("record", false, "record golden files against AWS S3, SQS, and SNS in us-east-1")
+var record = flag.Bool("record", false, "record golden files against AWS S3, SQS, SNS, and KMS in us-east-1")
 
 const (
 	goldenDir      = "testdata/golden"
@@ -121,6 +121,9 @@ func recordScenario(t *testing.T, tg *target, sc scenario, path string) {
 		t.Cleanup(func() { cleanupQueue(t, tg, name) })
 	}
 	vars := tg.startVars(bucket)
+	if slices.ContainsFunc(sc.steps, func(st step) bool { return st.service == "kms" }) {
+		t.Cleanup(func() { cleanupKMSKeys(t, tg, vars) })
+	}
 	for _, topic := range sc.topics {
 		name := strings.ReplaceAll(topic, "{name}", bucket)
 		t.Cleanup(func() { cleanupTopic(t, tg, name, vars["topicArn"]) })
@@ -152,6 +155,9 @@ func runScenario(t *testing.T, tg *target, sc scenario, bucket string, vars map[
 			t.Fatalf("step %s (%s): %v", st.name, describe(st), err)
 		}
 		captureVars(vars, resp.body)
+		if *record && st.service == "kms" && st.target == "TrentService.CreateKey" && resp.status == http.StatusOK {
+			t.Logf("created KMS test key %s", vars["keyId"])
+		}
 		captureVersion(vars, st, resp.header)
 		prev = st.name + " answered " + failure(resp, nil)
 		g.Exchanges = append(g.Exchanges, tg.normalize(st, bucket, resp))
