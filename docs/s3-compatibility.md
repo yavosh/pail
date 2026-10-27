@@ -21,6 +21,7 @@ These headers apply to `PutObject`, `CopyObject`, `CreateMultipartUpload`, and t
 - Server-side encryption: `x-amz-server-side-encryption` accepts `AES256`, `aws:kms`, and `aws:kms:dsse`. Any other value returns `400 InvalidArgument`.
   - `PutObject`, `GetObject`, `HeadObject`, `CopyObject`, `CreateMultipartUpload`, `UploadPart`, and `CompleteMultipartUpload` return the stored value. If the request set none, they return `AES256`, as AWS does with default encryption.
   - pail returns no KMS key ID header and ignores the KMS key ID, context, and bucket key headers.
+  - The standalone [KMS API](kms-compatibility.md) does not change S3 encryption behavior.
   - An SSE-KMS `ETag` on AWS isn't the MD5 digest of the body. pail returns the MD5 digest.
   - `CopyObject` takes the method from its own request, not from the source.
 - SSE-C: any `x-amz-server-side-encryption-customer-*` header on `PutObject` returns `403 AccessDenied`, as AWS does on new buckets. `CopyObject`, `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`, and browser forms give the same answer, and so do `x-amz-copy-source-server-side-encryption-customer-*` headers. Those cases are unverified.

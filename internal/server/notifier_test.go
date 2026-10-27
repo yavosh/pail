@@ -119,7 +119,7 @@ func TestPutObjectEventReachesQueue(t *testing.T) {
 	}
 	srv := httptest.NewServer(NewHandler(config.Config{
 		AccessKeyID: "AKIAPAILTEST00000000", SecretAccessKey: "pail-test-secret", Region: "us-east-1",
-	}, st, queues, topics))
+	}, st, queues, topics, nil))
 	t.Cleanup(srv.Close)
 
 	doc := `<NotificationConfiguration><QueueConfiguration><Id>all</Id><Queue>arn:aws:sqs:us-east-1:000000000000:events</Queue>` +

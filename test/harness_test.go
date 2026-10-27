@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
 	"github.com/yavosh/pail/internal/config"
+	"github.com/yavosh/pail/internal/kms"
 	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/server"
 	"github.com/yavosh/pail/internal/store"
@@ -116,7 +117,7 @@ func startPailTLS(t *testing.T) *pail {
 		AccessKeyID:     testKey,
 		SecretAccessKey: testSecret,
 		Region:          testRegion,
-	}, st, queues, topics))
+	}, st, queues, topics, openTestKeys(t, fsys)))
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 
@@ -136,6 +137,15 @@ func startPailTLS(t *testing.T) *pail {
 		dataDir:    dataDir,
 		httpClient: &http.Client{Timeout: 30 * time.Second, Transport: transport},
 	}
+}
+
+func openTestKeys(t *testing.T, fsys kms.FS) *kms.Engine {
+	t.Helper()
+	keys, err := kms.Open(t.Context(), fsys, testRegion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keys
 }
 
 // style is an S3 addressing style.

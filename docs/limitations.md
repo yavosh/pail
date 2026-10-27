@@ -7,8 +7,13 @@ pail isn't a production object store:
 - It has no clustering, replication, or multi-tenant support.
 - It serves one access key pair and one region.
 - S3 event notifications go to SQS queues and SNS topics only, not to Lambda or EventBridge. See [Event notifications](s3-compatibility.md#event-notifications).
-- It has no MFA Delete, bucket policies, or storage tiers. It stores and returns encryption, storage class, and website redirect settings, but it doesn't encrypt, archive, or lock anything.
+- It has no MFA Delete, bucket policies, or storage tiers. S3 stores encryption, storage class, and website redirect settings without encrypting, archiving, or locking objects.
 - Unsupported S3 operations fail with `501 NotImplemented`.
+- KMS supports customer managed symmetric encryption keys only. Rotation, asymmetric keys, HMAC keys, grants, imported keys, attestation, and external stores are unsupported.
+- KMS stores key policies without enforcing them or checking policy lockout. It uses the configured account credentials for access.
+- KMS key material is stored locally in an unencrypted file with owner-only permissions. It has no HSM protection.
+- KMS ciphertext works only with the pail data directory that owns its key. It cannot be exchanged with AWS KMS.
+- KMS does not yet encrypt S3 objects, SQS messages, or SNS messages. See [KMS compatibility](kms-compatibility.md).
 - SQS messages live in memory and are lost when pail restarts. Queue definitions persist.
 - SQS FIFO queues don't model high-throughput quotas. Receive retry state is limited to 10,000 active attempts per queue and resets on restart. Dead-letter queues move a message on the next receive, not in the background.
 - SQS uses the AWS JSON protocol only, which current SDKs and the AWS CLI send. It doesn't support the legacy query protocol.

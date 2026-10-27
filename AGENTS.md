@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## Project overview
 
-pail is a small S3-, SQS-, and SNS-compatible server written in pure Go. One listener serves all three. It targets local testing and personal projects. The goal is AWS API compatibility, not scale.
+pail is a small S3-, SQS-, SNS-, and KMS-compatible server written in pure Go. One listener serves all four. It targets local testing and personal projects. The goal is AWS API compatibility, not scale.
 
 ## Build and development commands
 
@@ -17,7 +17,7 @@ make docker          # docker build -t pail:dev; CI builds and runs the image in
 make test            # go test -race ./...
 make fmt             # go fmt and goimports
 go test ./test/      # aws-sdk-go-v2 tests against an in-process pail, path-style and virtual-hosted
-go test ./test/diff  # replay the AWS S3, SQS, and SNS golden files against pail; see test/diff/README.md
+go test ./test/diff  # replay the AWS S3, SQS, SNS, and KMS golden files against pail; see test/diff/README.md
 make lint            # golangci-lint
 make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # AWS CLI and boto3 against a real pail
 ```
@@ -48,7 +48,8 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - `main()` is a few lines: it parses flags, sets up a signal context, and calls `run(ctx, ...) error`.
 - HTTP handlers: register routes in one place, do setup at construction, and declare request and response types next to the handler. When middleware or auth is part of what you verify, test the route through `httptest.NewTestServer` and the real mux.
 - S3 requests bypass `http.ServeMux`, because it redirects paths that are not clean, such as `a//b`, and those are valid keys. `internal/s3api` routes them from one operation table. `ServeMux` serves only pail's own `/_pail/` endpoints.
-- `internal/server/router.go` routes each request by its SigV4 credential scope: `sqs` to `internal/sqsapi` and `sns` to `internal/snsapi`. An unsigned request with `X-Amz-Target: AmazonSQS.*` also goes to SQS. An unsigned `GET /` whose query has `Action=ConfirmSubscription` or `Action=Unsubscribe` also goes to SNS; the router reads only the query. Everything else, including other unsigned requests, goes to `internal/s3api`.
+- `internal/server/router.go` routes each request by its SigV4 credential scope: `sqs` to `internal/sqsapi`, `sns` to `internal/snsapi`, and `kms` to `internal/kmsapi`. Unsigned `AmazonSQS.*` and `TrentService.*` targets reach their service's authentication handler. An unsigned `GET /` whose query has `Action=ConfirmSubscription` or `Action=Unsubscribe` also goes to SNS; the router reads only the query. Everything else, including other unsigned requests, goes to `internal/s3api`.
+- `internal/kms` holds persistent symmetric keys and aliases. `internal/kmsapi` serves AWS JSON 1.1 with `TrentService` targets. Key state and cryptographic operations share one mutex. Commit `kms/state.json` through `CreatePrivateTemp` before publishing changes in memory. Authenticate ciphertext metadata and canonical encryption context. Expire scheduled deletions lazily. Key policies are stored without enforcement. See `docs/kms-compatibility.md` and `docs/storage.md`.
 - `internal/snsapi` serves the SNS query protocol and follows the `internal/sqsapi` patterns: one operation table, one response writer, one error table, request IDs, an access log, and a body cap. `internal/topic` holds topics and subscriptions. Definitions persist under `sns/topics/` and `sns/subscriptions/`, and the signing key and certificate live under `sns/`. `Publish` sends to the queue engine after it releases the engine mutex, and a failed delivery is logged, not returned. Never call the queue engine while you hold that mutex.
 - SNS FIFO topics require `.fifo` names and `FifoTopic=true`. `internal/topic/fifo.go` holds transient deduplication and sequence state. `Engine.fifoPublish` serializes FIFO publishes through queue delivery. A publish can be canceled while it waits; after it records the deduplication ID, delivery ignores cancellation. Keep `e.mu` released while signing and calling SQS. FIFO envelopes have no signature fields, and FIFO batch validation runs before any entry is delivered. FIFO subscriptions accept SQS queues only; standard topics still reject FIFO queues. S3 notifications reject FIFO topics and queues.
 - SNS subscription `RedrivePolicy` validation lives in `internal/topic/redrive.go`. Preserve policy text and distinguish omitted values from empty strings. Snapshot the target at publish time, and call the queue engine only after releasing the topic mutex. Redrive failed notifications once; never redrive confirmations or shutdown cancellation.
@@ -87,7 +88,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Lifecycle cleanup holds the bucket lock exclusively. It reads current metadata before deleting eligible objects.
 - `internal/acl` holds ACL documents. Object ACLs travel with metadata through uploads and multipart completion.
 - ACL grants use the literal `xsi:type` prefix in responses because SDK decoders require it.
-- `internal/account` holds the one account ID that S3, SQS, and SNS share. `expectedOwner` in `internal/s3api/handler.go` checks `x-amz-expected-bucket-owner` for every bucket request before the operation runs. Call `checkExpectedOwner` for other owner headers, such as `x-amz-source-expected-bucket-owner`.
+- `internal/account` holds the one account ID that S3, SQS, SNS, and KMS share. `expectedOwner` in `internal/s3api/handler.go` checks `x-amz-expected-bucket-owner` for every bucket request before the operation runs. Call `checkExpectedOwner` for other owner headers, such as `x-amz-source-expected-bucket-owner`.
 - `CopyObject` sets `PutOptions.IfMatch` and `IfNoneMatch` through `writeConditions`, so the store evaluates destination conditions with the write.
 - Anonymous overwrites check ownership again under the object lock before committing.
 - Anonymous GET and HEAD check the ACL from the metadata snapshot used for the response.
@@ -97,7 +98,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 ## Client tests
 
-- SQS and SNS tests use `p.sqsClient()` and `p.snsClient()`, not `forEachStyle`: addressing styles are S3-only. Keep SDK defaults, including SQS MD5 validation.
+- SQS, SNS, and KMS tests use `p.sqsClient()`, `p.snsClient()`, and `p.kmsClient()`, not `forEachStyle`: addressing styles are S3-only. Keep SDK defaults, including SQS MD5 validation.
 - Every S3 feature adds aws-sdk-go-v2 tests in `test/`. Use `forEachStyle`, so each test runs path-style and virtual-hosted.
 - Keep the SDK's default settings, such as checksums. The harness sets them explicitly, because `s3.New` skips the config loader that would. It turns retries off, so a test sees the first answer. Any other change names the issue that removes the need.
 - Use lowercase bucket names without dots. The SDK silently falls back to path-style for other names, so the virtual-hosted run would not test virtual-hosted routing.
@@ -122,14 +123,16 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Update `README.md`, `docs/s3-compatibility.md`, `docs/sqs-sns-compatibility.md`, `docs/limitations.md`, and `AGENTS.md` in the same PR as the change. Stale docs are a bug.
 - `README.md` summarizes pail. Exact S3 behavior, limits, and AWS differences go in `docs/s3-compatibility.md`. What pail doesn't do goes in `docs/limitations.md`.
 - Exact SQS and SNS behavior goes in `docs/sqs-sns-compatibility.md`.
+- Exact KMS behavior goes in `docs/kms-compatibility.md`. The standalone service does not enable S3, SQS, or SNS encryption.
 - Storage paths and version transitions go in [`docs/storage.md`](docs/storage.md). Keep package comments short and link there.
 - Follow the [Google developer documentation style guide](https://developers.google.com/style).
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
 
 ## Differential suite
 
-- `test/diff` checks pail against golden files recorded from AWS S3, SQS, and SNS. A new S3, SQS, or SNS behavior adds a scenario there.
+- `test/diff` checks pail against golden files recorded from AWS S3, SQS, SNS, and KMS. New service behavior adds a scenario there.
 - Scenarios never call `ListBuckets`, `ListTopics`, or `ListSubscriptions`, and call `ListQueues` only with `QueueNamePrefix`. Golden files must not expose the account's other resources.
+- KMS scenarios never call `ListKeys` or unfiltered `ListAliases` against AWS. Compare decrypted payloads and key relationships before masking ciphertext and data keys. Maintainer recording schedules only the created keys for deletion with a seven-day waiting period.
 - Compare successful object bodies byte for byte, including XML objects. Normalize only protocol XML, never stored object content.
 - Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
 - AWS recording credentials are loaded by direnv. Agent shells must load that environment explicitly; do not inspect `.envrc` or print credentials. Record SNS FIFO fixtures with `direnv exec . go test ./test/diff -record -run '^TestDiff/sns-fifo-' -v -count=1 -timeout=5m`.

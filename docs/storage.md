@@ -38,3 +38,20 @@ See [S3 versioning compatibility](s3-compatibility.md#versioning) for API behavi
 
 Queue messages and pending HTTP deliveries live in memory. SNS FIFO topic attributes and subscriptions persist in the same files as standard topics. FIFO deduplication records and sequence numbers live in memory and reset on restart.
 See [SQS and SNS compatibility](sqs-sns-compatibility.md) for persistence behavior.
+
+## KMS keys
+
+`kms/state.json` holds the region, key material, key metadata, aliases, tags, policies, and deletion schedules.
+The local backend commits this file with mode `0600` through a private temporary file.
+Key material is stored without encryption at rest or HSM protection.
+
+Each mutation copies the state maps and commits the complete state before replacing the in-memory state.
+The engine mutex serializes mutations and cryptographic operations.
+Failed commits leave the in-memory state unchanged.
+Expired keys and their aliases are removed atomically on the next engine operation.
+One state file avoids partial key and alias transitions after a process stops.
+
+Ciphertext starts with a format version and key ID, followed by a random nonce and authenticated ciphertext.
+AES-GCM authenticates the header, region, account, and canonical encryption context.
+Restarting with the same data directory preserves decryption. Opening that directory with a different KMS region fails.
+See [KMS compatibility](kms-compatibility.md).

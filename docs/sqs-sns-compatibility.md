@@ -44,7 +44,7 @@ Every other operation returns `UnsupportedOperation`. That includes `AddPermissi
 
 - FIFO queues add `ContentBasedDeduplication`, `DeduplicationScope`, and `FifoThroughputLimit`. See [FIFO queues](#fifo-queues). `RedrivePolicy` and `RedriveAllowPolicy` are described in [Dead-letter queues](#dead-letter-queues).
 - Boolean attributes accept `true` and `false` without case sensitivity and store lowercase values. This covers SQS `FifoQueue`, `ContentBasedDeduplication`, and `SqsManagedSseEnabled`, plus SNS FIFO `FifoTopic` and `ContentBasedDeduplication`, and subscription `RawMessageDelivery`. Empty strings, numbers, and surrounding whitespace are rejected. Standard SNS topics accept disabled FIFO attributes only as lowercase `false`. The boolean attribute recordings verify capitalized values, lowercase responses, repeated creates, mixed-case deduplication, and raw delivery.
-- pail also accepts `KmsMasterKeyId`, `KmsDataKeyReusePeriodSeconds`, and `Policy`. It stores them and enforces none of them.
+- pail also accepts `KmsMasterKeyId`, `KmsDataKeyReusePeriodSeconds`, and `Policy`. It stores them and enforces none of them. The standalone [KMS API](kms-compatibility.md) does not encrypt queue or topic messages.
 - A queue has at most 50 tags.
 - A message has at most 10 message attributes. A message body uses the SQS character set, and it can't be empty.
 - `ReceiveMessage` returns 1 to 10 messages, and waits up to 20 seconds.

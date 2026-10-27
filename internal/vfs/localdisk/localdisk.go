@@ -72,10 +72,19 @@ func (f *FS) Stat(name string) (fs.FileInfo, error) {
 
 // CreateTemp creates an empty file under tmp/.
 func (f *FS) CreateTemp() (vfs.TempFile, error) {
+	return f.createTemp(0o644)
+}
+
+// CreatePrivateTemp creates a temporary file readable only by its owner.
+func (f *FS) CreatePrivateTemp() (vfs.TempFile, error) {
+	return f.createTemp(0o600)
+}
+
+func (f *FS) createTemp(mode fs.FileMode) (vfs.TempFile, error) {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	name := path.Join(tmpDir, hex.EncodeToString(b))
-	file, err := f.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := f.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
 		return nil, err
 	}

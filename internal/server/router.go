@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yavosh/pail/internal/config"
+	"github.com/yavosh/pail/internal/kmsapi"
 	"github.com/yavosh/pail/internal/queue"
 	"github.com/yavosh/pail/internal/s3api"
 	"github.com/yavosh/pail/internal/sigv4"
@@ -16,10 +17,10 @@ import (
 )
 
 // router sends each request to one service without reading the body.
-type router struct{ s3, sqs, sns http.Handler }
+type router struct{ s3, sqs, sns, kms http.Handler }
 
-// NewHandler returns the handler for one listener that serves S3, SQS, and SNS.
-func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics *topic.Engine) http.Handler {
+// NewHandler returns the handler for one listener that serves S3, SQS, SNS, and KMS.
+func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics *topic.Engine, keys kmsapi.Keys) http.Handler {
 	return &router{
 		s3: s3api.New(s3api.Options{
 			Domain:          cfg.Domain,
@@ -32,6 +33,7 @@ func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics 
 		}),
 		sqs: sqsapi.New(sqsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Queues: queues}),
 		sns: snsapi.New(snsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Topics: topics}),
+		kms: kmsapi.New(kmsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Keys: keys}),
 	}
 }
 
@@ -102,6 +104,10 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.sqs.ServeHTTP(w, r)
 	case service == "sns":
 		rt.sns.ServeHTTP(w, r)
+	case service == "kms":
+		rt.kms.ServeHTTP(w, r)
+	case service == "" && strings.HasPrefix(r.Header.Get("X-Amz-Target"), "TrentService."):
+		rt.kms.ServeHTTP(w, r)
 	case service == "" && strings.HasPrefix(r.Header.Get("X-Amz-Target"), "AmazonSQS."):
 		rt.sqs.ServeHTTP(w, r)
 	case service == "" && snsLink(r):

@@ -1,6 +1,6 @@
 # Differential suite
 
-This suite checks pail against AWS S3, SQS, and SNS as a black box. It talks to AWS and pail over HTTP only.
+This suite checks pail against AWS S3, SQS, SNS, and KMS as a black box. It talks to AWS and pail over HTTP only.
 
 Each scenario in `scenarios_test.go` is a list of raw requests. One SigV4 signer signs them, so AWS and pail receive the same requests. A streaming step sends its body `aws-chunked` and signs each chunk with the suite's own code, so a recording checks that code against AWS. A presigned step signs the query string with the same signer and an unsigned payload. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
 
@@ -156,6 +156,30 @@ Record the four newer scenarios with:
 ```bash
 go test ./test/diff -record -run '^TestDiff/sns-(topic-attributes|sqs-delivery|publish-batch|errors)$' -v
 ```
+
+## KMS
+
+The `kms-symmetric` scenario covers keys, aliases, tags, encryption context, data keys, reencrypt, and key states.
+It uses AWS JSON 1.1 and the `kms` signing scope.
+`{keyId}` and `{previousKeyId}` identify the latest two keys returned in metadata.
+`{kmsCiphertext}` holds the latest ciphertext in memory.
+
+The scenario checks decrypted payloads, data key lengths, and key ARN relationships before normalization.
+Fixtures mask ciphertext, plaintext output, key material identifiers, and timestamps.
+Scenarios never call `ListKeys` or unfiltered `ListAliases`, so recordings cannot expose unrelated keys or aliases.
+Local deterministic replay covers the scenario. Its recorded AWS golden file replays all 25 steps against pail.
+
+A maintainer can record it with:
+
+```bash
+direnv exec . go test ./test/diff -record -run '^TestDiff/kms-symmetric$' -v -count=1 -timeout=5m
+```
+
+Recording creates two KMS keys and one temporary alias.
+It schedules the created keys for deletion with a seven-day waiting period, including cleanup after failures.
+AWS does not support immediate key deletion. Key creation and cryptographic requests can incur charges.
+The recording identity needs permission for the scenario's KMS operations and `kms:ScheduleKeyDeletion` for cleanup.
+Review and commit the AWS recording separately; never generate a replacement golden file from pail.
 
 ## Live SNS HTTPS callbacks
 

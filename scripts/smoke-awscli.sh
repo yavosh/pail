@@ -12,7 +12,7 @@ trap 'rm -rf "$work"' EXIT
 
 # Isolate from any real AWS setup: smoke keys, temp config files, no profile.
 unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN AWS_SECURITY_TOKEN \
-  AWS_ENDPOINT_URL AWS_ENDPOINT_URL_S3 AWS_ENDPOINT_URL_SQS AWS_ENDPOINT_URL_SNS AWS_CA_BUNDLE AWS_REGION AWS_CLI_AUTO_PROMPT \
+  AWS_ENDPOINT_URL AWS_ENDPOINT_URL_S3 AWS_ENDPOINT_URL_SQS AWS_ENDPOINT_URL_SNS AWS_ENDPOINT_URL_KMS AWS_CA_BUNDLE AWS_REGION AWS_CLI_AUTO_PROMPT \
   AWS_REQUEST_CHECKSUM_CALCULATION AWS_RESPONSE_CHECKSUM_VALIDATION \
   HTTP_PROXY HTTPS_PROXY http_proxy https_proxy ALL_PROXY all_proxy
 export AWS_EC2_METADATA_DISABLED=true
@@ -43,6 +43,7 @@ s3() { run aws --endpoint-url "$SMOKE_ENDPOINT" s3 "$@"; }
 s3api() { run aws --endpoint-url "$SMOKE_ENDPOINT" s3api "$@"; }
 sqs() { run aws --endpoint-url "$SMOKE_ENDPOINT" sqs "$@"; }
 sns() { run aws --endpoint-url "$SMOKE_ENDPOINT" sns "$@"; }
+kms() { run aws --endpoint-url "$SMOKE_ENDPOINT" kms "$@"; }
 
 fail() {
   echo "FAILED: $*" >&2
@@ -147,3 +148,18 @@ case $body in
 esac
 sns delete-topic --topic-arn "$topic_arn"
 sqs delete-queue --queue-url "$queue_url"
+
+# KMS: encrypt and decrypt a binary file through an alias and encryption context.
+key_id=$(kms create-key --description smoke-cli --query KeyMetadata.KeyId --output text)
+alias_name=alias/smoke-cli-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+kms create-alias --alias-name "$alias_name" --target-key-id "$key_id"
+printf 'pail kms smoke' >"$work/kms.txt"
+ciphertext=$(kms encrypt --key-id "$alias_name" --plaintext "fileb://$work/kms.txt" \
+  --encryption-context purpose=smoke --query CiphertextBlob --output text)
+printf '%s' "$ciphertext" | base64 --decode >"$work/kms.enc"
+plaintext=$(kms decrypt --ciphertext-blob "fileb://$work/kms.enc" \
+  --encryption-context purpose=smoke --query Plaintext --output text)
+want=$(base64 <"$work/kms.txt" | tr -d '\n')
+[ "$plaintext" = "$want" ] || fail "KMS plaintext differs after round trip"
+kms delete-alias --alias-name "$alias_name"
+kms schedule-key-deletion --key-id "$key_id" --pending-window-in-days 7

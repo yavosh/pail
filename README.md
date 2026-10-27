@@ -1,6 +1,6 @@
 # pail
 
-pail is a small S3-compatible, SQS-compatible, and SNS-compatible server written in pure Go. It stores objects on local disk and serves Amazon SQS queues and SNS topics from the same port. Use it for local testing and personal projects. pail aims for API compatibility, not scale. It is a work in progress.
+pail is a small S3-, SQS-, SNS-, and KMS-compatible server written in pure Go. One port serves objects, queues, topics, and symmetric encryption keys. Use it for local testing and personal projects. pail aims for API compatibility, not scale. It is a work in progress.
 
 ## Limitations
 
@@ -133,6 +133,19 @@ Live AWS callback recordings cover HTTPS delivery, signatures, filtering, retrie
 
 Filter policies limit what a subscription receives. A `DeliveryPolicy` sets the retries, rate, and content type of HTTP and HTTPS deliveries. See [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
+### KMS
+
+Point your AWS KMS client at the same endpoint. Requests use signing scope `kms`.
+Pass `--endpoint-url`, or set `AWS_ENDPOINT_URL_KMS`:
+
+```bash
+aws --endpoint-url http://127.0.0.1:9000 kms create-key --description demo
+```
+
+pail supports persistent symmetric keys, aliases, tags, key states, and real encryption with encryption context.
+It also generates data keys and random bytes. See [KMS compatibility](docs/kms-compatibility.md).
+S3, SQS, and SNS encryption settings do not call KMS yet.
+
 ### Browser form uploads
 
 To let a browser upload directly to pail, follow these steps:
@@ -169,12 +182,15 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | Browser forms | `POST Object` |
 | SQS | `CreateQueue`, `GetQueueUrl`, `DeleteQueue`, `PurgeQueue`, `ListQueues`, `ListDeadLetterSourceQueues`, `GetQueueAttributes`, `SetQueueAttributes`, `TagQueue`, `UntagQueue`, `ListQueueTags`, `SendMessage`, `SendMessageBatch`, `ReceiveMessage`, `DeleteMessage`, `DeleteMessageBatch`, `ChangeMessageVisibility`, `ChangeMessageVisibilityBatch` |
 | SNS | `CreateTopic`, `DeleteTopic`, `ListTopics`, `GetTopicAttributes`, `SetTopicAttributes`, `TagResource`, `UntagResource`, `ListTagsForResource`, `Subscribe`, `ConfirmSubscription`, `Unsubscribe`, `ListSubscriptions`, `ListSubscriptionsByTopic`, `GetSubscriptionAttributes`, `SetSubscriptionAttributes`, `Publish`, `PublishBatch` |
+| KMS keys | `CreateKey`, `DescribeKey`, `ListKeys`, `UpdateKeyDescription`, `EnableKey`, `DisableKey`, `ScheduleKeyDeletion`, `CancelKeyDeletion` |
+| KMS aliases, tags, and policies | `CreateAlias`, `UpdateAlias`, `DeleteAlias`, `ListAliases`, `TagResource`, `UntagResource`, `ListResourceTags`, `GetKeyPolicy`, `PutKeyPolicy`, `ListKeyPolicies` |
+| KMS cryptography | `Encrypt`, `Decrypt`, `ReEncrypt`, `GenerateDataKey`, `GenerateDataKeyWithoutPlaintext`, `GenerateRandom` |
 
 pail also verifies checksums, honors conditional headers, and accepts `aws-chunked` streaming uploads. A multipart object can hold up to 10,000 parts of 5 GiB (48.8 TiB), as on AWS. For limits and exact behavior, see [S3 compatibility](docs/s3-compatibility.md) and [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
 ## Authentication
 
-- S3, SQS, and SNS requests use AWS Signature Version 4 (SigV4) with the configured access key pair.
+- S3, SQS, SNS, and KMS requests use AWS Signature Version 4 (SigV4) with the configured access key pair.
 - Presigned URLs accept SigV4 and Signature Version 2 (SigV2). Form policies require SigV4. SigV2 `Authorization` headers aren't supported.
 - CORS preflight requests, and operations that a public ACL grant allows, need no signature.
 - The SNS `SubscribeURL` and `UnsubscribeURL` links need no signature, as on AWS. A link confirms a subscription with its token, or removes a subscription that was confirmed through its link.

@@ -17,7 +17,7 @@ import urllib.request
 for name in (
     "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_SESSION_TOKEN",
     "AWS_SECURITY_TOKEN", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3",
-    "AWS_ENDPOINT_URL_SQS", "AWS_ENDPOINT_URL_SNS",
+    "AWS_ENDPOINT_URL_SQS", "AWS_ENDPOINT_URL_SNS", "AWS_ENDPOINT_URL_KMS",
     "AWS_CA_BUNDLE", "AWS_REGION", "AWS_REQUEST_CHECKSUM_CALCULATION",
     "AWS_RESPONSE_CHECKSUM_VALIDATION", "HTTP_PROXY", "HTTPS_PROXY",
     "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy",
@@ -49,6 +49,7 @@ print(f"boto3 {boto3.__version__}, botocore {botocore.__version__}")
 s3 = boto3.client("s3", endpoint_url=endpoint, region_name="us-east-1")
 sqs = boto3.client("sqs", endpoint_url=endpoint, region_name="us-east-1")
 sns = boto3.client("sns", endpoint_url=endpoint, region_name="us-east-1")
+kms = boto3.client("kms", endpoint_url=endpoint, region_name="us-east-1")
 bucket = "smoke-py-" + os.urandom(4).hex()
 print(f"bucket: {bucket}")
 
@@ -352,5 +353,29 @@ with Step("sns publish to an SQS subscription"):
     check(envelope["MessageAttributes"]["color"]["Value"] == "blue", f"unexpected envelope: {envelope}")
     sns.delete_topic(TopicArn=topic_arn)
     sqs.delete_queue(QueueUrl=fan_url)
+
+with Step("kms envelope encryption and key states"):
+    key_id = kms.create_key(Description="smoke-boto3")["KeyMetadata"]["KeyId"]
+    context = {"purpose": "smoke"}
+    generated = kms.generate_data_key(
+        KeyId=key_id, KeySpec="AES_256", EncryptionContext=context,
+    )
+    check(len(generated["Plaintext"]) == 32, "KMS generated the wrong data key length")
+    decrypted = kms.decrypt(
+        CiphertextBlob=generated["CiphertextBlob"], EncryptionContext=context,
+    )
+    check(decrypted["Plaintext"] == generated["Plaintext"], "KMS data key round trip differs")
+    wrapped = kms.generate_data_key_without_plaintext(KeyId=key_id, KeySpec="AES_128")
+    check("Plaintext" not in wrapped, "KMS returned plaintext for a wrapped data key")
+    check(len(kms.decrypt(CiphertextBlob=wrapped["CiphertextBlob"])["Plaintext"]) == 16,
+          "KMS wrapped data key has the wrong length")
+    kms.disable_key(KeyId=key_id)
+    try:
+        kms.encrypt(KeyId=key_id, Plaintext=b"smoke")
+        raise AssertionError("KMS used a disabled key")
+    except ClientError as exc:
+        check(exc.response["Error"]["Code"] == "DisabledException", "KMS returned the wrong disabled key error")
+    kms.enable_key(KeyId=key_id)
+    kms.schedule_key_deletion(KeyId=key_id, PendingWindowInDays=7)
 
 tmp.cleanup()
