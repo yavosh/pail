@@ -6,6 +6,7 @@ pail isn't a production object store:
 
 - It has no clustering, replication, or multi-tenant support.
 - It serves one access key pair and one region.
+- HTTPS loads the certificate and key at startup. Restart pail to load replacements.
 - S3 event notifications go to SQS queues and SNS topics only, not to Lambda or EventBridge. See [Event notifications](s3-compatibility.md#event-notifications).
 - It has no MFA Delete, bucket policies, or storage tiers. S3 stores encryption, storage class, and website redirect settings without encrypting, archiving, or locking objects.
 - Unsupported S3 operations fail with `501 NotImplemented`.

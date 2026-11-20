@@ -50,7 +50,7 @@ func (h *handler) handlePutObject(w http.ResponseWriter, r *http.Request, t targ
 	if streaming {
 		size, _ = sigv4.DecodedLength(r.Header) // Verify checked it
 	}
-	if r.ContentLength < 0 {
+	if r.ContentLength < 0 && !sigv4.IsStreamingBody(r.Body) {
 		writeError(w, r, errMissingContentLength)
 		return
 	}

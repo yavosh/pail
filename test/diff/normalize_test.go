@@ -229,6 +229,9 @@ func fingerprint(st step) string {
 	if st.stream != "" { // only here, so older steps keep their fingerprints
 		fmt.Fprintf(h, "\nstream %s %d %q %v", st.stream, st.chunk, st.trailer, st.badChunkSig)
 	}
+	if st.chunkedTransfer {
+		h.Write([]byte("\nchunked transfer"))
+	}
 	if st.service != "" { // only here, so older steps keep their fingerprints
 		fmt.Fprintf(h, "\nservice %s %q", st.service, st.target)
 	}

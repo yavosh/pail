@@ -439,6 +439,39 @@ func TestPutObjectStreaming(t *testing.T) {
 	}
 }
 
+func TestStreamingUploadsWithoutOuterContentLength(t *testing.T) {
+	srv, _ := storeServer(t, "")
+	uploadID := startUpload(t, srv, "part", map[string]string{"x-amz-checksum-algorithm": "CRC32"})
+	for _, tc := range []struct {
+		name, path string
+	}{
+		{"put object", "/bkt/object"},
+		{"upload part", "/bkt/part?partNumber=1&uploadId=" + uploadID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const mode = "STREAMING-UNSIGNED-PAYLOAD-TRAILER"
+			const encoded = "b\r\nhello world\r\n0\r\nx-amz-checksum-crc32:DUoRhQ==\r\n\r\n"
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPut, srv.URL+tc.path, strings.NewReader(encoded))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.ContentLength = -1
+			req.Header.Set("Content-Encoding", "aws-chunked")
+			req.Header.Set("X-Amz-Decoded-Content-Length", "11")
+			req.Header.Set("X-Amz-Content-Sha256", mode)
+			req.Header.Set("X-Amz-Trailer", "x-amz-checksum-crc32")
+			signer := v4.NewSigner(func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true })
+			creds := aws.Credentials{AccessKeyID: testKey, SecretAccessKey: testSecret}
+			if err := signer.SignHTTP(t.Context(), creds, req, mode, "s3", "us-east-1", time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			if status, code := send(t, req); status != http.StatusOK || code != "" {
+				t.Errorf("PUT %s = %d %q, want 200 with decoded content length", tc.path, status, code)
+			}
+		})
+	}
+}
+
 // Only an aws-chunked upload loses the aws-chunked coding; others store it as sent.
 func TestPlainPutKeepsContentEncoding(t *testing.T) {
 	srv, st := storeServer(t, "")

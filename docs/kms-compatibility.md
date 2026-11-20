@@ -1,6 +1,6 @@
 # KMS compatibility
 
-pail serves KMS on the same listener as S3, SQS, and SNS.
+pail serves KMS on the same HTTP and optional HTTPS endpoints as S3, SQS, and SNS.
 Requests use SigV4 scope `kms`, `POST /`, AWS JSON 1.1, and `X-Amz-Target: TrentService.<operation>`.
 An unsigned request with a KMS target reaches the KMS authentication error handler.
 All services share the configured credentials, region, and account `000000000000`.

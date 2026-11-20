@@ -381,9 +381,8 @@ const (
 	streamSignedTrailer   = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER"
 )
 
-// setStreamHeaders adds the aws-chunked headers a step does not set itself;
-// an empty value in the step removes one. Signatures have a fixed length, so
-// a dummy encoding gives the Content-Length to sign.
+// setStreamHeaders adds aws-chunked headers and sets HTTP framing. A dummy
+// encoding gives the Content-Length to sign when the length is known.
 func setStreamHeaders(req *http.Request, st step) {
 	defaults := map[string]string{
 		"Content-Encoding":             "aws-chunked",
@@ -399,6 +398,12 @@ func setStreamHeaders(req *http.Request, st step) {
 		if req.Header.Get(k) == "" {
 			req.Header.Del(k)
 		}
+	}
+	if st.chunkedTransfer {
+		req.Header.Del("Content-Length")
+		req.ContentLength = -1
+		req.TransferEncoding = []string{"chunked"}
+		return
 	}
 	req.ContentLength = int64(len(encodeChunked(st, nil, "", "", "")))
 }

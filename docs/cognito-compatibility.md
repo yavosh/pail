@@ -4,7 +4,7 @@ pail supports local user pools with password sign-in and OIDC federation. Both f
 
 ## Configure a user pool
 
-1. Route an HTTPS hostname for each pool to pail's existing listener. Preserve the `Host` header at the TLS proxy.
+1. Route each pool's HTTPS hostname to pail's [HTTPS listener](../README.md#https) or a TLS proxy. Preserve the `Host` header at the proxy.
 2. Use a certificate that your applications and browsers trust. pail reserves the auth hostname for Cognito requests.
 3. Mount a JSON file with the pool configuration. Pass its path with `--cognito-config` or `PAIL_COGNITO_CONFIG`.
 4. Set your SDK endpoint to the pool's HTTPS origin. Configure JWT validators with the full `issuer` URL.
