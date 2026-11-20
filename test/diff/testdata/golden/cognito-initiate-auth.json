@@ -1,0 +1,19 @@
+{
+  "scenario": "cognito-initiate-auth",
+  "exchanges": [
+    {
+      "step": "password-sign-in",
+      "request": "POST cognito-idp AWSCognitoIdentityProviderService.InitiateAuth",
+      "fingerprint": "228aaa61cb4d7763",
+      "status": 200,
+      "body": "{\"AuthenticationResult\":{\"TokenType\":\"Bearer\",\"ExpiresIn\":3600,\"IdToken\":{\"iss\":\"{issuer}\",\"sub\":\"{subject}\",\"aud\":\"{clientId}\",\"token_use\":\"id\"},\"AccessToken\":{\"iss\":\"{issuer}\",\"sub\":\"{subject}\",\"client_id\":\"{clientId}\",\"token_use\":\"access\",\"scope\":\"aws.cognito.signin.user.admin\"}}}"
+    },
+    {
+      "step": "wrong-password",
+      "request": "POST cognito-idp AWSCognitoIdentityProviderService.InitiateAuth",
+      "fingerprint": "228aaa61cb4d7763",
+      "status": 400,
+      "body": "NotAuthorizedException"
+    }
+  ]
+}
