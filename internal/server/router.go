@@ -105,7 +105,8 @@ func signingCert(topics *topic.Engine) http.Handler {
 
 func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	service := sigv4.Service(r)
-	if rt.routeCognito(w, r, service) {
+	if rt.identity != nil && rt.identity.IsAuthHost(r.Host) {
+		rt.serveCognito(w, r, service)
 		return
 	}
 	switch {
@@ -126,21 +127,21 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (rt *router) routeCognito(w http.ResponseWriter, r *http.Request, service string) bool {
-	if rt.identity == nil || (service != "" && service != "cognito-idp") || !rt.identity.IsAuthHost(r.Host) {
-		return false
+func (rt *router) serveCognito(w http.ResponseWriter, r *http.Request, service string) {
+	if service != "" && service != "cognito-idp" {
+		http.NotFound(w, r)
+		return
 	}
 	switch r.URL.EscapedPath() {
 	case "/":
-		if service == "cognito-idp" || strings.HasPrefix(r.Header.Get("X-Amz-Target"), "AWSCognitoIdentityProviderService.") {
-			rt.identity.ServeAPI(w, r)
-			return true
-		}
+		rt.identity.ServeAPI(w, r)
 	case "/oauth2/authorize", "/oauth2/token", "/oauth2/idpresponse":
 		rt.identity.ServeBrowser(w, r)
-		return true
+	default:
+		if !rt.identity.ServeDiscovery(w, r) {
+			http.NotFound(w, r)
+		}
 	}
-	return rt.identity.ServeDiscovery(w, r)
 }
 
 // snsLink reports whether r is a link from an SNS message: an unsigned GET of

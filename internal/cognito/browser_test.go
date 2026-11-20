@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	browserTestHost     = "auth.local.test"
-	browserTestOrigin   = "https://hub.local.test"
-	browserTestCallback = browserTestOrigin + "/callback?app=hub"
-	browserTestVerifier = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	browserTestHost       = "auth.local.test"
+	browserTestOrigin     = "https://hub.local.test"
+	browserTestCallback   = browserTestOrigin + "/callback?app=hub"
+	browserTestVerifier   = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	browserTestIssuerPath = "/tenant/"
 )
 
 func TestBrowserSignIn(t *testing.T) {
@@ -41,7 +42,7 @@ func TestBrowserSignIn(t *testing.T) {
 			},
 		},
 		provider: &provider{
-			issuer: upstream.URL, name: "LocalOIDC", clientID: "registered-upstream-client",
+			issuer: upstream.URL + browserTestIssuerPath, name: "LocalOIDC", clientID: "registered-upstream-client",
 			scopes: []string{"openid", "profile"}, claimMap: map[string]string{"email": "preferred_email"},
 		},
 		keys: signingKeys{id: id, access: access},
@@ -204,10 +205,10 @@ func testOIDCProvider(t *testing.T, key signingKey) *httptest.Server {
 	var mu sync.Mutex
 	var expected url.Values
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET "+browserTestIssuerPath+".well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		base := "https://" + r.Host
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer": base, "authorization_endpoint": base + "/signin", "token_endpoint": base + "/token",
+			"issuer": base + browserTestIssuerPath, "authorization_endpoint": base + "/signin", "token_endpoint": base + "/token",
 			"jwks_uri": base + "/jwks", "token_endpoint_auth_methods_supported": []string{"none"},
 		})
 	})
@@ -223,7 +224,7 @@ func testOIDCProvider(t *testing.T, key signingKey) *httptest.Server {
 		mu.Lock()
 		expected = params
 		mu.Unlock()
-		response := url.Values{"code": {"upstream-code"}, "state": {params.Get("state")}, "iss": {"https://" + r.Host}}
+		response := url.Values{"code": {"upstream-code"}, "state": {params.Get("state")}, "iss": {"https://" + r.Host + browserTestIssuerPath}}
 		http.Redirect(w, r, params.Get("redirect_uri")+"?"+response.Encode(), http.StatusFound)
 	})
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
@@ -239,7 +240,7 @@ func testOIDCProvider(t *testing.T, key signingKey) *httptest.Server {
 		}
 		now := time.Now()
 		token, err := key.sign(map[string]any{
-			"iss": "https://" + r.Host, "aud": params.Get("client_id"), "sub": "provider-user",
+			"iss": "https://" + r.Host + browserTestIssuerPath, "aud": params.Get("client_id"), "sub": "provider-user",
 			"nonce": params.Get("nonce"), "iat": now.Unix(), "exp": now.Add(time.Minute).Unix(),
 			"preferred_email": "member@example.test", "unmapped": "unmapped-claim-value",
 		})

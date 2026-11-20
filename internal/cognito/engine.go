@@ -117,6 +117,7 @@ func (e *Engine) ServeDiscovery(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_, _ = w.Write(body)
 	return true
 }

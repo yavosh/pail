@@ -5,7 +5,7 @@ pail supports local user pools with password sign-in and OIDC federation. Both f
 ## Configure a user pool
 
 1. Route an HTTPS hostname for each pool to pail's existing listener. Preserve the `Host` header at the TLS proxy.
-2. Use a certificate that your applications and browsers trust. Keep your S3 endpoint on a separate hostname.
+2. Use a certificate that your applications and browsers trust. pail reserves the auth hostname for Cognito requests.
 3. Mount a JSON file with the pool configuration. Pass its path with `--cognito-config` or `PAIL_COGNITO_CONFIG`.
 4. Set your SDK endpoint to the pool's HTTPS origin. Configure JWT validators with the full `issuer` URL.
 
@@ -61,6 +61,7 @@ It authenticates with the supplied user credentials and app client settings. [AW
 
 Register `https://auth.local.test/oauth2/idpresponse` as pail's callback at the upstream provider.
 Configure the provider to offer OIDC discovery, S256 PKCE, and RS256 ID tokens. Its TLS certificate must be trusted by pail.
+The provider must issue ID tokens with pail's registered client ID as the sole audience.
 The `claim_map` maps pail claim names to upstream ID token claims.
 
 Use `GET /oauth2/authorize` and `POST /oauth2/token` on the auth hostname.
@@ -71,6 +72,7 @@ Authorization codes expire, and each code can be redeemed once.
 ## Token verification and persistence
 
 The issuer serves metadata at `/.well-known/openid-configuration` and public keys at `/.well-known/jwks.json` under the configured issuer path.
+Browsers can fetch both documents across origins.
 Validate issuer, signature, expiration, `token_use`, and the expected app client. Use `aud` for ID tokens and `client_id` for access tokens.
 Both token types expire after one hour. [Cognito token verification](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-verifying-a-jwt.html)
 

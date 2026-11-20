@@ -180,7 +180,7 @@ func loadProvider(cfg providerConfig, dir string) (*provider, error) {
 	if cfg.Name == "" || cfg.ClientID == "" {
 		return nil, errors.New("provider requires a name and client id")
 	}
-	if _, err := issuerURL(cfg.Issuer); err != nil {
+	if _, err := issuerURL(strings.TrimSuffix(cfg.Issuer, "/")); err != nil {
 		return nil, err
 	}
 	scopes := withDefaultScopes(cfg.Scopes)

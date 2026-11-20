@@ -221,6 +221,18 @@ func TestBrowserClientRequiresOpenIDScope(t *testing.T) {
 	}
 }
 
+func TestProviderPreservesTrailingSlashInIssuer(t *testing.T) {
+	for _, issuer := range []string{"https://idp.example.test/", "https://idp.example.test/oidc/"} {
+		p, err := loadProvider(providerConfig{Name: "oidc", Issuer: issuer, ClientID: "test"}, "")
+		if err != nil {
+			t.Fatalf("load provider issuer %q: %v", issuer, err)
+		}
+		if p.issuer != issuer {
+			t.Errorf("provider issuer = %q, want %q", p.issuer, issuer)
+		}
+	}
+}
+
 func passwordRequest(t *testing.T, e *Engine, client, user, password, hash string) *httptest.ResponseRecorder {
 	t.Helper()
 	body, err := json.Marshal(initiateAuthRequest{

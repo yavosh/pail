@@ -27,7 +27,7 @@ func TestCognitoSDK(t *testing.T) {
 	}
 	const issuer = "https://auth.example.test/us-east-1_local"
 	const pools = `{"pools":[{"issuer":"` + issuer + `","clients":[{"id":"local-client"},` +
-		`{"id":"browser-client","redirect_uris":["https://example.test/callback"]}],` +
+		`{"id":"browser-client","redirect_uris":["https://example.test/callback"],"origins":["https://example.test"]}],` +
 		`"users":[{"username":"local-user","password_file":"user-password"}],` +
 		`"provider":{"name":"local","issuer":"https://upstream.example.test","client_id":"upstream-client"}}]}`
 	if err := os.WriteFile(configPath, []byte(pools), 0o600); err != nil {
@@ -70,30 +70,37 @@ func TestCognitoSDK(t *testing.T) {
 		})
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authEndpoint+"/us-east-1_local/.well-known/openid-configuration", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("discovery status = %d, want 200", resp.StatusCode)
-	}
-	var metadata struct {
-		Issuer  string `json:"issuer"`
-		JWKSURI string `json:"jwks_uri"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
-		t.Fatal(err)
-	}
-	if metadata.Issuer != issuer || metadata.JWKSURI != issuer+"/.well-known/jwks.json" {
-		t.Errorf("discovery = %+v, want issuer and JWKS URI under %s", metadata, issuer)
+	for _, resource := range []string{"openid-configuration", "jwks.json"} {
+		t.Run("cross-origin "+resource, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, authEndpoint+"/us-east-1_local/.well-known/"+resource, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Origin", "https://example.test")
+			resp, err := p.httpClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK || resp.Header.Get("Access-Control-Allow-Origin") != "*" {
+				t.Fatalf("GET %s = %d, origin %q, want 200 with public CORS", resource, resp.StatusCode, resp.Header.Get("Access-Control-Allow-Origin"))
+			}
+			if resource == "openid-configuration" {
+				var metadata struct {
+					Issuer  string `json:"issuer"`
+					JWKSURI string `json:"jwks_uri"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
+					t.Fatal(err)
+				}
+				if metadata.Issuer != issuer || metadata.JWKSURI != issuer+"/.well-known/jwks.json" {
+					t.Errorf("discovery = %+v, want issuer and JWKS URI under %s", metadata, issuer)
+				}
+			}
+		})
 	}
 
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, authEndpoint+"/oauth2/authorize", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authEndpoint+"/oauth2/authorize", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,13 +121,30 @@ func TestCognitoSDK(t *testing.T) {
 	if _, err := s3Client.PutObject(ctx, &s3.PutObjectInput{Bucket: new("oauth2"), Key: new("token"), Body: strings.NewReader("data")}); err != nil {
 		t.Fatal(err)
 	}
-	for _, endpoint := range []string{p.endpoint, authEndpoint} {
-		// Signed S3 requests keep their service even on the auth hostname.
-		options := s3Client.Options()
-		options.BaseEndpoint = new(endpoint)
-		s3Client := s3.New(options)
-		if _, err := s3Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: new("oauth2"), Key: new("token")}); err != nil {
-			t.Errorf("HeadObject via %s: %v", endpoint, err)
+	if _, err := s3Client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: new("oauth2"), Key: new("token")}); err != nil {
+		t.Fatalf("HeadObject on the S3 endpoint: %v", err)
+	}
+
+	options := s3Client.Options()
+	options.BaseEndpoint = new(authEndpoint)
+	presigned, err := s3.NewPresignClient(s3.New(options)).PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: new("oauth2"), Key: new("token"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{authEndpoint + "/oauth2/token/object", presigned.URL} {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
+			t.Errorf("GET %s on auth hostname = %d %q, want plain 404", req.URL.Path, resp.StatusCode, resp.Header.Get("Content-Type"))
 		}
 	}
 }
