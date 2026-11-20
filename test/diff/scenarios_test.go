@@ -29,12 +29,13 @@ type step struct {
 	body         string
 	auth         authMode
 	// stream sends the body aws-chunked in this x-amz-content-sha256 mode.
-	stream      string
-	chunk       int    // chunk size; 0 means 8 KiB
-	trailer     string // a trailing header line, such as "x-amz-checksum-crc32:<value>"
-	badChunkSig bool   // corrupt the first chunk signature
-	service     string // "" is S3; "sqs", "sns", or "kms" signs for that service
-	target      string // X-Amz-Target of an SQS or KMS step
+	stream          string
+	chunk           int    // chunk size; 0 means 8 KiB
+	trailer         string // a trailing header line, such as "x-amz-checksum-crc32:<value>"
+	badChunkSig     bool   // corrupt the first chunk signature
+	chunkedTransfer bool   // use HTTP chunked transfer for the aws-chunked body
+	service         string // "" is S3; "sqs", "sns", or "kms" signs for that service
+	target          string // X-Amz-Target of an SQS or KMS step
 	// compare names response headers to compare besides comparedHeaders.
 	compare []string
 }
@@ -239,7 +240,7 @@ func scenarios() []scenario {
 		keys.steps = append(keys.steps, step{name: "delete-" + k.name, method: http.MethodDelete, key: k.key})
 	}
 	keys.steps = append(keys.steps, deleteBucket())
-	return append(all, keys, listingScenario(), streamingScenario(), presignedScenario(), copyAndDeleteScenario(), multipartScenario(), multipartValidationScenario())
+	return append(all, keys, listingScenario(), streamingScenario(), streamingTransportScenario(), presignedScenario(), copyAndDeleteScenario(), multipartScenario(), multipartValidationScenario())
 }
 
 // streamingScenario records aws-chunked uploads in each signing mode, and
@@ -273,6 +274,36 @@ func streamingScenario() scenario {
 	}
 	sc.steps = append(sc.steps, deleteBucket())
 	return sc
+}
+
+// streamingTransportScenario checks aws-chunked uploads with HTTP chunked transfer.
+func streamingTransportScenario() scenario {
+	const body = "upload over HTTP chunked transfer\n"
+	const key = "streamed"
+	return scenario{
+		name: "streaming-transport",
+		steps: []step{
+			createBucket(),
+			{name: "put", method: http.MethodPut, key: key, body: body,
+				stream: streamUnsignedTrailer, trailer: crc32Trailer(body), chunkedTransfer: true},
+			{name: "get", method: http.MethodGet, key: key},
+			{name: "delete", method: http.MethodDelete, key: key},
+			deleteBucket(),
+		},
+		check: func(_ []step, responses []response) error {
+			if put := responses[1]; put.status != http.StatusOK {
+				return fmt.Errorf("put status = %d, want %d", put.status, http.StatusOK)
+			}
+			get := responses[2]
+			if get.status != http.StatusOK {
+				return fmt.Errorf("get status = %d, want %d", get.status, http.StatusOK)
+			}
+			if string(get.body) != body {
+				return fmt.Errorf("get returned %d bytes, want the original %d-byte upload body", len(get.body), len(body))
+			}
+			return nil
+		},
+	}
 }
 
 // presignedScenario records how AWS answers query-string authentication:

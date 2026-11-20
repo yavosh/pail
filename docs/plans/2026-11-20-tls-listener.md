@@ -23,4 +23,5 @@ Both listeners share the router, credentials, and storage.
 - Verify settings, aliases, flag precedence, and startup failures.
 - Exercise both transports through the real router and check that they share service state.
 - Verify shutdown and connection cleanup after either listener fails.
+- Replay an authenticated `aws-chunked` upload without an outer HTTP `Content-Length`.
 - Run goimports, lint, the race suite, and a CGO-disabled build.

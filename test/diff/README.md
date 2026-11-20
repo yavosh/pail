@@ -50,6 +50,16 @@ The `conditional-deletes` scenario covers matching, mismatching, wildcard, missi
 Its maintainer-recorded AWS fixture replays all 30 exchanges successfully, including `412 PreconditionFailed` for mismatched ETags and `404 NoSuchKey` for conditional missing keys.
 Re-record it with `go test ./test/diff -record -run '^TestDiff/conditional-deletes$' -v`; never edit the golden file manually.
 
+The `streaming-transport` scenario uploads an unsigned `aws-chunked` body with a CRC32 trailer.
+HTTP chunked transfer sends the body without a wire `Content-Length` header.
+The local deterministic suite checks the PUT response and compares the downloaded bytes with the original upload.
+
+A maintainer can record the AWS result with:
+
+```bash
+direnv exec . go test ./test/diff -record -run '^TestDiff/streaming-transport$' -v -count=1 -timeout=5m
+```
+
 ## SQS and SNS
 
 The `sqs-*` and `sns-*` scenarios cover the SQS JSON protocol and the SNS query protocol.
