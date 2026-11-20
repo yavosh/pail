@@ -47,6 +47,8 @@ func TestParsePrecedence(t *testing.T) {
 		{"sns tls skip verify env false", nil, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "false"}, func(c Config) Config { return c }},
 		{"sns tls skip verify flag beats env", []string{"--sns-tls-skip-verify"}, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "false"}, func(c Config) Config { c.SNSTLSSkipVerify = true; return c }},
 		{"sns tls skip verify flag false beats env", []string{"--sns-tls-skip-verify=false"}, map[string]string{"PAIL_SNS_TLS_SKIP_VERIFY": "true"}, func(c Config) Config { return c }},
+		{"cognito config env", nil, map[string]string{"PAIL_COGNITO_CONFIG": "pools.json"}, func(c Config) Config { c.CognitoConfig = "pools.json"; return c }},
+		{"cognito config flag beats env", []string{"--cognito-config=local.json"}, map[string]string{"PAIL_COGNITO_CONFIG": "pools.json"}, func(c Config) Config { c.CognitoConfig = "local.json"; return c }},
 		{"empty flag value beats env", []string{"--domain="}, map[string]string{"PAIL_DOMAIN": "e.test"}, func(c Config) Config { return c }},
 	}
 	for _, tt := range tests {

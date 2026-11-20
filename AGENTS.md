@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## Project overview
 
-pail is a small S3-, SQS-, SNS-, and KMS-compatible server written in pure Go. One listener serves all four. It targets local testing and personal projects. The goal is AWS API compatibility, not scale.
+pail is a small AWS-compatible server written in pure Go. One listener serves S3, SQS, SNS, KMS, and optional Cognito user pools. It targets local testing and personal projects. The goal is AWS API compatibility, not scale.
 
 ## Build and development commands
 
@@ -50,6 +50,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - S3 requests bypass `http.ServeMux`, because it redirects paths that are not clean, such as `a//b`, and those are valid keys. `internal/s3api` routes them from one operation table. `ServeMux` serves only pail's own `/_pail/` endpoints.
 - `internal/server/router.go` routes each request by its SigV4 credential scope: `sqs` to `internal/sqsapi`, `sns` to `internal/snsapi`, and `kms` to `internal/kmsapi`. Unsigned `AmazonSQS.*` and `TrentService.*` targets reach their service's authentication handler. An unsigned `GET /` whose query has `Action=ConfirmSubscription` or `Action=Unsubscribe` also goes to SNS; the router reads only the query. Everything else, including other unsigned requests, goes to `internal/s3api`.
 - `internal/kms` holds persistent symmetric keys and aliases. `internal/kmsapi` serves AWS JSON 1.1 with `TrentService` targets. Key state and cryptographic operations share one mutex. Commit `kms/state.json` through `CreatePrivateTemp` before publishing changes in memory. Authenticate ciphertext metadata and canonical encryption context. Expire scheduled deletions lazily. Key policies are stored without enforcement. See `docs/kms-compatibility.md` and `docs/storage.md`.
+- `--cognito-config` enables `internal/cognito`. Reserve each pool's auth hostname for Cognito, including its discovery and OAuth paths. Requests on other hosts keep their existing routes. Use the configured issuer for discovery and token claims. Persist signing keys through `CreatePrivateTemp`. Keep browser transactions bounded, expire them lazily, and redeem authorization codes once. See `docs/cognito-compatibility.md`.
 - `internal/snsapi` serves the SNS query protocol and follows the `internal/sqsapi` patterns: one operation table, one response writer, one error table, request IDs, an access log, and a body cap. `internal/topic` holds topics and subscriptions. Definitions persist under `sns/topics/` and `sns/subscriptions/`, and the signing key and certificate live under `sns/`. `Publish` sends to the queue engine after it releases the engine mutex, and a failed delivery is logged, not returned. Never call the queue engine while you hold that mutex.
 - SNS FIFO topics require `.fifo` names and `FifoTopic=true`. `internal/topic/fifo.go` holds transient deduplication and sequence state. `Engine.fifoPublish` serializes FIFO publishes through queue delivery. A publish can be canceled while it waits; after it records the deduplication ID, delivery ignores cancellation. Keep `e.mu` released while signing and calling SQS. FIFO envelopes have no signature fields, and FIFO batch validation runs before any entry is delivered. FIFO subscriptions accept SQS queues only; standard topics still reject FIFO queues. S3 notifications reject FIFO topics and queues.
 - SNS subscription `RedrivePolicy` validation lives in `internal/topic/redrive.go`. Preserve policy text and distinguish omitted values from empty strings. Snapshot the target at publish time, and call the queue engine only after releasing the topic mutex. Redrive failed notifications once; never redrive confirmations or shutdown cancellation.
@@ -124,15 +125,17 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - `README.md` summarizes pail. Exact S3 behavior, limits, and AWS differences go in `docs/s3-compatibility.md`. What pail doesn't do goes in `docs/limitations.md`.
 - Exact SQS and SNS behavior goes in `docs/sqs-sns-compatibility.md`.
 - Exact KMS behavior goes in `docs/kms-compatibility.md`. The standalone service does not enable S3, SQS, or SNS encryption.
+- Cognito configuration and behavior go in `docs/cognito-compatibility.md`.
 - Storage paths and version transitions go in [`docs/storage.md`](docs/storage.md). Keep package comments short and link there.
 - Follow the [Google developer documentation style guide](https://developers.google.com/style).
 - Plan docs go in `docs/plans/YYYY-MM-DD-<slug>.md`, one per effort. `tasks/` is scratch, not the plan.
 
 ## Differential suite
 
-- `test/diff` checks pail against golden files recorded from AWS S3, SQS, SNS, and KMS. New service behavior adds a scenario there.
+- `test/diff` covers AWS S3, SQS, SNS, KMS, and Cognito. It compares pail against AWS golden files when available. New service behavior adds a scenario there.
 - Scenarios never call `ListBuckets`, `ListTopics`, or `ListSubscriptions`, and call `ListQueues` only with `QueueNamePrefix`. Golden files must not expose the account's other resources.
 - KMS scenarios never call `ListKeys` or unfiltered `ListAliases` against AWS. Compare decrypted payloads and key relationships before masking ciphertext and data keys. Maintainer recording schedules only the created keys for deletion with a seven-day waiting period.
+- The Cognito recording uses a dedicated pool, public app client, and synthetic user. Verify token signatures and claim relationships before normalization. Keep credentials and raw tokens out of golden files.
 - Compare successful object bodies byte for byte, including XML objects. Normalize only protocol XML, never stored object content.
 - Never edit a golden file by hand. Record it with `go test ./test/diff -record`, which needs AWS credentials, so a maintainer runs it.
 - AWS recording credentials are loaded by direnv. Agent shells must load that environment explicitly; do not inspect `.envrc` or print credentials. Record SNS FIFO fixtures with `direnv exec . go test ./test/diff -record -run '^TestDiff/sns-fifo-' -v -count=1 -timeout=5m`.

@@ -1,6 +1,5 @@
-// Package diff checks pail against AWS S3, SQS, SNS, and KMS as a black box. Record
-// mode writes golden files from AWS; replay mode, the default, sends the same
-// requests to an in-process pail and compares. See README.md here.
+// Package diff compares pail with AWS S3, SQS, SNS, KMS, and Cognito over HTTP.
+// Record mode writes golden files from AWS. Replay compares an in-process pail.
 package diff
 
 import (
@@ -26,7 +25,7 @@ import (
 	"github.com/yavosh/pail/internal/server"
 )
 
-var record = flag.Bool("record", false, "record golden files against AWS S3, SQS, SNS, and KMS in us-east-1")
+var record = flag.Bool("record", false, "record golden files against AWS in us-east-1")
 
 const (
 	goldenDir      = "testdata/golden"
@@ -316,6 +315,11 @@ func pailTargetTLS(t *testing.T, skipSNSVerify bool) *target {
 		Domain:           "localhost",
 		SNSTLSSkipVerify: skipSNSVerify,
 	}
+	return configuredPailTarget(t, cfg)
+}
+
+func configuredPailTarget(t *testing.T, cfg config.Config) *target {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	srv := server.New(cfg)
 	if err := srv.Listen(ctx); err != nil {

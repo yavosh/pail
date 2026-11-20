@@ -55,3 +55,8 @@ Ciphertext starts with a format version and key ID, followed by a random nonce a
 AES-GCM authenticates the header, region, account, and canonical encryption context.
 Restarting with the same data directory preserves decryption. Opening that directory with a different KMS region fails.
 See [KMS compatibility](kms-compatibility.md).
+
+## Cognito signing keys
+
+`cognito/<sha256(issuer)>.json` holds the pool's private signing keys. pail creates the file atomically with owner-only permissions.
+The same data directory and issuer preserve the public keys and key IDs across restarts. Browser transactions and authorization codes expire in memory and are lost on restart. [Cognito compatibility](cognito-compatibility.md)

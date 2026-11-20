@@ -1,6 +1,6 @@
 # Differential suite
 
-This suite checks pail against AWS S3, SQS, SNS, and KMS as a black box. It talks to AWS and pail over HTTP only.
+This suite checks pail against AWS S3, SQS, SNS, KMS, and Cognito as a black box. It talks to AWS and pail over HTTP only.
 
 Each scenario in `scenarios_test.go` is a list of raw requests. One SigV4 signer signs them, so AWS and pail receive the same requests. A streaming step sends its body `aws-chunked` and signs each chunk with the suite's own code, so a recording checks that code against AWS. A presigned step signs the query string with the same signer and an unsigned payload. The suite does not use an SDK, because SDK retries and normalization would hide differences. The clients do not follow redirects or decompress responses, for the same reason.
 
@@ -180,6 +180,26 @@ It schedules the created keys for deletion with a seven-day waiting period, incl
 AWS does not support immediate key deletion. Key creation and cryptographic requests can incur charges.
 The recording identity needs permission for the scenario's KMS operations and `kms:ScheduleKeyDeletion` for cleanup.
 Review and commit the AWS recording separately; never generate a replacement golden file from pail.
+
+## Cognito password sign-in
+
+`TestCognitoInitiateAuth` covers `USER_PASSWORD_AUTH` and wrong passwords.
+It checks both JWT signatures against the issuer's JWKS and verifies the issuer, subject, client, and token use.
+The golden file contains normalized claims and status codes. It omits credentials, raw tokens, and error messages.
+Local checks run even before an AWS golden file exists.
+
+For an approved AWS recording, use a dedicated `us-east-1` pool with the original Cognito issuer.
+Use a synthetic, confirmed user without MFA.
+The app client must allow `USER_PASSWORD_AUTH` and use the default one-hour token lifetime.
+Use a public app client with no client secret.
+Set `COGNITO_DIFF_POOL_ID`, `COGNITO_DIFF_CLIENT_ID`, and `COGNITO_DIFF_USERNAME`.
+Set `COGNITO_DIFF_PASSWORD` through your approved secret source.
+
+```bash
+go test ./test/diff -record -run '^TestCognitoInitiateAuth$' -v -count=1 -timeout=5m
+```
+
+The recording calls `InitiateAuth` and reads JWKS for that pool.
 
 ## Live SNS HTTPS callbacks
 

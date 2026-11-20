@@ -19,6 +19,7 @@ type Config struct {
 	Domain           string
 	LogLevel         slog.Level
 	SNSTLSSkipVerify bool
+	CognitoConfig    string
 	Version          bool
 	Healthcheck      bool
 }
@@ -38,6 +39,7 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 	fs.StringVar(&c.Domain, "domain", "", "base domain for virtual-hosted-style requests; empty turns it off (env PAIL_DOMAIN)")
 	fs.StringVar(&level, "log-level", "info", "log level: debug, info, warn, or error (env PAIL_LOG_LEVEL)")
 	fs.BoolVar(&c.SNSTLSSkipVerify, "sns-tls-skip-verify", false, "do not verify the certificates of HTTPS subscription endpoints; for local testing only (env PAIL_SNS_TLS_SKIP_VERIFY)")
+	fs.StringVar(&c.CognitoConfig, "cognito-config", "", "Cognito user pool config file; empty turns Cognito off (env PAIL_COGNITO_CONFIG)")
 	fs.BoolVar(&c.Version, "version", false, "print the version and exit")
 	fs.BoolVar(&c.Healthcheck, "healthcheck", false, "check that a pail at --addr answers /_pail/health, then exit; needs no keys")
 
@@ -61,6 +63,7 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 		{"region", "PAIL_REGION", &c.Region},
 		{"domain", "PAIL_DOMAIN", &c.Domain},
 		{"log-level", "PAIL_LOG_LEVEL", &level},
+		{"cognito-config", "PAIL_COGNITO_CONFIG", &c.CognitoConfig},
 	}
 	for _, e := range envs {
 		if set[e.flag] {

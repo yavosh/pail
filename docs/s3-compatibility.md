@@ -7,6 +7,7 @@ For queue and topic attributes, see [SQS and SNS compatibility](sqs-sns-compatib
 ## Requests
 
 - Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
+- With [Cognito enabled](cognito-compatibility.md), use a separate hostname for S3 clients and public S3 URLs.
 - Virtual-hosted-style requests work when `--domain` is set. For example, with `--domain localhost`, pail serves `http://<bucket>.localhost:9000/<key>`.
 - An operation that pail doesn't support returns `501 NotImplemented` with an S3 XML error.
 - pail checks `x-amz-expected-bucket-owner` on every bucket and object request. See [Expected bucket owner](#expected-bucket-owner). The next section lists the object write options that pail checks.
