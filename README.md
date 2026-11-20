@@ -1,6 +1,6 @@
 # pail
 
-pail is a small AWS-compatible server written in pure Go. One port serves S3, SQS, SNS, KMS, and optional Cognito user pools. Use it for local testing and personal projects. pail aims for API compatibility over scale. It is a work in progress.
+pail is a small AWS-compatible server written in pure Go. It serves S3, SQS, SNS, KMS, and optional Cognito user pools over HTTP and optional HTTPS. Use it for local testing and personal projects. pail aims for API compatibility over scale. It is a work in progress.
 
 ## Limitations
 
@@ -201,7 +201,7 @@ pail also verifies checksums, honors conditional headers, and accepts `aws-chunk
 - CORS preflight requests, and operations that a public ACL grant allows, need no signature.
 - The SNS `SubscribeURL` and `UnsubscribeURL` links need no signature, as on AWS. A link confirms a subscription with its token, or removes a subscription that was confirmed through its link.
 
-Like AWS, pail accepts a signed request for up to 15 minutes, so anyone who captures one can replay it in that window. If the network isn't trusted, keep pail on `127.0.0.1` or put it behind TLS.
+Like AWS, pail accepts a signed request for up to 15 minutes, so anyone who captures one can replay it in that window. Bind HTTP to loopback and use [HTTPS](#https) across untrusted networks.
 
 Anyone with the keys can subscribe any URL to an SNS topic, and pail then sends HTTP requests to that URL. That includes addresses on your local network, which AWS refuses.
 
@@ -211,7 +211,10 @@ Each setting is a flag with a `PAIL_*` environment variable fallback. A flag ove
 
 | Flag | Variable | Default | Description |
 | --- | --- | --- | --- |
-| `--addr` | `PAIL_ADDR` | `127.0.0.1:9000` | Listen address. |
+| `--addr` | `PAIL_ADDR` | `127.0.0.1:9000` | HTTP listen address. |
+| `--add-tls-addr` | `PAIL_ADD_TLS_ADDR` | empty | HTTPS listen address. |
+| `--tls-cert` | `PAIL_TLS_CERT` | empty | Path to a PEM certificate chain for HTTPS. |
+| `--tls-key` | `PAIL_TLS_KEY` | empty | Path to the matching PEM private key for HTTPS. |
 | `--data` | `PAIL_DATA` | `./data` | Data directory. pail creates it at startup. One pail process owns it. |
 | `--access-key` | `PAIL_ACCESS_KEY_ID` | none, required | Access key ID. |
 | `--secret-key` | `PAIL_SECRET_ACCESS_KEY` | none, required | Secret access key. |
@@ -225,17 +228,31 @@ Each setting is a flag with a `PAIL_*` environment variable fallback. A flag ove
 
 If a key is empty, pail exits with an error that names the missing setting. To keep the secret key out of process lists, set `PAIL_SECRET_ACCESS_KEY` instead of passing `--secret-key`.
 
+### HTTPS
+
+Set all three TLS options to add an HTTPS listener. For example:
+
+```bash
+pail --add-tls-addr 127.0.0.1:9443 --tls-cert server.pem --tls-key server-key.pem
+```
+
+`--add-tls-add` is an alias for `--add-tls-addr`. Both listeners serve the same APIs and share data.
+Clients choose which endpoint to use. For HTTPS, trust the certificate's issuing CA and use a hostname it covers.
+
 ### Docker
 
 - The image sets `PAIL_ADDR=0.0.0.0:9000` and `PAIL_DATA=/data`.
 - To change the listen address, set `PAIL_ADDR` with `-e`. Don't pass `--addr` after the image name. The container healthcheck reads `PAIL_ADDR`, so an `--addr` argument leaves the container unhealthy.
+- To add HTTPS, set `PAIL_ADD_TLS_ADDR=0.0.0.0:9443` and publish it with `-p 9443:9443`.
+  Mount the PEM files read-only and set `PAIL_TLS_CERT` and `PAIL_TLS_KEY` to their container paths.
+  The container user, UID 65532, needs read access to both files.
 - The container runs as a non-root user, UID 65532. A named volume works as is. A bind mount must be owned by that user, for example, `chown 65532 ./data`.
 
 ### Health check
 
 `GET /_pail/health` returns `200` and needs no credentials.
 
-`pail --healthcheck` calls that endpoint at the `--addr` address. It exits 0 when the endpoint answers `200`, and exits 1 with an error otherwise. It needs no keys. A wildcard address, such as `0.0.0.0:9000`, is checked on loopback.
+`pail --healthcheck` calls that endpoint over HTTP at the `--addr` address. It exits 0 when the endpoint answers `200`, and exits 1 with an error otherwise. It needs no keys. A wildcard address, such as `0.0.0.0:9000`, is checked on loopback.
 
 ```bash
 PAIL_ADDR=127.0.0.1:9000 pail --healthcheck

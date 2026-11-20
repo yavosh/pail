@@ -12,6 +12,9 @@ import (
 // Config holds the settings for one pail process.
 type Config struct {
 	Addr             string
+	TLSAddr          string
+	TLSCert          string
+	TLSKey           string
 	DataDir          string
 	AccessKeyID      string
 	SecretAccessKey  string
@@ -31,7 +34,11 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 	var level string
 
 	fs := flag.NewFlagSet("pail", flag.ContinueOnError)
-	fs.StringVar(&c.Addr, "addr", "127.0.0.1:9000", "listen address (env PAIL_ADDR)")
+	fs.StringVar(&c.Addr, "addr", "127.0.0.1:9000", "HTTP listen address (env PAIL_ADDR)")
+	fs.StringVar(&c.TLSAddr, "add-tls-addr", "", "additional HTTPS listen address (env PAIL_ADD_TLS_ADDR)")
+	fs.StringVar(&c.TLSAddr, "add-tls-add", "", "alias for --add-tls-addr")
+	fs.StringVar(&c.TLSCert, "tls-cert", "", "PEM certificate file for HTTPS (env PAIL_TLS_CERT)")
+	fs.StringVar(&c.TLSKey, "tls-key", "", "PEM private key file for HTTPS (env PAIL_TLS_KEY)")
 	fs.StringVar(&c.DataDir, "data", "./data", "data directory (env PAIL_DATA)")
 	fs.StringVar(&c.AccessKeyID, "access-key", "", "access key ID, required (env PAIL_ACCESS_KEY_ID)")
 	fs.StringVar(&c.SecretAccessKey, "secret-key", "", "secret access key, required; prefer env PAIL_SECRET_ACCESS_KEY")
@@ -52,11 +59,15 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	set["add-tls-addr"] = set["add-tls-addr"] || set["add-tls-add"]
 	envs := []struct {
 		flag, env string
 		dst       *string
 	}{
 		{"addr", "PAIL_ADDR", &c.Addr},
+		{"add-tls-addr", "PAIL_ADD_TLS_ADDR", &c.TLSAddr},
+		{"tls-cert", "PAIL_TLS_CERT", &c.TLSCert},
+		{"tls-key", "PAIL_TLS_KEY", &c.TLSKey},
 		{"data", "PAIL_DATA", &c.DataDir},
 		{"access-key", "PAIL_ACCESS_KEY_ID", &c.AccessKeyID},
 		{"secret-key", "PAIL_SECRET_ACCESS_KEY", &c.SecretAccessKey},
@@ -88,7 +99,7 @@ func Parse(args []string, getenv func(string) string) (Config, error) {
 	return c, nil
 }
 
-// Validate reports every required setting that is empty.
+// Validate reports missing required settings and incomplete TLS settings.
 func (c Config) Validate() error {
 	var errs []error
 	if c.Addr == "" {
@@ -99,6 +110,10 @@ func (c Config) Validate() error {
 	}
 	if c.SecretAccessKey == "" {
 		errs = append(errs, errors.New("missing secret key: set --secret-key or PAIL_SECRET_ACCESS_KEY"))
+	}
+	tlsConfigured := c.TLSAddr != "" || c.TLSCert != "" || c.TLSKey != ""
+	if tlsConfigured && (c.TLSAddr == "" || c.TLSCert == "" || c.TLSKey == "") {
+		errs = append(errs, errors.New("--add-tls-addr, --tls-cert, and --tls-key are required together"))
 	}
 	return errors.Join(errs...)
 }

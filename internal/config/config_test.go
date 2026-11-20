@@ -125,3 +125,60 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestParseTLS(t *testing.T) {
+	env := map[string]string{
+		"PAIL_ADD_TLS_ADDR": ":9443",
+		"PAIL_TLS_CERT":     "env.pem",
+		"PAIL_TLS_KEY":      "env-key.pem",
+	}
+	tests := []struct {
+		name string
+		args []string
+		want [3]string
+	}{
+		{"environment", nil, [3]string{":9443", "env.pem", "env-key.pem"}},
+		{"flags override environment", []string{"--add-tls-addr=:8443", "--tls-cert=flag.pem", "--tls-key=flag-key.pem"}, [3]string{":8443", "flag.pem", "flag-key.pem"}},
+		{"alias overrides environment", []string{"--add-tls-add=:8443"}, [3]string{":8443", "env.pem", "env-key.pem"}},
+		{"last alias wins", []string{"--add-tls-addr=:8443", "--add-tls-add=:7443"}, [3]string{":7443", "env.pem", "env-key.pem"}},
+		{"last canonical flag wins", []string{"--add-tls-add=:8443", "--add-tls-addr=:7443"}, [3]string{":7443", "env.pem", "env-key.pem"}},
+		{"empty alias overrides environment", []string{"--add-tls-add=", "--tls-cert=", "--tls-key="}, [3]string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(tt.args, envFrom(env))
+			if err != nil {
+				t.Fatalf("Parse(%v) error = %v, want nil", tt.args, err)
+			}
+			if settings := [3]string{got.TLSAddr, got.TLSCert, got.TLSKey}; settings != tt.want {
+				t.Errorf("Parse(%v) TLS settings = %q, want %q", tt.args, settings, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateTLS(t *testing.T) {
+	tests := []struct {
+		name            string
+		addr, cert, key string
+		wantErr         bool
+	}{
+		{"disabled", "", "", "", false},
+		{"enabled", ":8443", "server.pem", "server-key.pem", false},
+		{"missing address", "", "server.pem", "server-key.pem", true},
+		{"missing certificate", ":8443", "", "server-key.pem", true},
+		{"missing key", ":8443", "server.pem", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{
+				Addr: ":9000", AccessKeyID: "a", SecretAccessKey: "s",
+				TLSAddr: tt.addr, TLSCert: tt.cert, TLSKey: tt.key,
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate(%q, %q, %q) = %v, want error %t", tt.addr, tt.cert, tt.key, err, tt.wantErr)
+			}
+		})
+	}
+}

@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository.
 
 ## Project overview
 
-pail is a small AWS-compatible server written in pure Go. One listener serves S3, SQS, SNS, KMS, and optional Cognito user pools. It targets local testing and personal projects. The goal is AWS API compatibility, not scale.
+pail is a small AWS-compatible server written in pure Go. HTTP and optional HTTPS listeners serve S3, SQS, SNS, KMS, and optional Cognito user pools. It targets local testing and personal projects. The goal is AWS API compatibility, not scale.
 
 ## Build and development commands
 
@@ -40,7 +40,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - Time-dependent tests use `testing/synctest`, not sleeps. HTTP endpoints inside a bubble use `httptest.NewTestServer`; its in-memory network is the only one `synctest` can see.
 - Comments are 2 to 3 lines at most. State the one non-obvious thing and stop.
 - Every long-lived goroutine takes a `context.Context` or a stop channel, and the starter stops it. Prefer synchronous functions.
-- Listener failures close established HTTP connections before releasing storage.
+- Bind the HTTP and optional HTTPS listeners before serving. They share one router, engines, and shutdown deadline. Listener failures close established connections before releasing storage.
 - Accept interfaces, return structs. Define an interface in the package that consumes it. Shared backend contracts, such as `vfs.FS`, are the exception: every backend must return the same types, so they live in a neutral package, like `io/fs`.
 - Indent error flow. No `else` after `return`. No naked returns. Don't panic outside `main` or `init`.
 - Use one short receiver name per type. Never mix value and pointer receivers.

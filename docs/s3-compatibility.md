@@ -6,7 +6,8 @@ For queue and topic attributes, see [SQS and SNS compatibility](sqs-sns-compatib
 
 ## Requests
 
-- Path-style requests always work: `http://127.0.0.1:9000/<bucket>/<key>`.
+- Path-style requests work on both listeners and share the same buckets.
+  The default endpoint is `http://127.0.0.1:9000/<bucket>/<key>`. [HTTPS configuration](../README.md#https)
 - With [Cognito enabled](cognito-compatibility.md), use a separate hostname for S3 clients and public S3 URLs.
 - Virtual-hosted-style requests work when `--domain` is set. For example, with `--domain localhost`, pail serves `http://<bucket>.localhost:9000/<key>`.
 - An operation that pail doesn't support returns `501 NotImplemented` with an S3 XML error.
@@ -346,7 +347,8 @@ S3 requests use AWS Signature Version 4 (SigV4) with the configured access key p
 
 - `aws-chunked` uploads work in three SigV4 modes: signed chunks, unsigned chunks with a trailer, and signed chunks with a signed trailer.
 - The AWS CLI and the SDKs send them by default over HTTPS.
-- pail checks each chunk signature and the decoded length as it reads the body. It stores the object under its `x-amz-decoded-content-length`.
+- pail checks each chunk signature and the decoded length as it reads the body.
+- An `aws-chunked` request can omit the outer HTTP `Content-Length`. Its `x-amz-decoded-content-length` supplies the payload length.
 - Like AWS, each signed chunk except the last must hold at least 8 KiB.
 - pail removes `aws-chunked` from the stored `Content-Encoding`.
 

@@ -121,14 +121,14 @@ func TestServeStopsOnCancel(t *testing.T) {
 	}
 }
 
-// postSQS sends a signed SQS request to addr and returns the status and body.
+// postSQS sends a signed SQS request and returns its status and body.
 // When running is set, the request sends Expect: 100-continue and running is
 // closed on the server's 100 Continue, which the handler sends on its first body read.
-func postSQS(ctx context.Context, addr, op, body string, running chan<- struct{}) (int, string, error) {
+func postSQS(ctx context.Context, client *http.Client, endpoint, op, body string, running chan<- struct{}) (int, string, error) {
 	if running != nil {
 		ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{Got100Continue: func() { close(running) }})
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+"/", strings.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/", strings.NewReader(body))
 	if err != nil {
 		return 0, "", err
 	}
@@ -142,7 +142,7 @@ func postSQS(ctx context.Context, addr, op, body string, running chan<- struct{}
 	if err := v4.NewSigner().SignHTTP(ctx, creds, req, hex.EncodeToString(sum[:]), "sqs", "us-east-1", time.Now()); err != nil {
 		return 0, "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, "", err
 	}
@@ -166,7 +166,7 @@ func TestServeEndsLongPollsOnShutdown(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- s.Serve(ctx) }()
 
-	if status, body, err := postSQS(ctx, addr, "CreateQueue", `{"QueueName":"q"}`, nil); err != nil || status != http.StatusOK {
+	if status, body, err := postSQS(ctx, http.DefaultClient, "http://"+addr, "CreateQueue", `{"QueueName":"q"}`, nil); err != nil || status != http.StatusOK {
 		t.Fatalf("CreateQueue = %d %s, %v; want 200", status, body, err)
 	}
 	type result struct {
@@ -177,7 +177,7 @@ func TestServeEndsLongPollsOnShutdown(t *testing.T) {
 	poll := make(chan result, 1)
 	running := make(chan struct{})
 	go func() {
-		status, body, err := postSQS(context.WithoutCancel(ctx), addr, "ReceiveMessage",
+		status, body, err := postSQS(context.WithoutCancel(ctx), http.DefaultClient, "http://"+addr, "ReceiveMessage",
 			`{"QueueUrl":"http://`+addr+`/000000000000/q","WaitTimeSeconds":20}`, running)
 		poll <- result{status, body, err}
 	}()

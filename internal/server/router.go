@@ -23,7 +23,7 @@ type router struct {
 	identity          *cognito.Engine
 }
 
-// NewHandler serves S3, SQS, SNS, KMS, and optional Cognito user pools on one listener.
+// NewHandler routes S3, SQS, SNS, KMS, and optional Cognito user pool requests.
 func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics *topic.Engine, keys kmsapi.Keys, identity *cognito.Engine) http.Handler {
 	return &router{
 		s3: s3api.New(s3api.Options{

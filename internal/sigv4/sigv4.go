@@ -216,6 +216,12 @@ func IsStreaming(h http.Header) bool {
 	return strings.HasPrefix(h.Get("X-Amz-Content-Sha256"), streamingMode)
 }
 
+// IsStreamingBody reports whether Verify installed the aws-chunked decoder.
+func IsStreamingBody(body io.ReadCloser) bool {
+	_, ok := body.(*chunkedReader)
+	return ok
+}
+
 // DecodedLength parses x-amz-decoded-content-length, the size of an
 // aws-chunked payload once decoded.
 func DecodedLength(h http.Header) (int64, error) {
