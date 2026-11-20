@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/yavosh/pail/internal/cognito"
 	"github.com/yavosh/pail/internal/config"
 	"github.com/yavosh/pail/internal/kms"
 	"github.com/yavosh/pail/internal/queue"
@@ -26,13 +27,14 @@ const (
 
 // Server owns the listener and the HTTP server.
 type Server struct {
-	cfg    config.Config
-	ln     net.Listener
-	fs     *localdisk.FS
-	store  *store.Store
-	queues *queue.Engine
-	topics *topic.Engine
-	keys   *kms.Engine
+	cfg      config.Config
+	ln       net.Listener
+	fs       *localdisk.FS
+	store    *store.Store
+	queues   *queue.Engine
+	topics   *topic.Engine
+	keys     *kms.Engine
+	identity *cognito.Engine
 }
 
 // New returns a Server for cfg. Call Listen, then Serve.
@@ -70,6 +72,14 @@ func (s *Server) Listen(ctx context.Context) error {
 		_ = fsys.Close()
 		return fmt.Errorf("open kms in %s: %w", s.cfg.DataDir, err)
 	}
+	var identity *cognito.Engine
+	if s.cfg.CognitoConfig != "" {
+		identity, err = cognito.Open(ctx, fsys, s.cfg.CognitoConfig)
+		if err != nil {
+			_ = fsys.Close()
+			return fmt.Errorf("open cognito: %w", err)
+		}
+	}
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", s.cfg.Addr)
 	if err != nil {
@@ -78,6 +88,7 @@ func (s *Server) Listen(ctx context.Context) error {
 	}
 	s.fs, s.store, s.queues, s.topics, s.ln = fsys, st, queues, topics, ln
 	s.keys = keys
+	s.identity = identity
 	return nil
 }
 
@@ -95,7 +106,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.ln == nil {
 		return errors.New("serve: not listening")
 	}
-	srv := &http.Server{Handler: NewHandler(s.cfg, s.store, s.queues, s.topics, s.keys), ReadHeaderTimeout: readHeaderTimeout}
+	srv := &http.Server{Handler: NewHandler(s.cfg, s.store, s.queues, s.topics, s.keys, s.identity), ReadHeaderTimeout: readHeaderTimeout}
 	// Shutdown waits for handlers, and a long poll can wait 20 s, longer than shutdownTimeout.
 	srv.RegisterOnShutdown(s.queues.StopWaiters)
 	// After a shutdown timeout, handlers still running see a closed data

@@ -14,6 +14,7 @@ pail isn't a production object store:
 - KMS key material is stored locally in an unencrypted file with owner-only permissions. It has no HSM protection.
 - KMS ciphertext works only with the pail data directory that owns its key. It cannot be exchanged with AWS KMS.
 - KMS does not yet encrypt S3 objects, SQS messages, or SNS messages. See [KMS compatibility](kms-compatibility.md).
+- Cognito supports startup-configured user pools, password sign-in, and federation with an OIDC provider. Signup, MFA, refresh tokens, and identity pools are unsupported. [Cognito compatibility](cognito-compatibility.md)
 - SQS messages live in memory and are lost when pail restarts. Queue definitions persist.
 - SQS FIFO queues don't model high-throughput quotas. Receive retry state is limited to 10,000 active attempts per queue and resets on restart. Dead-letter queues move a message on the next receive, not in the background.
 - SQS uses the AWS JSON protocol only, which current SDKs and the AWS CLI send. It doesn't support the legacy query protocol.

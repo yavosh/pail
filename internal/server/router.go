@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yavosh/pail/internal/cognito"
 	"github.com/yavosh/pail/internal/config"
 	"github.com/yavosh/pail/internal/kmsapi"
 	"github.com/yavosh/pail/internal/queue"
@@ -17,10 +18,13 @@ import (
 )
 
 // router sends each request to one service without reading the body.
-type router struct{ s3, sqs, sns, kms http.Handler }
+type router struct {
+	s3, sqs, sns, kms http.Handler
+	identity          *cognito.Engine
+}
 
-// NewHandler returns the handler for one listener that serves S3, SQS, SNS, and KMS.
-func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics *topic.Engine, keys kmsapi.Keys) http.Handler {
+// NewHandler serves S3, SQS, SNS, KMS, and optional Cognito user pools on one listener.
+func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics *topic.Engine, keys kmsapi.Keys, identity *cognito.Engine) http.Handler {
 	return &router{
 		s3: s3api.New(s3api.Options{
 			Domain:          cfg.Domain,
@@ -31,9 +35,10 @@ func NewHandler(cfg config.Config, st s3api.Store, queues sqsapi.Queues, topics 
 			Internal:        map[string]http.Handler{"GET /_pail/sns/signing-cert.pem": signingCert(topics)},
 			Notifier:        notifier{region: cfg.Region, queues: queues, topics: topics},
 		}),
-		sqs: sqsapi.New(sqsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Queues: queues}),
-		sns: snsapi.New(snsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Topics: topics}),
-		kms: kmsapi.New(kmsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Keys: keys}),
+		sqs:      sqsapi.New(sqsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Queues: queues}),
+		sns:      snsapi.New(snsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Topics: topics}),
+		kms:      kmsapi.New(kmsapi.Options{AccessKeyID: cfg.AccessKeyID, SecretAccessKey: cfg.SecretAccessKey, Keys: keys}),
+		identity: identity,
 	}
 }
 
@@ -99,7 +104,11 @@ func signingCert(topics *topic.Engine) http.Handler {
 }
 
 func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch service := sigv4.Service(r); {
+	service := sigv4.Service(r)
+	if rt.routeCognito(w, r, service) {
+		return
+	}
+	switch {
 	case service == "sqs":
 		rt.sqs.ServeHTTP(w, r)
 	case service == "sns":
@@ -115,6 +124,23 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		rt.s3.ServeHTTP(w, r)
 	}
+}
+
+func (rt *router) routeCognito(w http.ResponseWriter, r *http.Request, service string) bool {
+	if rt.identity == nil || (service != "" && service != "cognito-idp") || !rt.identity.IsAuthHost(r.Host) {
+		return false
+	}
+	switch r.URL.EscapedPath() {
+	case "/":
+		if service == "cognito-idp" || strings.HasPrefix(r.Header.Get("X-Amz-Target"), "AWSCognitoIdentityProviderService.") {
+			rt.identity.ServeAPI(w, r)
+			return true
+		}
+	case "/oauth2/authorize", "/oauth2/token", "/oauth2/idpresponse":
+		rt.identity.ServeBrowser(w, r)
+		return true
+	}
+	return rt.identity.ServeDiscovery(w, r)
 }
 
 // snsLink reports whether r is a link from an SNS message: an unsigned GET of

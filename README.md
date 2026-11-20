@@ -1,6 +1,6 @@
 # pail
 
-pail is a small S3-, SQS-, SNS-, and KMS-compatible server written in pure Go. One port serves objects, queues, topics, and symmetric encryption keys. Use it for local testing and personal projects. pail aims for API compatibility, not scale. It is a work in progress.
+pail is a small AWS-compatible server written in pure Go. One port serves S3, SQS, SNS, KMS, and optional Cognito user pools. Use it for local testing and personal projects. pail aims for API compatibility over scale. It is a work in progress.
 
 ## Limitations
 
@@ -146,6 +146,11 @@ pail supports persistent symmetric keys, aliases, tags, key states, and real enc
 It also generates data keys and random bytes. See [KMS compatibility](docs/kms-compatibility.md).
 S3, SQS, and SNS encryption settings do not call KMS yet.
 
+### Cognito user pools
+
+Set `--cognito-config` to load local pools and app clients. Point your Cognito SDK at the pool's auth hostname for `InitiateAuth` with `USER_PASSWORD_AUTH`.
+Browsers can sign in through a configured OIDC provider. Both flows issue RS256-signed tokens that apps verify with the pool's JWKS. [Cognito setup and compatibility](docs/cognito-compatibility.md)
+
 ### Browser form uploads
 
 To let a browser upload directly to pail, follow these steps:
@@ -185,6 +190,7 @@ The settings above send path-style requests, such as `http://127.0.0.1:9000/<buc
 | KMS keys | `CreateKey`, `DescribeKey`, `ListKeys`, `UpdateKeyDescription`, `EnableKey`, `DisableKey`, `ScheduleKeyDeletion`, `CancelKeyDeletion` |
 | KMS aliases, tags, and policies | `CreateAlias`, `UpdateAlias`, `DeleteAlias`, `ListAliases`, `TagResource`, `UntagResource`, `ListResourceTags`, `GetKeyPolicy`, `PutKeyPolicy`, `ListKeyPolicies` |
 | KMS cryptography | `Encrypt`, `Decrypt`, `ReEncrypt`, `GenerateDataKey`, `GenerateDataKeyWithoutPlaintext`, `GenerateRandom` |
+| Cognito user pools | `InitiateAuth` with `USER_PASSWORD_AUTH`, OIDC discovery, JWKS, and federated authorization code flow |
 
 pail also verifies checksums, honors conditional headers, and accepts `aws-chunked` streaming uploads. A multipart object can hold up to 10,000 parts of 5 GiB (48.8 TiB), as on AWS. For limits and exact behavior, see [S3 compatibility](docs/s3-compatibility.md) and [SQS and SNS compatibility](docs/sqs-sns-compatibility.md).
 
@@ -213,6 +219,7 @@ Each setting is a flag with a `PAIL_*` environment variable fallback. A flag ove
 | `--domain` | `PAIL_DOMAIN` | empty | Base domain for virtual-hosted-style requests. Empty turns them off. |
 | `--log-level` | `PAIL_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. Case-insensitive. |
 | `--sns-tls-skip-verify` | `PAIL_SNS_TLS_SKIP_VERIFY` | `false` | Do not verify the certificates of HTTPS SNS subscription endpoints. Use it only for local testing: it removes server authentication for every HTTPS subscription. |
+| `--cognito-config` | `PAIL_COGNITO_CONFIG` | empty | Path to the local Cognito user pool configuration. An empty value disables Cognito. |
 | `--healthcheck` | none | off | Check that a pail at `--addr` answers `/_pail/health`, then exit. Needs no keys. |
 | `--version` | none | none | Print the build version and exit. |
 

@@ -2,6 +2,8 @@
 
 This page describes how pail implements Amazon SQS and Amazon SNS, and where it differs from AWS. For setup and a summary, see the [README](../README.md).
 
+Use the configured AWS access keys for SQS and SNS. [Cognito user pool tokens](cognito-compatibility.md) authenticate users in your application.
+
 ## SQS
 
 pail serves SQS on the same listener and port as S3. It routes a request to SQS by the `sqs` service in the SigV4 credential scope. It uses the S3 access key pair.

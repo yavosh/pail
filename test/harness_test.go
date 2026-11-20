@@ -45,14 +45,18 @@ type pail struct {
 // stops it when the test ends.
 func startPail(t *testing.T) *pail {
 	t.Helper()
-	cfg := config.Config{
+	return startConfiguredPail(t, config.Config{
 		Addr:            "127.0.0.1:0",
 		DataDir:         t.TempDir(),
 		AccessKeyID:     testKey,
 		SecretAccessKey: testSecret,
 		Region:          testRegion,
 		Domain:          "localhost",
-	}
+	})
+}
+
+func startConfiguredPail(t *testing.T, cfg config.Config) *pail {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	srv := server.New(cfg)
 	if err := srv.Listen(ctx); err != nil {
@@ -117,7 +121,7 @@ func startPailTLS(t *testing.T) *pail {
 		AccessKeyID:     testKey,
 		SecretAccessKey: testSecret,
 		Region:          testRegion,
-	}, st, queues, topics, openTestKeys(t, fsys)))
+	}, st, queues, topics, openTestKeys(t, fsys), nil))
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
 
