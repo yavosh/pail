@@ -66,18 +66,9 @@ func (s *Store) sweepBucket(ctx context.Context, bucket string, now time.Time) e
 			if !rule.Matches(obj.Key, obj.Size, obj.Tags) || deadline.IsZero() || now.Before(deadline) {
 				continue
 			}
-			if status != "" {
-				// A versioned bucket keeps the object: expiry adds a delete marker.
-				marker := record{Key: obj.Key, LastModified: now.UTC(), DeleteMarker: true}
-				if err := s.install(bucket, status, obj, true, &marker); err != nil {
-					return fmt.Errorf("expire object: %w", err)
-				}
-				break
+			if err := s.expire(bucket, status, obj, now); err != nil {
+				return err
 			}
-			if err := s.fs.Remove(metaFile(bucket, obj.Key)); err != nil {
-				return fmt.Errorf("expire metadata: %w", err)
-			}
-			_ = s.fs.Remove(path.Join(blobsDir(bucket), obj.Blob))
 			break
 		}
 	}
@@ -102,5 +93,26 @@ func (s *Store) sweepBucket(ctx context.Context, bucket string, now time.Time) e
 			break
 		}
 	}
+	return nil
+}
+
+// expire removes obj, or hides it under a delete marker in a versioned bucket.
+// It also takes the key lock, because version readers hold only that lock.
+func (s *Store) expire(bucket, status string, obj record, now time.Time) error {
+	kl := s.keyLock(bucket, obj.Key)
+	kl.Lock()
+	defer kl.Unlock()
+	if status != "" {
+		// A versioned bucket keeps the object: expiry adds a delete marker.
+		marker := record{Key: obj.Key, LastModified: now.UTC(), DeleteMarker: true}
+		if err := s.install(bucket, status, obj, true, &marker); err != nil {
+			return fmt.Errorf("expire object: %w", err)
+		}
+		return nil
+	}
+	if err := s.fs.Remove(metaFile(bucket, obj.Key)); err != nil {
+		return fmt.Errorf("expire metadata: %w", err)
+	}
+	_ = s.fs.Remove(path.Join(blobsDir(bucket), obj.Blob))
 	return nil
 }

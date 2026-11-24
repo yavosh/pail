@@ -136,6 +136,15 @@ func (s *Store) lookupObject(bucket, key, versionID string) (record, bool, error
 	return rec, current, err
 }
 
+// lookupLocked is lookupObject under the key lock. Without it, a lookup can
+// miss a version that a delete promotes and a write moves back to versions/.
+func (s *Store) lookupLocked(bucket, key, versionID string) (record, bool, error) {
+	kl := s.keyLock(bucket, key)
+	kl.Lock()
+	defer kl.Unlock()
+	return s.lookupObject(bucket, key, versionID)
+}
+
 // updateRecord rewrites rec in the file that holds it.
 func (s *Store) updateRecord(bucket string, rec record, current bool) error {
 	name := versionFile(bucket, rec.Key, rec.VersionID)
@@ -268,23 +277,40 @@ func (s *Store) ListVersions(ctx context.Context, bucket, prefix, fromKey string
 		return nil, err
 	}
 	var out []VersionInfo
-	for _, cur := range sortedByKey(records) {
-		if cur.Key < fromKey || !strings.HasPrefix(cur.Key, prefix) {
+	for _, listed := range sortedByKey(records) {
+		if listed.Key < fromKey || !strings.HasPrefix(listed.Key, prefix) {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		out = append(out, VersionInfo{ObjectInfo: cur.ObjectInfo, IsLatest: true})
-		older, err := s.noncurrent(bucket, cur)
+		cur, older, err := s.keyVersions(bucket, listed.Key)
+		if errors.Is(err, ErrNoSuchKey) {
+			continue // deleted since readAllObjects
+		}
 		if err != nil {
 			return nil, err
 		}
+		out = append(out, VersionInfo{ObjectInfo: cur.ObjectInfo, IsLatest: true})
 		for _, r := range older {
 			out = append(out, VersionInfo{ObjectInfo: r.ObjectInfo})
 		}
 	}
 	return out, nil
+}
+
+// keyVersions reads the current and noncurrent records of key under the key
+// lock, so a delete that promotes a version cannot hide it from a listing.
+func (s *Store) keyVersions(bucket, key string) (record, []record, error) {
+	kl := s.keyLock(bucket, key)
+	kl.Lock()
+	defer kl.Unlock()
+	cur, err := s.readRecord(bucket, key)
+	if err != nil {
+		return record{}, nil, err
+	}
+	older, err := s.noncurrent(bucket, cur)
+	return cur, older, err
 }
 
 // deleteVersion permanently removes one version, or a delete marker. Removing
