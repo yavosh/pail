@@ -19,6 +19,7 @@ make fmt             # go fmt and goimports
 go test ./test/      # aws-sdk-go-v2 tests against an in-process pail, path-style and virtual-hosted
 go test ./test/diff  # replay the AWS S3, SQS, SNS, and KMS golden files against pail; see test/diff/README.md
 make lint            # golangci-lint
+specs/check.sh       # TLA+ models of internal/store; needs Java and tla2tools.jar (specs/S3Versions.md)
 make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # AWS CLI and boto3 against a real pail
 ```
 
@@ -73,11 +74,12 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 
 - The current version of a key, or its delete marker, always lives in `objects/<sha256(key)>.json`. Noncurrent versions and markers live in `versions/<sha256(key)>/<versionID>.json`; `null.json` is the null version. A bucket that was never versioned uses no `versions/` path, and its responses must not change.
 - Every transition runs under the key lock in `store.install` or `store.deleteVersion`. Write the new file before you remove the old one: a write saves the old current record under `versions/` before it replaces `objects/`, and a permanent delete writes the promoted record to `objects/` before it removes the old files. A key with any version always has an `objects/` file.
+- `lookupLocked` and `keyVersions` read a key's version files under the key lock. Never read `objects/` and `versions/` for one key in separate steps without it: a promotion and a write can move a version between them. `specs/S3Versions.tla` checks this; update it and `specs/check.sh` results with any new transition.
 - `record.Seq` orders versions. A version ID is the hex of `Seq` plus random bytes. `store.Open` calls `recoverVersions` to drop duplicates and orphans that a crash leaves. Keep that function in step with any new transition.
 - A key has at most one null version. A suspended write replaces it, wherever it lives.
 - Versioning state is the `versioning` bucket configuration (`Status`). It never returns to unset. `checkVersionID` in `internal/s3api/route.go` is the one place that validates a `versionId` format. The store decides whether the version exists.
 - A delete marker satisfies `errors.Is(err, store.ErrNoSuchKey)` through `*store.DeleteMarkerError`. Read paths add the marker headers with `writeReadError`.
-- Lifecycle expiration of a versioned key adds a delete marker through `install`, under the exclusive bucket lock.
+- Lifecycle expiration of a versioned key adds a delete marker through `install`, under the exclusive bucket lock and the key lock.
 
 ## Bucket settings and browser uploads
 
@@ -86,7 +88,7 @@ make build && PYTHON="uv run --with boto3==1.42.97 python" scripts/smoke.sh   # 
 - `internal/s3api/configuration.go` validates CORS and lifecycle XML and checks request checksums.
 - Bucket configurations persist atomically in `internal/store/configuration.go`.
 - `internal/lifecycle` holds expiration and multipart cleanup rules. The server owns the cleanup worker and stops it before closing storage.
-- Lifecycle cleanup holds the bucket lock exclusively. It reads current metadata before deleting eligible objects.
+- Lifecycle cleanup holds the bucket lock exclusively. It reads current metadata before deleting eligible objects, and it holds each key's lock while it changes that key.
 - `internal/acl` holds ACL documents. Object ACLs travel with metadata through uploads and multipart completion.
 - ACL grants use the literal `xsi:type` prefix in responses because SDK decoders require it.
 - `internal/account` holds the one account ID that S3, SQS, SNS, and KMS share. `expectedOwner` in `internal/s3api/handler.go` checks `x-amz-expected-bucket-owner` for every bucket request before the operation runs. Call `checkExpectedOwner` for other owner headers, such as `x-amz-source-expected-bucket-owner`.

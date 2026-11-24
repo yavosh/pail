@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"encoding/xml"
 	"errors"
 	"testing"
@@ -92,5 +93,37 @@ func TestLifecycleDateAndDisabled(t *testing.T) {
 	}
 	if _, err := s.HeadObject(t.Context(), "bucket", "disabled"); err != nil {
 		t.Fatalf("disabled rule deleted object: %v", err)
+	}
+}
+
+// Expiry changes a key under its key lock, so a version reader, which holds
+// only that lock, never sees the key halfway through an expiry.
+func TestSweepLifecycleHoldsKeyLock(t *testing.T) {
+	for _, status := range []string{"", VersioningEnabled, VersioningSuspended} {
+		t.Run(cmp.Or(status, "Unversioned"), func(t *testing.T) {
+			s, _ := newStore(t)
+			mustCreate(t, s, "b")
+			mustPut(t, s, "b", "k", "body")
+			if status != "" {
+				setVersioning(t, s, "b", status)
+			}
+			days := 1
+			putLifecycle(t, s, "b", []lifecycle.Rule{{ID: "expire", Status: "Enabled", Expiration: &lifecycle.Expiration{Days: &days}}})
+			fsys := &deleteLockFS{FS: s.fs, metadata: metaFile("b", "k"), lock: s.keyLock("b", "k")}
+			s.fs = fsys
+			if err := s.SweepLifecycle(t.Context(), time.Now().AddDate(0, 0, 3)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.HeadObject(t.Context(), "b", "k"); !errors.Is(err, ErrNoSuchKey) {
+				t.Fatalf("HeadObject after expiry error = %v, want ErrNoSuchKey", err)
+			}
+			locked := fsys.commitLocked // a versioned bucket gets a delete marker
+			if status == "" {
+				locked = fsys.removeLocked
+			}
+			if !locked {
+				t.Error("expiry changed the metadata without the key lock")
+			}
+		})
 	}
 }

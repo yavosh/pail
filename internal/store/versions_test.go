@@ -746,3 +746,135 @@ func TestOpenRemovesEmptyVersionsDirectory(t *testing.T) {
 	}
 	_ = s
 }
+
+// gateFS blocks the next Open or ReadDir of an armed name until the test
+// releases it, so a test can run writers between a reader's file reads.
+type gateFS struct {
+	vfs.FS
+	mu    sync.Mutex
+	gates map[string]*gate
+}
+
+type gate struct{ reached, release chan struct{} }
+
+func (f *gateFS) arm(name string) *gate {
+	g := &gate{reached: make(chan struct{}), release: make(chan struct{})}
+	f.mu.Lock()
+	f.gates[name] = g
+	f.mu.Unlock()
+	return g
+}
+
+func (f *gateFS) wait(name string) {
+	f.mu.Lock()
+	g := f.gates[name]
+	delete(f.gates, name)
+	f.mu.Unlock()
+	if g != nil {
+		close(g.reached)
+		<-g.release
+	}
+}
+
+func (f *gateFS) Open(name string) (vfs.File, error) {
+	f.wait(name)
+	return f.FS.Open(name)
+}
+
+func (f *gateFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	f.wait(name)
+	return f.FS.ReadDir(name)
+}
+
+// newGatedStore returns a store whose null version sits under a delete marker.
+func newGatedStore(t *testing.T) (*Store, *gateFS, DeleteResult) {
+	t.Helper()
+	s, fsys := newStore(t)
+	gfs := &gateFS{FS: fsys, gates: map[string]*gate{}}
+	s.fs = gfs
+	mustCreate(t, s, "b")
+	mustPut(t, s, "b", "k", "null body")
+	setVersioning(t, s, "b", VersioningEnabled)
+	return s, gfs, mustDelete(t, s, "b", "k", DeleteOptions{})
+}
+
+// A lookup of the null version races a delete that promotes it and a delete
+// that hides it again. The version exists throughout, so the lookup finds it.
+func TestLookupDuringPromotionFindsVersion(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		lookup func(context.Context, *Store) error
+	}{
+		{"HeadObjectVersion", func(ctx context.Context, s *Store) error {
+			_, err := s.HeadObjectVersion(ctx, "b", "k", NullVersionID)
+			return err
+		}},
+		{"GetObjectVersion", func(ctx context.Context, s *Store) error {
+			f, _, err := s.GetObjectVersion(ctx, "b", "k", NullVersionID)
+			if err == nil {
+				err = f.Close()
+			}
+			return err
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, gfs, marker := newGatedStore(t)
+			// The lookup reads objects/ (the marker), then waits before versions/null.json.
+			atVersion := gfs.arm(versionFile("b", "k", ""))
+			done := make(chan error, 1)
+			go func() { done <- tt.lookup(t.Context(), s) }()
+			<-atVersion.reached
+			if kl := s.keyLock("b", "k"); kl.TryLock() {
+				kl.Unlock()
+				// The lookup holds no lock: remove the marker, which promotes the null version,
+				mustDelete(t, s, "b", "k", DeleteOptions{VersionID: marker.VersionID})
+				atCurrent := gfs.arm(metaFile("b", "k"))
+				close(atVersion.release)
+				<-atCurrent.reached
+				// then hide the null version again before the lookup reads objects/.
+				mustDelete(t, s, "b", "k", DeleteOptions{})
+				close(atCurrent.release)
+			} else {
+				close(atVersion.release)
+			}
+			if err := <-done; err != nil {
+				t.Errorf("%s(null) during promotion error = %v, want nil", tt.name, err)
+			}
+		})
+	}
+}
+
+// A listing races the delete of the marker over a null version. The null
+// version exists throughout, so the listing includes it.
+func TestListVersionsDuringPromotionListsVersion(t *testing.T) {
+	s, gfs, marker := newGatedStore(t)
+	// The listing reads objects/ (the marker), then waits before it lists versions/.
+	atDir := gfs.arm(keyVersionsDir("b", "k"))
+	type result struct {
+		versions []VersionInfo
+		err      error
+	}
+	done := make(chan result, 1)
+	go func() {
+		v, err := s.ListVersions(t.Context(), "b", "", "")
+		done <- result{v, err}
+	}()
+	<-atDir.reached
+	if kl := s.keyLock("b", "k"); kl.TryLock() {
+		kl.Unlock()
+		// The listing holds no lock: remove the marker, which promotes the null version.
+		mustDelete(t, s, "b", "k", DeleteOptions{VersionID: marker.VersionID})
+	}
+	close(atDir.release)
+	res := <-done
+	if res.err != nil {
+		t.Fatal(res.err)
+	}
+	var got []string
+	for _, v := range res.versions {
+		got = append(got, fmt.Sprintf("%s:%q dm=%t latest=%t", v.Key, v.VersionID, v.DeleteMarker, v.IsLatest))
+	}
+	if !slices.ContainsFunc(res.versions, func(v VersionInfo) bool { return v.VersionID == "" && !v.DeleteMarker }) {
+		t.Errorf("ListVersions during promotion = %v, want the null version", got)
+	}
+}

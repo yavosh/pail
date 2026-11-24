@@ -1,0 +1,7 @@
+# spec                    config                         expect  note
+S3Versions                S3Versions.cfg                 pass    readers and lifecycle expiry hold the key lock (the fix)
+S3Versions                S3VersionsBeforeLookup.cfg     fail    lock-free lookup misses a version (before the fix)
+S3Versions                S3VersionsBeforeList.cfg       fail    lock-free listing misses a version (before the fix)
+S3Versions                S3VersionsSweepUnlocked.cfg    fail    readers locked but expiry not: a listing misses a version
+S3Versions                S3VersionsOpenLimit.cfg        fail    known limit: a read gives up after MaxOpen overwrites
+S3Versions                S3VersionsCrash.cfg            pass    crash safety: 2 crashes, failed commits, expiry

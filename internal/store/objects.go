@@ -211,7 +211,7 @@ func (s *Store) GetObjectVersion(ctx context.Context, bucket, key, versionID str
 	// blob missing twice is real damage, not a race.
 	var lastBlob string
 	for range maxOpenAttempts {
-		rec, _, err := s.lookupObject(bucket, key, versionID)
+		rec, _, err := s.lookupLocked(bucket, key, versionID)
 		if err != nil {
 			return nil, ObjectInfo{}, s.missing(ctx, bucket, err)
 		}
@@ -239,7 +239,7 @@ func (s *Store) HeadObjectVersion(ctx context.Context, bucket, key, versionID st
 	if err := s.checkObject(ctx, bucket, key); err != nil {
 		return ObjectInfo{}, err
 	}
-	rec, _, err := s.lookupObject(bucket, key, versionID)
+	rec, _, err := s.lookupLocked(bucket, key, versionID)
 	if err != nil {
 		return ObjectInfo{}, s.missing(ctx, bucket, err)
 	}

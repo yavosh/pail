@@ -25,6 +25,8 @@ Each key has at most one null version.
 A versioned write saves the previous current record under `versions/` before replacing the record in `objects/`.
 A permanent delete writes the promoted record to `objects/` before removing the old files.
 `store.Open` repairs duplicates and orphans left by interrupted transitions.
+Every change to a key's files holds its key lock, including lifecycle expiry. Version lookups and `ListVersions` read a key's files under the same lock. Without it, a promotion followed by a write can move a version from `versions/` to `objects/` and back between two reads.
+The [S3Versions model](../specs/S3Versions.md) checks these transitions, crashes, and readers.
 
 See [S3 versioning compatibility](s3-compatibility.md#versioning) for API behavior.
 
