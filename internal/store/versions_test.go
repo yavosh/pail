@@ -803,14 +803,14 @@ func newGatedStore(t *testing.T) (*Store, *gateFS, DeleteResult) {
 func TestLookupDuringPromotionFindsVersion(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
-		lookup func(*Store) error
+		lookup func(context.Context, *Store) error
 	}{
-		{"HeadObjectVersion", func(s *Store) error {
-			_, err := s.HeadObjectVersion(t.Context(), "b", "k", NullVersionID)
+		{"HeadObjectVersion", func(ctx context.Context, s *Store) error {
+			_, err := s.HeadObjectVersion(ctx, "b", "k", NullVersionID)
 			return err
 		}},
-		{"GetObjectVersion", func(s *Store) error {
-			f, _, err := s.GetObjectVersion(t.Context(), "b", "k", NullVersionID)
+		{"GetObjectVersion", func(ctx context.Context, s *Store) error {
+			f, _, err := s.GetObjectVersion(ctx, "b", "k", NullVersionID)
 			if err == nil {
 				err = f.Close()
 			}
@@ -822,7 +822,7 @@ func TestLookupDuringPromotionFindsVersion(t *testing.T) {
 			// The lookup reads objects/ (the marker), then waits before versions/null.json.
 			atVersion := gfs.arm(versionFile("b", "k", ""))
 			done := make(chan error, 1)
-			go func() { done <- tt.lookup(s) }()
+			go func() { done <- tt.lookup(t.Context(), s) }()
 			<-atVersion.reached
 			if kl := s.keyLock("b", "k"); kl.TryLock() {
 				kl.Unlock()

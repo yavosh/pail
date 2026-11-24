@@ -122,6 +122,7 @@ type deleteLockFS struct {
 	metadata                 string
 	lock                     *sync.Mutex
 	readLocked, removeLocked bool
+	commitLocked             bool
 }
 
 func (f *deleteLockFS) locked() bool {
@@ -144,4 +145,21 @@ func (f *deleteLockFS) Remove(name string) error {
 		f.removeLocked = f.locked()
 	}
 	return f.FS.Remove(name)
+}
+
+func (f *deleteLockFS) CreateTemp() (vfs.TempFile, error) {
+	tf, err := f.FS.CreateTemp()
+	return &lockCommitFile{TempFile: tf, fs: f}, err
+}
+
+type lockCommitFile struct {
+	vfs.TempFile
+	fs *deleteLockFS
+}
+
+func (f *lockCommitFile) Commit(name string) error {
+	if name == f.fs.metadata {
+		f.fs.commitLocked = f.fs.locked()
+	}
+	return f.TempFile.Commit(name)
 }
