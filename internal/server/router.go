@@ -135,7 +135,7 @@ func (rt *router) serveCognito(w http.ResponseWriter, r *http.Request, service s
 	switch r.URL.EscapedPath() {
 	case "/":
 		rt.identity.ServeAPI(w, r)
-	case "/oauth2/authorize", "/oauth2/token", "/oauth2/idpresponse":
+	case "/oauth2/authorize", "/oauth2/token", "/oauth2/idpresponse", "/oauth2/mock-login":
 		rt.identity.ServeBrowser(w, r)
 	default:
 		if !rt.identity.ServeDiscovery(w, r) {

@@ -49,7 +49,7 @@ Mount synthetic passwords and client secrets as files. Relative file references 
 An SDK client can set `secret_file` to require the Cognito `SECRET_HASH` parameter.
 A client with redirect URIs needs `password_auth: true` to also allow password sign-in.
 Set a user's optional `subject` to pin their `sub` claim. Otherwise, pail derives it from the issuer and username.
-A pool can omit `provider` for password sign-in only.
+A pool can omit both `provider` and `mock_provider` for password sign-in only.
 
 ## Password sign-in
 
@@ -69,6 +69,44 @@ Register the SPA callback URI and origin in its app client. Request `response_ty
 Use `identity_provider` to select the configured provider. If you omit it, pail uses that provider.
 Authorization codes expire, and each code can be redeemed once.
 
+## Mock browser sign-in
+
+To test browser sign-in without an upstream provider, configure `mock_provider` on a dedicated test pool.
+Use a separate issuer that only local applications trust.
+Anyone who can reach the mock sign-in page can select any configured test account.
+
+```json
+{
+  "pools": [
+    {
+      "issuer": "https://auth.local.test/us-east-1_mock",
+      "clients": [
+        {
+          "id": "browser-app",
+          "redirect_uris": ["http://localhost:3000/callback"],
+          "scopes": ["openid", "email"],
+          "origins": ["http://localhost:3000"]
+        }
+      ],
+      "mock_provider": {
+        "name": "LocalMock",
+        "users": [
+          { "username": "alice", "claims": { "email": "alice@example.test" } },
+          { "username": "bob", "claims": { "email": "bob@example.test" } }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Configure either `provider` or `mock_provider` for a pool. The mock provider requires a name and unique usernames.
+Use the same HTTPS auth host setup and S256 PKCE parameters as in [Browser sign-in](#browser-sign-in).
+If your app sends `identity_provider`, set it to the mock provider name, such as `LocalMock`.
+When your app opens `/oauth2/authorize`, pail shows the account picker.
+Select an account to return an authorization code to the registered callback. Select **Cancel** to return `access_denied`.
+Exchange the code at `/oauth2/token` to receive signed tokens with the selected account's claims.
+
 ## Token verification and persistence
 
 The issuer serves metadata at `/.well-known/openid-configuration` and public keys at `/.well-known/jwks.json` under the configured issuer path.
@@ -82,4 +120,4 @@ User and app client configuration loads at startup. [Storage layout](storage.md#
 ## API coverage
 
 Use a new sign-in to renew an expired session. Cognito refresh, logout, user-info, user management, and identity pool APIs are outside this compatibility surface.
-Browser federation supports one OIDC provider per pool. SDK password auth uses startup-configured users.
+Each pool supports one external OIDC provider or one mock provider. SDK password auth uses startup-configured users.

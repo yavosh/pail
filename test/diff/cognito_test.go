@@ -203,6 +203,9 @@ type cognitoClaims struct {
 	Audience string `json:"aud"`
 	ClientID string `json:"client_id"`
 	Scope    string `json:"scope"`
+	Nonce    string `json:"nonce"`
+	Email    string `json:"email"`
+	Username string `json:"cognito:username"`
 	IssuedAt int64  `json:"iat"`
 	Expiry   int64  `json:"exp"`
 }

@@ -211,6 +211,9 @@ go test ./test/diff -record -run '^TestCognitoInitiateAuth$' -v -count=1 -timeou
 
 The recording calls `InitiateAuth` and reads JWKS for that pool.
 
+`TestCognitoMockSignIn` exercises pail's account picker locally.
+It covers account selection, cancellation, PKCE, single-use codes, and JWT signatures.
+
 ## Live SNS HTTPS callbacks
 
 `TestSNSHTTPDelivery` receives callbacks through a dedicated HTTPS endpoint.
