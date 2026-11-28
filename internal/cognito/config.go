@@ -18,10 +18,11 @@ type fileConfig struct {
 }
 
 type poolConfig struct {
-	Issuer   string          `json:"issuer"`
-	Clients  []clientConfig  `json:"clients"`
-	Users    []userConfig    `json:"users"`
-	Provider *providerConfig `json:"provider"`
+	Issuer       string          `json:"issuer"`
+	Clients      []clientConfig  `json:"clients"`
+	Users        []userConfig    `json:"users"`
+	Provider     *providerConfig `json:"provider"`
+	MockProvider *mockProvider   `json:"mock_provider"`
 }
 
 type clientConfig struct {
@@ -47,6 +48,16 @@ type providerConfig struct {
 	ClientSecretFile string            `json:"client_secret_file"`
 	Scopes           []string          `json:"scopes"`
 	ClaimMap         map[string]string `json:"claim_map"`
+}
+
+type mockProvider struct {
+	Name  string     `json:"name"`
+	Users []mockUser `json:"users"`
+}
+
+type mockUser struct {
+	Username string         `json:"username"`
+	Claims   map[string]any `json:"claims"`
 }
 
 // ClientConfig describes a configured app client's browser routes.
@@ -97,6 +108,15 @@ func loadPool(cfg poolConfig, dir string) (*pool, error) {
 		clients:    make(map[string]ClientConfig, len(cfg.Clients)),
 		users:      make(map[string]passwordUser, len(cfg.Users)),
 	}
+	if cfg.MockProvider != nil {
+		if cfg.Provider != nil {
+			return nil, errors.New("configure either provider or mock_provider")
+		}
+		if err := cfg.MockProvider.validate(); err != nil {
+			return nil, fmt.Errorf("configure mock provider: %w", err)
+		}
+		p.mockProvider = cfg.MockProvider
+	}
 	if cfg.Provider != nil {
 		p.provider, err = loadProvider(*cfg.Provider, dir)
 		if err != nil {
@@ -110,7 +130,7 @@ func loadPool(cfg poolConfig, dir string) (*pool, error) {
 		if _, exists := p.clients[cfg.ID]; exists {
 			return nil, errors.New("duplicate app client id")
 		}
-		client, err := loadClient(cfg, dir, p.provider != nil)
+		client, err := loadClient(cfg, dir, p.provider != nil || p.mockProvider != nil)
 		if err != nil {
 			return nil, fmt.Errorf("configure app client %d: %w", i+1, err)
 		}
@@ -132,6 +152,28 @@ func loadPool(cfg poolConfig, dir string) (*pool, error) {
 		p.users[user.Username] = user
 	}
 	return p, nil
+}
+
+func (m *mockProvider) validate() error {
+	if strings.TrimSpace(m.Name) == "" || len(m.Users) == 0 {
+		return errors.New("mock provider requires a name and at least one user")
+	}
+	seen := make(map[string]bool, len(m.Users))
+	for _, user := range m.Users {
+		if strings.TrimSpace(user.Username) == "" || len(user.Username) > 128 || strings.ContainsAny(user.Username, "\x00\r\n") {
+			return errors.New("invalid mock provider username")
+		}
+		if seen[user.Username] {
+			return errors.New("duplicate mock provider username")
+		}
+		seen[user.Username] = true
+		for name := range user.Claims {
+			if !isProfileClaim(name) {
+				return errors.New("invalid mock provider claim")
+			}
+		}
+	}
+	return nil
 }
 
 func loadClient(cfg clientConfig, dir string, federation bool) (ClientConfig, error) {

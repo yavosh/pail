@@ -37,6 +37,7 @@ type pool struct {
 	clients                    map[string]ClientConfig
 	users                      map[string]passwordUser
 	provider                   *provider
+	mockProvider               *mockProvider
 	keys                       signingKeys
 	discovery, jwks            []byte
 }

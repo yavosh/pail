@@ -16,6 +16,7 @@ const (
 	browserAuthorizePath = "/oauth2/authorize"
 	browserTokenPath     = "/oauth2/token"
 	idpResponsePath      = "/oauth2/idpresponse"
+	mockLoginPath        = "/oauth2/mock-login"
 	browserCookiePrefix  = "__Host-pail-cognito-"
 	browserRequestLimit  = 16 << 10
 )
@@ -23,7 +24,7 @@ const (
 // ServeBrowser serves the OAuth endpoints on the configured auth host.
 func (e *Engine) ServeBrowser(w http.ResponseWriter, r *http.Request) {
 	p := e.poolForHost(r.Host)
-	if p == nil || p.provider == nil {
+	if p == nil || (p.provider == nil && p.mockProvider == nil) {
 		http.NotFound(w, r)
 		return
 	}
@@ -38,11 +39,25 @@ func (e *Engine) ServeBrowser(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Allow", http.MethodGet)
 	case idpResponsePath:
+		if p.provider == nil {
+			http.NotFound(w, r)
+			return
+		}
 		if r.Method == http.MethodGet {
 			e.browser.callback(w, r, p)
 			return
 		}
 		w.Header().Set("Allow", http.MethodGet)
+	case mockLoginPath:
+		if p.mockProvider == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method == http.MethodPost {
+			e.browser.mockLogin(w, r, p)
+			return
+		}
+		w.Header().Set("Allow", http.MethodPost)
 	case browserTokenPath:
 		w.Header().Add("Vary", "Origin")
 		switch r.Method {
@@ -85,7 +100,13 @@ func (b *browserState) authorize(w http.ResponseWriter, r *http.Request, p *pool
 		oauthRedirect(w, r, redirectURI, appState, "error", "invalid_request")
 		return
 	}
-	if name := params.Get("identity_provider"); name != "" && name != p.provider.name {
+	var providerName string
+	if p.mockProvider != nil {
+		providerName = p.mockProvider.Name
+	} else {
+		providerName = p.provider.name
+	}
+	if name := params.Get("identity_provider"); name != "" && name != providerName {
 		oauthRedirect(w, r, redirectURI, appState, "error", "invalid_request")
 		return
 	}
@@ -97,26 +118,32 @@ func (b *browserState) authorize(w http.ResponseWriter, r *http.Request, p *pool
 		oauthRedirect(w, r, redirectURI, appState, "error", "invalid_scope")
 		return
 	}
-	metadata, err := b.discover(r.Context(), p.provider)
-	if err != nil {
-		oauthRedirect(w, r, redirectURI, appState, "error", "server_error")
-		return
-	}
-
-	var verifierBytes [32]byte
-	rand.Read(verifierBytes[:])
 	state := rand.Text()
 	tx := browserTransaction{
 		issuer: p.issuer, clientID: clientID, redirectURI: redirectURI, challenge: challenge,
-		scopes: strings.Join(scopes, " "), nonce: params.Get("nonce"), appState: appState,
-		metadata: metadata, verifier: base64.RawURLEncoding.EncodeToString(verifierBytes[:]),
-		upstreamNonce: rand.Text(), cookie: rand.Text(),
+		scopes: strings.Join(scopes, " "), nonce: params.Get("nonce"), appState: appState, cookie: rand.Text(),
+	}
+	if p.provider != nil {
+		metadata, err := b.discover(r.Context(), p.provider)
+		if err != nil {
+			oauthRedirect(w, r, redirectURI, appState, "error", "server_error")
+			return
+		}
+		tx.metadata = metadata
+		var verifierBytes [32]byte
+		rand.Read(verifierBytes[:])
+		tx.verifier = base64.RawURLEncoding.EncodeToString(verifierBytes[:])
+		tx.upstreamNonce = rand.Text()
 	}
 	if !b.addTransaction(state, tx, time.Now()) {
 		oauthRedirect(w, r, redirectURI, appState, "error", "temporarily_unavailable")
 		return
 	}
 	setBrowserCookie(w, state, tx.cookie, int(browserTTL/time.Second))
+	if p.mockProvider != nil {
+		showMockLogin(w, p.mockProvider, state)
+		return
+	}
 	http.Redirect(w, r, tx.providerURL(p, state), http.StatusFound)
 }
 
@@ -126,18 +153,11 @@ func (b *browserState) callback(w http.ResponseWriter, r *http.Request, p *pool)
 		oauthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	state := params.Get("state")
-	cookie, err := r.Cookie(browserCookiePrefix + state)
-	if err != nil {
-		oauthError(w, http.StatusBadRequest, "invalid_request")
-		return
-	}
-	tx, ok := b.takeTransaction(state, cookie.Value, p.issuer, time.Now())
+	tx, ok := b.consumeTransaction(w, r, params.Get("state"), p.issuer)
 	if !ok {
 		oauthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	setBrowserCookie(w, state, "", -1)
 	if params.Get("error") != "" || params.Get("code") == "" {
 		oauthRedirect(w, r, tx.redirectURI, tx.appState, "error", "access_denied")
 		return
@@ -151,6 +171,22 @@ func (b *browserState) callback(w http.ResponseWriter, r *http.Request, p *pool)
 		oauthRedirect(w, r, tx.redirectURI, tx.appState, "error", "access_denied")
 		return
 	}
+	b.grant(w, r, tx, user)
+}
+
+func (b *browserState) consumeTransaction(w http.ResponseWriter, r *http.Request, state, issuer string) (browserTransaction, bool) {
+	cookie, err := r.Cookie(browserCookiePrefix + state)
+	if err != nil {
+		return browserTransaction{}, false
+	}
+	tx, ok := b.takeTransaction(state, cookie.Value, issuer, time.Now())
+	if ok {
+		setBrowserCookie(w, state, "", -1)
+	}
+	return tx, ok
+}
+
+func (b *browserState) grant(w http.ResponseWriter, r *http.Request, tx browserTransaction, user User) {
 	code := rand.Text()
 	grant := browserGrant{
 		issuer: tx.issuer, clientID: tx.clientID, redirectURI: tx.redirectURI,
@@ -164,13 +200,7 @@ func (b *browserState) callback(w http.ResponseWriter, r *http.Request, p *pool)
 }
 
 func (b *browserState) token(w http.ResponseWriter, r *http.Request, p *pool) {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/x-www-form-urlencoded" || r.URL.RawQuery != "" {
-		oauthError(w, http.StatusBadRequest, "invalid_request")
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, browserRequestLimit)
-	if err := r.ParseForm(); err != nil || !singleValues(r.PostForm) {
+	if !parseBrowserForm(w, r) {
 		oauthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
@@ -260,6 +290,15 @@ func browserQuery(r *http.Request) (url.Values, bool) {
 	return params, err == nil && singleValues(params)
 }
 
+func parseBrowserForm(w http.ResponseWriter, r *http.Request) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" || r.URL.RawQuery != "" {
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, browserRequestLimit)
+	return r.ParseForm() == nil && singleValues(r.PostForm)
+}
+
 func singleValues(params url.Values) bool {
 	for _, values := range params {
 		if len(values) != 1 {
@@ -297,5 +336,9 @@ func oauthRedirect(w http.ResponseWriter, r *http.Request, uri, state, name, val
 	}
 	params.Set(name, value)
 	target.RawQuery = params.Encode()
-	http.Redirect(w, r, target.String(), http.StatusFound)
+	status := http.StatusFound
+	if r.Method == http.MethodPost {
+		status = http.StatusSeeOther
+	}
+	http.Redirect(w, r, target.String(), status)
 }

@@ -149,7 +149,8 @@ S3, SQS, and SNS encryption settings do not call KMS yet.
 ### Cognito user pools
 
 Set `--cognito-config` to load local pools and app clients. Point your Cognito SDK at the pool's auth hostname for `InitiateAuth` with `USER_PASSWORD_AUTH`.
-Browsers can sign in through a configured OIDC provider. Both flows issue RS256-signed tokens that apps verify with the pool's JWKS. [Cognito setup and compatibility](docs/cognito-compatibility.md)
+Browsers can sign in through an OIDC provider or an opt-in mock sign-in page for test accounts.
+Both browser and password sign-in issue RS256-signed tokens that apps verify with the pool's JWKS. [Cognito setup and compatibility](docs/cognito-compatibility.md)
 
 ### Browser form uploads
 

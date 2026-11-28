@@ -133,7 +133,7 @@ func TestCognitoSDK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range []string{authEndpoint + "/oauth2/token/object", presigned.URL} {
+	for _, target := range []string{authEndpoint + "/oauth2/token/object", authEndpoint + "/oauth2/mock-login", presigned.URL} {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 		if err != nil {
 			t.Fatal(err)

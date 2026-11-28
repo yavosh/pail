@@ -221,6 +221,52 @@ func TestBrowserClientRequiresOpenIDScope(t *testing.T) {
 	}
 }
 
+func TestMockProviderConfig(t *testing.T) {
+	const redirectURI = "http://localhost/callback"
+	user := mockUser{Username: "alice", Claims: map[string]any{"email": "alice@example.test"}}
+	for _, tt := range []struct {
+		name     string
+		provider *providerConfig
+		users    []mockUser
+		wantErr  string
+	}{
+		{name: "mock browser client", users: []mockUser{user}},
+		{
+			name:     "both provider types",
+			provider: &providerConfig{Name: "oidc", Issuer: "https://idp.example.test", ClientID: "test"},
+			users:    []mockUser{user},
+			wantErr:  "configure either provider or mock_provider",
+		},
+		{name: "duplicate username", users: []mockUser{user, user}, wantErr: "duplicate mock provider username"},
+		{
+			name:    "reserved claim",
+			users:   []mockUser{{Username: "alice", Claims: map[string]any{"sub": "reserved"}}},
+			wantErr: "invalid mock provider claim",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := loadPool(poolConfig{
+				Issuer:       coreIssuer,
+				Clients:      []clientConfig{{ID: "browser", RedirectURIs: []string{redirectURI}}},
+				Provider:     tt.provider,
+				MockProvider: &mockProvider{Name: "Mock", Users: tt.users},
+			}, "")
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("loadPool error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("loadPool error = %v, want nil", err)
+			}
+			if got := p.clients["browser"].RedirectURIs; len(got) != 1 || got[0] != redirectURI {
+				t.Errorf("browser redirect URIs = %q, want [%q]", got, redirectURI)
+			}
+		})
+	}
+}
+
 func TestProviderPreservesTrailingSlashInIssuer(t *testing.T) {
 	for _, issuer := range []string{"https://idp.example.test/", "https://idp.example.test/oidc/"} {
 		p, err := loadProvider(providerConfig{Name: "oidc", Issuer: issuer, ClientID: "test"}, "")
